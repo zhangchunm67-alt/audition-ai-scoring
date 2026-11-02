@@ -1,0 +1,3016 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "主播试镜 AI 评分系统",
+  "version": "0.2.0"
+ },
+ "paths": {
+  "/api/auth/login": {
+   "post": {
+    "tags": [
+     "登录"
+    ],
+    "summary": "Login",
+    "operationId": "login_api_auth_login_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LoginIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MeOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/logout": {
+   "post": {
+    "tags": [
+     "登录"
+    ],
+    "summary": "Logout",
+    "operationId": "logout_api_auth_logout_post",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    }
+   }
+  },
+  "/api/auth/me": {
+   "get": {
+    "tags": [
+     "登录"
+    ],
+    "summary": "Me",
+    "operationId": "me_api_auth_me_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MeOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/users": {
+   "get": {
+    "tags": [
+     "账号"
+    ],
+    "summary": "List Users",
+    "operationId": "list_users_api_users_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/UserOut"
+         },
+         "type": "array",
+         "title": "Response List Users Api Users Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "账号"
+    ],
+    "summary": "Create User",
+    "operationId": "create_user_api_users_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/users/{user_id}": {
+   "patch": {
+    "tags": [
+     "账号"
+    ],
+    "summary": "Update User",
+    "operationId": "update_user_api_users__user_id__patch",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "User Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/rubrics": {
+   "get": {
+    "tags": [
+     "评分标准"
+    ],
+    "summary": "List Rubrics",
+    "operationId": "list_rubrics_api_rubrics_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RubricSummary"
+         },
+         "type": "array",
+         "title": "Response List Rubrics Api Rubrics Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "评分标准"
+    ],
+    "summary": "Import Rubric",
+    "operationId": "import_rubric_api_rubrics_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RubricIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RubricDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/rubrics/reference": {
+   "get": {
+    "tags": [
+     "评分标准"
+    ],
+    "summary": "Get Reference",
+    "description": "校验卖点卡等内容时参照的版本：最新已发布，没有则最新草稿。",
+    "operationId": "get_reference_api_rubrics_reference_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RubricDetail"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/rubrics/{rid}": {
+   "get": {
+    "tags": [
+     "评分标准"
+    ],
+    "summary": "Get Rubric",
+    "operationId": "get_rubric_api_rubrics__rid__get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RubricDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/rubrics/{rid}/publish": {
+   "post": {
+    "tags": [
+     "评分标准"
+    ],
+    "summary": "Publish",
+    "operationId": "publish_api_rubrics__rid__publish_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RubricDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/rubrics/{rid}/retire": {
+   "post": {
+    "tags": [
+     "评分标准"
+    ],
+    "summary": "Retire",
+    "operationId": "retire_api_rubrics__rid__retire_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RubricDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products": {
+   "get": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "List Products",
+    "operationId": "list_products_api_products_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ProductOut"
+         },
+         "type": "array",
+         "title": "Response List Products Api Products Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Create Product",
+    "operationId": "create_product_api_products_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProductIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProductOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/{pid}": {
+   "get": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Get Product",
+    "operationId": "get_product_api_products__pid__get",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProductOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/{pid}/cards": {
+   "get": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "List Cards",
+    "operationId": "list_cards_api_products__pid__cards_get",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/CardOut"
+         },
+         "title": "Response List Cards Api Products  Pid  Cards Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Create Card",
+    "operationId": "create_card_api_products__pid__cards_post",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CardContent"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CardOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/cards/{cid}/publish": {
+   "post": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Publish Card",
+    "operationId": "publish_card_api_cards__cid__publish_post",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Cid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CardOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/{pid}/objections": {
+   "get": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "List Objections",
+    "operationId": "list_objections_api_products__pid__objections_get",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     },
+     {
+      "name": "include_inactive",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Include Inactive"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ObjectionOut"
+         },
+         "title": "Response List Objections Api Products  Pid  Objections Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Create Objections",
+    "operationId": "create_objections_api_products__pid__objections_post",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ObjectionIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ObjectionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/objections/{oid}": {
+   "put": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Update Objections",
+    "operationId": "update_objections_api_objections__oid__put",
+    "parameters": [
+     {
+      "name": "oid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Oid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ObjectionIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ObjectionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/{pid}/questions": {
+   "get": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "List Questions",
+    "operationId": "list_questions_api_products__pid__questions_get",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     },
+     {
+      "name": "include_inactive",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Include Inactive"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/QuestionOut"
+         },
+         "title": "Response List Questions Api Products  Pid  Questions Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Create Questions",
+    "operationId": "create_questions_api_products__pid__questions_post",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/QuestionIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QuestionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/questions/{oid}": {
+   "put": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Update Questions",
+    "operationId": "update_questions_api_questions__oid__put",
+    "parameters": [
+     {
+      "name": "oid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Oid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/QuestionIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QuestionOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/{pid}/draw-rule": {
+   "get": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Get Rule",
+    "operationId": "get_rule_api_products__pid__draw_rule_get",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/DrawRuleOut"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "title": "Response Get Rule Api Products  Pid  Draw Rule Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "产品与题库"
+    ],
+    "summary": "Put Rule",
+    "description": "每次修改都新增一条，旧规则保留；已生成的题单存有规则快照。",
+    "operationId": "put_rule_api_products__pid__draw_rule_put",
+    "parameters": [
+     {
+      "name": "pid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Pid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DrawRuleIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DrawRuleOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reading-scripts": {
+   "get": {
+    "tags": [
+     "朗读稿"
+    ],
+    "summary": "List Scripts",
+    "operationId": "list_scripts_api_reading_scripts_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ScriptOut"
+         },
+         "type": "array",
+         "title": "Response List Scripts Api Reading Scripts Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "朗读稿"
+    ],
+    "summary": "Create Script",
+    "operationId": "create_script_api_reading_scripts_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ScriptIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ScriptOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reading-scripts/{sid}": {
+   "put": {
+    "tags": [
+     "朗读稿"
+    ],
+    "summary": "Update Script",
+    "operationId": "update_script_api_reading_scripts__sid__put",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ScriptIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ScriptOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/redline-lexicons": {
+   "get": {
+    "tags": [
+     "红线词表"
+    ],
+    "summary": "List Lexicons",
+    "operationId": "list_lexicons_api_redline_lexicons_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/LexiconOut"
+         },
+         "type": "array",
+         "title": "Response List Lexicons Api Redline Lexicons Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "红线词表"
+    ],
+    "summary": "Create Lexicon",
+    "operationId": "create_lexicon_api_redline_lexicons_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LexiconIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LexiconOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/redline-lexicons/{lid}/publish": {
+   "post": {
+    "tags": [
+     "红线词表"
+    ],
+    "summary": "Publish Lexicon",
+    "operationId": "publish_lexicon_api_redline_lexicons__lid__publish_post",
+    "parameters": [
+     {
+      "name": "lid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Lid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LexiconOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/sheets": {
+   "get": {
+    "tags": [
+     "试镜题单"
+    ],
+    "summary": "List Sheets",
+    "operationId": "list_sheets_api_sheets_get",
+    "parameters": [
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/SheetOut"
+         },
+         "title": "Response List Sheets Api Sheets Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "试镜题单"
+    ],
+    "summary": "Create Sheet",
+    "operationId": "create_sheet_api_sheets_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SheetIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SheetOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/sheets/{sid}": {
+   "get": {
+    "tags": [
+     "试镜题单"
+    ],
+    "summary": "Get Sheet",
+    "operationId": "get_sheet_api_sheets__sid__get",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SheetOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/sheets/{sid}/void": {
+   "post": {
+    "tags": [
+     "试镜题单"
+    ],
+    "summary": "Void Sheet",
+    "operationId": "void_sheet_api_sheets__sid__void_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SheetOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/audit-logs": {
+   "get": {
+    "tags": [
+     "审计日志"
+    ],
+    "summary": "List Logs",
+    "operationId": "list_logs_api_audit_logs_get",
+    "parameters": [
+     {
+      "name": "action",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Action"
+      }
+     },
+     {
+      "name": "target_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Target Id"
+      }
+     },
+     {
+      "name": "actor_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Actor Id"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 1000,
+       "minimum": 1,
+       "default": 100,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/AuditOut"
+         },
+         "title": "Response List Logs Api Audit Logs Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/health": {
+   "get": {
+    "tags": [
+     "系统"
+    ],
+    "summary": "Health",
+    "operationId": "health_api_health_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "type": "object",
+         "title": "Response Health Api Health Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AuditOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "actor_type": {
+      "type": "string",
+      "title": "Actor Type"
+     },
+     "actor_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Actor Id"
+     },
+     "action": {
+      "type": "string",
+      "title": "Action"
+     },
+     "target_type": {
+      "type": "string",
+      "title": "Target Type"
+     },
+     "target_id": {
+      "type": "string",
+      "title": "Target Id"
+     },
+     "detail": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Detail"
+     },
+     "ip": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ip"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "at",
+     "actor_type",
+     "actor_id",
+     "action",
+     "target_type",
+     "target_id",
+     "detail",
+     "ip"
+    ],
+    "title": "AuditOut"
+   },
+   "CardContent": {
+    "properties": {
+     "checklist": {
+      "items": {
+       "$ref": "#/components/schemas/CardPoint"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Checklist"
+     },
+     "targeted_points": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Targeted Points"
+     },
+     "scenarios": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Scenarios"
+     },
+     "glossary": {
+      "items": {
+       "$ref": "#/components/schemas/GlossaryEntry"
+      },
+      "type": "array",
+      "title": "Glossary"
+     },
+     "key_numbers": {
+      "items": {
+       "$ref": "#/components/schemas/KeyNumber"
+      },
+      "type": "array",
+      "title": "Key Numbers"
+     },
+     "banned_phrases": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Banned Phrases"
+     }
+    },
+    "type": "object",
+    "required": [
+     "checklist"
+    ],
+    "title": "CardContent"
+   },
+   "CardOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "product_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Id"
+     },
+     "version": {
+      "type": "integer",
+      "title": "Version"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "content": {
+      "$ref": "#/components/schemas/CardContent"
+     },
+     "points_total": {
+      "type": "integer",
+      "title": "Points Total"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "product_id",
+     "version",
+     "status",
+     "content",
+     "points_total",
+     "created_at"
+    ],
+    "title": "CardOut"
+   },
+   "CardPoint": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Name"
+     },
+     "points": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Points"
+     },
+     "compliance_required": {
+      "type": "boolean",
+      "title": "Compliance Required",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "points"
+    ],
+    "title": "CardPoint"
+   },
+   "DrawRuleIn": {
+    "properties": {
+     "objection_count": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Objection Count",
+      "default": 4
+     },
+     "question_count": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Question Count",
+      "default": 6
+     },
+     "objection_times_ms": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Objection Times Ms"
+     },
+     "prep_seconds": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Prep Seconds",
+      "default": 900
+     },
+     "question_seconds": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Question Seconds",
+      "default": 60
+     },
+     "main_seconds": {
+      "type": "integer",
+      "minimum": 60.0,
+      "title": "Main Seconds",
+      "default": 600
+     }
+    },
+    "type": "object",
+    "title": "DrawRuleIn"
+   },
+   "DrawRuleOut": {
+    "properties": {
+     "objection_count": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Objection Count",
+      "default": 4
+     },
+     "question_count": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Question Count",
+      "default": 6
+     },
+     "objection_times_ms": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Objection Times Ms"
+     },
+     "prep_seconds": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Prep Seconds",
+      "default": 900
+     },
+     "question_seconds": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Question Seconds",
+      "default": 60
+     },
+     "main_seconds": {
+      "type": "integer",
+      "minimum": 60.0,
+      "title": "Main Seconds",
+      "default": 600
+     },
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "product_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "product_id"
+    ],
+    "title": "DrawRuleOut"
+   },
+   "GlossaryEntry": {
+    "properties": {
+     "term": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Term"
+     },
+     "plain": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Plain"
+     }
+    },
+    "type": "object",
+    "required": [
+     "term",
+     "plain"
+    ],
+    "title": "GlossaryEntry"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "ItemRow": {
+    "properties": {
+     "dimension": {
+      "type": "string",
+      "title": "Dimension"
+     },
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "max": {
+      "type": "integer",
+      "title": "Max"
+     }
+    },
+    "type": "object",
+    "required": [
+     "dimension",
+     "id",
+     "name",
+     "type",
+     "max"
+    ],
+    "title": "ItemRow"
+   },
+   "KeyNumber": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Name"
+     },
+     "value": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Value"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "value"
+    ],
+    "title": "KeyNumber"
+   },
+   "LexiconIn": {
+    "properties": {
+     "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,64}$",
+      "title": "Version"
+     },
+     "content": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/RedlineEntry"
+      },
+      "type": "object",
+      "title": "Content"
+     }
+    },
+    "type": "object",
+    "required": [
+     "version",
+     "content"
+    ],
+    "title": "LexiconIn"
+   },
+   "LexiconOut": {
+    "properties": {
+     "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,64}$",
+      "title": "Version"
+     },
+     "content": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/RedlineEntry"
+      },
+      "type": "object",
+      "title": "Content"
+     },
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "version",
+     "content",
+     "id",
+     "status",
+     "created_at"
+    ],
+    "title": "LexiconOut"
+   },
+   "LoginIn": {
+    "properties": {
+     "username": {
+      "type": "string",
+      "title": "Username"
+     },
+     "password": {
+      "type": "string",
+      "title": "Password"
+     }
+    },
+    "type": "object",
+    "required": [
+     "username",
+     "password"
+    ],
+    "title": "LoginIn"
+   },
+   "MeOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "username": {
+      "type": "string",
+      "title": "Username"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "role": {
+      "type": "string",
+      "title": "Role"
+     },
+     "permissions": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Permissions"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "username",
+     "display_name",
+     "role",
+     "permissions"
+    ],
+    "title": "MeOut"
+   },
+   "ObjectionIn": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Text"
+     },
+     "answer_points": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Answer Points"
+     },
+     "advantages": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Advantages"
+     },
+     "closing": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Closing"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "text"
+    ],
+    "title": "ObjectionIn"
+   },
+   "ObjectionOut": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Text"
+     },
+     "answer_points": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Answer Points"
+     },
+     "advantages": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Advantages"
+     },
+     "closing": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Closing"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     },
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "product_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "id",
+     "product_id"
+    ],
+    "title": "ObjectionOut"
+   },
+   "ProductIn": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{2,64}$",
+      "title": "Code"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "name"
+    ],
+    "title": "ProductIn"
+   },
+   "ProductOut": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{2,64}$",
+      "title": "Code"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "published_card_version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Published Card Version"
+     },
+     "active_objections": {
+      "type": "integer",
+      "title": "Active Objections",
+      "default": 0
+     },
+     "active_questions": {
+      "type": "integer",
+      "title": "Active Questions",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "name",
+     "id"
+    ],
+    "title": "ProductOut"
+   },
+   "QuestionIn": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Text"
+     },
+     "full_points": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Full Points"
+     },
+     "partial_rule": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Partial Rule"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "full_points"
+    ],
+    "title": "QuestionIn"
+   },
+   "QuestionOut": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Text"
+     },
+     "full_points": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Full Points"
+     },
+     "partial_rule": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Partial Rule"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     },
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "product_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "full_points",
+     "id",
+     "product_id"
+    ],
+    "title": "QuestionOut"
+   },
+   "RedlineEntry": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Name"
+     },
+     "keywords": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Keywords"
+     },
+     "examples": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Examples"
+     },
+     "not_redline": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Not Redline"
+     },
+     "correct": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Correct"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "keywords",
+     "correct"
+    ],
+    "title": "RedlineEntry"
+   },
+   "Role": {
+    "type": "string",
+    "enum": [
+     "admin",
+     "compliance",
+     "calibrator",
+     "hr",
+     "anchor"
+    ],
+    "title": "Role"
+   },
+   "RubricDetail": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "version": {
+      "type": "string",
+      "title": "Version"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "config_hash": {
+      "type": "string",
+      "title": "Config Hash"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "published_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Published At"
+     },
+     "blocker_count": {
+      "type": "integer",
+      "title": "Blocker Count"
+     },
+     "yaml_text": {
+      "type": "string",
+      "title": "Yaml Text"
+     },
+     "blockers": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Blockers"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ItemRow"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "checklist_max": {
+      "type": "integer",
+      "title": "Checklist Max"
+     },
+     "thresholds": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Thresholds"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "version",
+     "status",
+     "config_hash",
+     "created_at",
+     "published_at",
+     "blocker_count",
+     "yaml_text",
+     "blockers",
+     "items",
+     "checklist_max",
+     "thresholds"
+    ],
+    "title": "RubricDetail"
+   },
+   "RubricIn": {
+    "properties": {
+     "yaml_text": {
+      "type": "string",
+      "title": "Yaml Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "yaml_text"
+    ],
+    "title": "RubricIn"
+   },
+   "RubricSummary": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "version": {
+      "type": "string",
+      "title": "Version"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "config_hash": {
+      "type": "string",
+      "title": "Config Hash"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "published_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Published At"
+     },
+     "blocker_count": {
+      "type": "integer",
+      "title": "Blocker Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "version",
+     "status",
+     "config_hash",
+     "created_at",
+     "published_at",
+     "blocker_count"
+    ],
+    "title": "RubricSummary"
+   },
+   "ScriptIn": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Title"
+     },
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Text"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "text"
+    ],
+    "title": "ScriptIn"
+   },
+   "ScriptOut": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Title"
+     },
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Text"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     },
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "char_count": {
+      "type": "integer",
+      "title": "Char Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "text",
+     "id",
+     "char_count"
+    ],
+    "title": "ScriptOut"
+   },
+   "SheetIn": {
+    "properties": {
+     "product_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Id"
+     },
+     "rubric_version_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Rubric Version Id"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "product_id",
+     "rubric_version_id"
+    ],
+    "title": "SheetIn"
+   },
+   "SheetObjection": {
+    "properties": {
+     "objection_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Objection Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "at_ms": {
+      "type": "integer",
+      "title": "At Ms"
+     }
+    },
+    "type": "object",
+    "required": [
+     "objection_id",
+     "text",
+     "at_ms"
+    ],
+    "title": "SheetObjection"
+   },
+   "SheetOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "product_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Id"
+     },
+     "product_name": {
+      "type": "string",
+      "title": "Product Name"
+     },
+     "product_card_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Product Card Id"
+     },
+     "product_card_version": {
+      "type": "integer",
+      "title": "Product Card Version"
+     },
+     "rubric_version_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Rubric Version Id"
+     },
+     "rubric_version": {
+      "type": "string",
+      "title": "Rubric Version"
+     },
+     "redline_lexicon_version_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Redline Lexicon Version Id"
+     },
+     "redline_lexicon_version": {
+      "type": "string",
+      "title": "Redline Lexicon Version"
+     },
+     "uses_draft_config": {
+      "type": "boolean",
+      "title": "Uses Draft Config"
+     },
+     "draw_rule": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Draw Rule"
+     },
+     "objections": {
+      "items": {
+       "$ref": "#/components/schemas/SheetObjection"
+      },
+      "type": "array",
+      "title": "Objections"
+     },
+     "questions": {
+      "items": {
+       "$ref": "#/components/schemas/SheetQuestion"
+      },
+      "type": "array",
+      "title": "Questions"
+     },
+     "reading_script_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Reading Script Id"
+     },
+     "reading_text": {
+      "type": "string",
+      "title": "Reading Text"
+     },
+     "recording_rules_version": {
+      "type": "string",
+      "title": "Recording Rules Version"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "code",
+     "status",
+     "product_id",
+     "product_name",
+     "product_card_id",
+     "product_card_version",
+     "rubric_version_id",
+     "rubric_version",
+     "redline_lexicon_version_id",
+     "redline_lexicon_version",
+     "uses_draft_config",
+     "draw_rule",
+     "objections",
+     "questions",
+     "reading_script_id",
+     "reading_text",
+     "recording_rules_version",
+     "note",
+     "created_at"
+    ],
+    "title": "SheetOut"
+   },
+   "SheetQuestion": {
+    "properties": {
+     "question_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Question Id"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question_id",
+     "text"
+    ],
+    "title": "SheetQuestion"
+   },
+   "UserIn": {
+    "properties": {
+     "username": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{3,64}$",
+      "title": "Username"
+     },
+     "display_name": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Display Name"
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "password": {
+      "type": "string",
+      "minLength": 10,
+      "title": "Password"
+     }
+    },
+    "type": "object",
+    "required": [
+     "username",
+     "display_name",
+     "role",
+     "password"
+    ],
+    "title": "UserIn"
+   },
+   "UserOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "username": {
+      "type": "string",
+      "title": "Username"
+     },
+     "display_name": {
+      "type": "string",
+      "title": "Display Name"
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "is_active": {
+      "type": "boolean",
+      "title": "Is Active"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "username",
+     "display_name",
+     "role",
+     "is_active"
+    ],
+    "title": "UserOut"
+   },
+   "UserPatch": {
+    "properties": {
+     "display_name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 64,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Display Name"
+     },
+     "role": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Role"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "is_active": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Is Active"
+     },
+     "password": {
+      "anyOf": [
+       {
+        "type": "string",
+        "minLength": 10
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Password"
+     }
+    },
+    "type": "object",
+    "title": "UserPatch"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}

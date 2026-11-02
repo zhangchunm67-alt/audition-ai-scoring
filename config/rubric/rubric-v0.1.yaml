@@ -1,0 +1,285 @@
+# 主播评分标准 · 机器可执行版 v0.1 —— 计分配置
+#
+# 来源：docs/rubric.md 第 1、3–8 节；已确认的决定见 docs/decisions.md（C*）。
+# 标记约定：
+#   pending: [Q6]               规则来自待确认项（rubric 第 12 节 Q*，或 decisions.md 的 P-*），未拍板
+#   calibration_required: true  数值是测试占位，未经校准
+# 带标记的配置只能用于开发和测试；scoring.publish_blockers() 会列出全部标记，清零前不能发布为正式配置。
+# 改动只影响计分（不需要重跑模型）。词表、抽帧率、提示词等检测配置单独管理，改了需要重跑。
+
+version: rubric-v0.1
+status: draft
+rounding: half_up                      # C3：四舍五入到整数（不是银行家舍入）
+expected_item_count: 23                # C1：音色 P6 删除后共 23 条
+removed_items: [P6]
+
+grade_bands: [[96, 100, 1], [91, 95, 2], [81, 90, 3], [71, 80, 4], [61, 70, 5], [51, 60, 6], [41, 50, 7], [0, 40, 8]]
+thresholds: {veteran: 8, month_1: 10, new_trial: 15}   # 总档位须小于该值
+
+critical:
+  review_band: 2        # 离达标线 2 档以内：[达标线-2, 达标线+1]，新主播试播即 13–16（I1）
+  total_rounds: 3       # C5：临界样本总共 3 轮，首轮参与投票，只追加 2 轮
+
+low_confidence:
+  default_threshold: 0.6
+  calibration_required: true
+
+redlines:
+  list: [R1, R2, R3, R4, R5, R6, R7, R8]
+  hit_threshold: 0.8                # 判定命中：judgment=count 且置信度 ≥ 阈值（I3）
+  exclude_segments: [reading]       # C10：朗读段不做红线检测
+  pending: [Q19]
+  calibration_required: true
+
+dimensions:
+  # ─────────────── 人设塑造：有道具满分 95；无道具 P9 不适用、满分 90（C2、C26） ───────────────
+  - id: P
+    name: 人设塑造
+    items:
+      - id: P1
+        name: 形象
+        type: T4
+        max: 10
+        note: 不判相貌本身（Q5 只影响检测说明，不影响计分）
+        parts:
+          - {id: main, levels: [10, 7, 4, 0], source: evidence}
+
+      - id: P2
+        name: 语言干净
+        type: T1
+        max: 40
+        per: 1
+        free: 20
+        window: main_10min
+        pending: [Q6]
+        normalize: {enabled: true, per_minutes: 10, pending: [Q8, P-B8]}
+
+      - id: P3
+        name: 普通话标准
+        type: T4
+        max: 10
+        parts:
+          - id: main
+            levels: [10, 8, 6, 3, 0]
+            source: metric
+            metric: reading_eval_score          # 朗读段带参考文本的语音评测分 0–100
+            metric_bands:
+              - {min: 90, level: 10}
+              - {min: 80, level: 8}
+              - {min: 70, level: 6}
+              - {min: 60, level: 3}
+              - {level: 0}
+            pending: [Q9]
+            boundary_flag: {enabled: true, margin: 2, pending: [P-B3]}
+            modifiers:
+              # rubric：主体段口音明显影响理解的再降一级。须有独立、可校准的证据规则后才能启用。
+              - {label: accent_downgrade, downgrade: 1, enabled: false, pending: [P-P3-ACCENT]}
+
+      - id: P4
+        name: 语速
+        type: T5
+        max: 5
+        metric: chars_per_min
+        limit: 400
+        score_by_over: {"0": 5, "1": 3, "2+": 0}
+        pending: [Q10]
+
+      - id: P5
+        name: 语调
+        type: T4
+        max: 5
+        parts:
+          - id: main
+            levels: [5, 3, 1]
+            source: rules
+            calibration_required: true           # 阈值仅供测试，需用培训师标注样本校准
+            rules:
+              - {level: 3, all: [{metric: pitch_range_st, op: ">", value: 20}]}     # 起伏过度
+              - {level: 5, all: [{metric: pitch_range_st, op: ">=", value: 8}, {metric: loudness_range_db, op: ">=", value: 10}]}
+              - {level: 3, all: [{metric: pitch_range_st, op: ">=", value: 4}]}
+              - {level: 1, default: true}
+
+      - id: P7
+        name: 节奏（停顿）
+        type: T4
+        max: 10
+        note: rubric 注明阈值将用校准样本调整
+        parts:
+          - id: main
+            levels: [10, 7, 4, 0]
+            source: count
+            count_labels: [run_on, stall]       # 连讲、卡壳
+            count_bands:
+              - {min: 0, max: 0, level: 10}
+              - {min: 1, max: 2, level: 7}
+              - {min: 3, max: 5, level: 4}
+              - {min: 6, level: 0}
+            boundary_flag: {enabled: true, counts: [2, 3, 5, 6], pending: [P-B3]}
+
+      - id: P8
+        name: 小动作
+        type: T1
+        max: 5
+        per: 1
+        free: 0
+        note: 低头看稿是否计次（Q11）属于检测配置
+
+      - id: P9
+        name: 道具使用
+        type: T2
+        max: 5
+        awards: {sticker: 2, kt_board: 1}
+        cap: 5
+        applicable_if: props_available   # C26：上传时登记画面里有无贴片 / KT 板
+
+      - id: P10
+        name: 嘻嘻哈哈
+        type: T1
+        max: 5
+        per: 5
+        free: 0
+
+  # ─────────────── 销售循环 100 ───────────────
+  - id: S
+    name: 销售循环
+    items:
+      - id: S1
+        name: 激发需求
+        type: T4
+        max: 10
+        parts:
+          - {id: main, levels: [10, 6, 3, 0], source: evidence}
+
+      - id: S2
+        name: 产品讲解
+        type: T3+T4
+        max: 50
+        checklist_max: 30          # 要点覆盖，分值取自卖点卡
+        structure_levels: [20, 14, 7, 0]
+        error_penalty: 5           # C7：讲错每处 -5，从整个 S2 扣，最低 0
+        error_label: error
+        penalty_scope: item
+
+      - id: S3
+        name: 解答异议
+        type: T6
+        max: 20
+        count: 4
+        elements: {direct_answer: 2, advantage: 2, altruistic_close: 1}
+        zero_labels: [wrong_answer, no_answer]
+        note: C8：按回答内容归属异议，不按时间窗口切分
+        pending: [Q13]
+
+      - id: S4
+        name: 促成
+        type: T2
+        max: 20
+        award: 5
+        cap: 20
+        labels: [herd, loss_aversion, authority, price_split]    # 沉没成本暂不计分
+        distinct_by_label: true
+        pending: [Q14, Q15]
+
+  # ─────────────── 表达逻辑 100 ───────────────
+  - id: L
+    name: 表达逻辑
+    items:
+      - id: L1
+        name: 电梯法则
+        type: T4
+        max: 20
+        parts:
+          - id: main
+            levels: [20, 14, 8, 0]
+            source: evidence
+            modifiers:
+              - {label: hook_invalid, cap: 14}   # 钩子不实或诱导：钩子不算数，最高 14
+
+      - id: L2
+        name: 结构化表达
+        type: T2
+        max: 20
+        award: 10
+        cap: 20
+
+      - id: L3
+        name: 推理运用
+        type: T1
+        max: 20
+        per: 10
+        free: 0
+        pending: [Q16]
+
+      - id: L4
+        name: 归纳能力
+        type: T2
+        max: 20
+        award: 10
+        cap: 20
+        note: 同一段话能否同时在 L2 和 L4 得分（Q17）
+        pending: [Q17]
+
+      - id: L5
+        name: 事实运用
+        type: T2
+        max: 20
+        award: 10
+        cap: 20
+
+  # ─────────────── 其他 100 ───────────────
+  - id: O
+    name: 其他
+    items:
+      - id: O1
+        name: 语言包装
+        type: T2
+        max: 20
+        award: 5
+        cap: 20
+        distinct_by_label: true    # 同一术语只算一次，label 为术语
+
+      - id: O2
+        name: 针对性
+        type: T2
+        max: 20
+        award: 5
+        cap: 20
+        distinct_by_label: true    # 同一卖点重复说不加分，label 为卖点
+
+      - id: O3
+        name: 场景化
+        type: T2
+        max: 15
+        award: 5
+        cap: 15
+
+      - id: O4
+        name: 节奏与气氛
+        type: T4
+        max: 15
+        pending: [Q18]
+        parts:
+          - id: rhythm
+            levels: [8, 5, 2, 0]
+            source: rules
+            calibration_required: true
+            rules:
+              - {level: 0, all: [{metric: unanswered_objections, op: ">=", value: 4}]}
+              - {level: 2, all: [{metric: dead_air_count, op: ">=", value: 2}]}
+              - {level: 8, all: [{metric: max_response_latency_s, op: "<=", value: 5}, {metric: returned_to_mainline_ratio, op: ">=", value: 1}]}
+              - {level: 5, default: true}
+          - id: enthusiasm
+            levels: [7, 4, 1]
+            source: rules
+            calibration_required: true
+            rules:
+              - {level: 7, all: [{metric: loudness_range_db, op: ">=", value: 10}, {metric: pitch_range_st, op: ">=", value: 8}]}
+              - {level: 4, all: [{metric: loudness_range_db, op: ">=", value: 5}]}
+              - {level: 1, default: true}
+
+      - id: O5
+        name: 保险知识
+        type: T6
+        max: 30
+        count: 6
+        levels: {full: 5, partial: 3, zero: 0}
