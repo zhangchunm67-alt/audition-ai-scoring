@@ -141,7 +141,7 @@ class _Item(_Node):
     id: str
     name: str
     max: int = Field(gt=0)
-    applicable_if: Literal["studio", "home"] | None = None
+    applicable_if: Literal["props_available"] | None = None
     low_confidence_threshold: float | None = Field(default=None, ge=0, le=1)
     window: str | None = None  # 说明性字段：统计窗口
     note: str | None = None

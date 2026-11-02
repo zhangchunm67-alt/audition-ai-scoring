@@ -34,8 +34,8 @@ def test_grade_bands(cfg, score, grade):
 # ───────────── 人设塑造折算（P0 验收：按 95 满分正确折算） ─────────────
 
 
-def _p_with_deductions(n_p2: int, location: str = "studio"):
-    b = full_marks(location)
+def _p_with_deductions(n_p2: int, props: bool = True):
+    b = full_marks(props)
     for _ in range(20 + n_p2):
         b.occ("P2", "那么")
     return b
@@ -49,7 +49,7 @@ def _p_with_deductions(n_p2: int, location: str = "studio"):
     (19, 76, 80, 4),  # 80.00
     (40, 55, 58, 6),  # 57.89 → 58
 ])
-def test_persona_scaled_from_95_studio(cfg, deduct, raw, scaled_int, grade):
+def test_persona_scaled_from_95_with_props(cfg, deduct, raw, scaled_int, grade):
     r = score_round(_p_with_deductions(deduct).items, cfg, context())
     p = dim(r, "P")
     assert p.applicable_max == 95
@@ -66,23 +66,23 @@ def test_persona_scaled_from_95_studio(cfg, deduct, raw, scaled_int, grade):
     (9, 81, 90, 3),
     (10, 80, 89, 3),  # 88.89 → 89
 ])
-def test_persona_home_p9_not_applicable_scaled_from_90(cfg, deduct, raw, scaled_int, grade):
-    r = score_round(_p_with_deductions(deduct, "home").items, cfg, context(location="home"))
+def test_persona_no_props_p9_not_applicable_scaled_from_90(cfg, deduct, raw, scaled_int, grade):
+    r = score_round(_p_with_deductions(deduct, props=False).items, cfg, context(props=False))
     assert item(r, "P9").status == "not_applicable"
     p = dim(r, "P")
     assert (p.applicable_max, p.raw, p.score, p.grade) == (90, raw, scaled_int, grade)
 
 
-def test_home_ignores_p9_evidence(cfg):
-    b = full_marks("studio")  # 带了 P9 证据
-    r = score_round(b.items, cfg, context(location="home"))
+def test_no_props_ignores_p9_evidence(cfg):
+    b = full_marks(props=True)  # 带了 P9 证据
+    r = score_round(b.items, cfg, context(props=False))
     assert item(r, "P9").status == "not_applicable" and item(r, "P9").score is None
     assert dim(r, "P").raw == 90 and dim(r, "P").score == 100
 
 
-def test_studio_without_props_scores_zero_for_p9(cfg):
-    b = full_marks("home")  # 没有 P9 证据
-    r = score_round(b.items, cfg, context(location="studio"))
+def test_props_available_but_unused_scores_zero_for_p9(cfg):
+    b = full_marks(props=False)  # 有道具但没有正确使用的证据
+    r = score_round(b.items, cfg, context(props=True))
     assert item(r, "P9").score == 0
     assert dim(r, "P").score == round_half_up(Fraction(90 * 100, 95))  # 94.74 → 95
 
@@ -234,7 +234,7 @@ def test_detector_completed_with_no_events_scores_full(cfg):
 
 def test_not_applicable_item_needs_no_detector(cfg):
     done = set(ALL_ITEMS) - {"P9"} | {"redlines"}
-    r = score_round(full_marks("home").items, cfg, context(location="home", completed=done))
+    r = score_round(full_marks(props=False).items, cfg, context(props=False, completed=done))
     assert r.status == "complete"
 
 

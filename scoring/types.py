@@ -80,7 +80,7 @@ class ScoringContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    location: Literal["studio", "home"]
+    props_available: bool  # 画面里有无贴片 / KT 板（C26）：决定 P9 是否适用
     audience: str  # 达标线键：veteran / month_1 / new_trial
     completed_detectors: set[str]  # 已成功运行的检测器：条目编号，以及 "redlines"
     checklist: list[ChecklistPoint] = Field(default_factory=list)  # 卖点卡必讲要点（S2）

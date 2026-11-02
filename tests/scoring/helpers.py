@@ -82,7 +82,7 @@ class EvidenceBuilder:
         ]
 
 
-def full_marks(location: str = "studio") -> EvidenceBuilder:
+def full_marks(props: bool = True) -> EvidenceBuilder:
     """所有条目满分的一组证据。"""
     b = EvidenceBuilder()
     b.level("P1", 10, source="vision")
@@ -91,7 +91,7 @@ def full_marks(location: str = "studio") -> EvidenceBuilder:
         b.metric("P4", "chars_per_min", 300, t=m * 60_000)
     b.metric("P5", "pitch_range_st", 10)
     b.metric("P5", "loudness_range_db", 12)
-    if location == "studio":
+    if props:
         for _ in range(3):
             b.inst("P9", "sticker", source="vision")
     b.level("S1", 10)
@@ -121,9 +121,9 @@ def full_marks(location: str = "studio") -> EvidenceBuilder:
     return b
 
 
-def context(location: str = "studio", audience: str = "new_trial", completed=None, **kw) -> ScoringContext:
+def context(props: bool = True, audience: str = "new_trial", completed=None, **kw) -> ScoringContext:
     base = dict(
-        location=location,
+        props_available=props,
         audience=audience,
         completed_detectors=set(ALL_ITEMS) | {"redlines"} if completed is None else set(completed),
         checklist=CHECKLIST,

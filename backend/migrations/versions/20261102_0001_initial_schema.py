@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-11-02 03:02:17.433261
+Create Date: 2026-11-02 05:45:39.573684
 """
 from alembic import op
 import sqlalchemy as sa
@@ -14,7 +14,7 @@ branch_labels = None
 depends_on = None
 
 
-ENUM_TYPES = ['access_status', 'actor_type', 'assignment_status', 'attempt_status', 'detector_status', 'evidence_kind', 'evidence_source', 'gold_purpose', 'hiring_status', 'media_kind', 'notify_audience', 'notify_status', 'recording_location', 'run_status', 'upload_status', 'user_role', 'verdict_conclusion', 'verdict_label', 'version_status']
+ENUM_TYPES = ['actor_type', 'assignment_status', 'detector_status', 'evidence_kind', 'evidence_source', 'gold_purpose', 'hiring_status', 'media_kind', 'notify_audience', 'notify_status', 'recording_status', 'run_status', 'sheet_status', 'upload_status', 'user_role', 'verdict_conclusion', 'verdict_label', 'version_status']
 
 
 def upgrade() -> None:
@@ -92,7 +92,7 @@ def upgrade() -> None:
     )
     op.create_table('candidates',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('name_enc', sa.LargeBinary(), nullable=True),
+    sa.Column('name_enc', sa.LargeBinary(), nullable=False),
     sa.Column('phone_enc', sa.LargeBinary(), nullable=True),
     sa.Column('phone_hash', sa.String(length=80), nullable=True),
     sa.Column('hiring_status', sa.Enum('undecided', 'hired', 'not_hired', name='hiring_status'), nullable=False),
@@ -186,106 +186,92 @@ def upgrade() -> None:
     sa.UniqueConstraint('version', name=op.f('uq_rubric_versions_version'))
     )
     op.create_index(op.f('ix_rubric_versions_created_by'), 'rubric_versions', ['created_by'], unique=False)
-    op.create_table('batches',
+    op.create_table('audition_sheets',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('name', sa.String(length=128), nullable=False),
+    sa.Column('code', sa.String(length=32), nullable=False),
     sa.Column('product_id', sa.UUID(), nullable=False),
     sa.Column('product_card_id', sa.UUID(), nullable=False),
     sa.Column('rubric_version_id', sa.UUID(), nullable=False),
-    sa.Column('detector_config_version_id', sa.UUID(), nullable=False),
     sa.Column('redline_lexicon_version_id', sa.UUID(), nullable=False),
-    sa.Column('draw_rule_id', sa.UUID(), nullable=False),
-    sa.Column('audience', sa.String(length=32), nullable=False),
-    sa.Column('materials_snapshot', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('max_attempts', sa.Integer(), nullable=False),
+    sa.Column('draw_rule_snapshot', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('objections', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('questions', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('reading_script_id', sa.UUID(), nullable=False),
+    sa.Column('reading_text', sa.Text(), nullable=False),
+    sa.Column('recording_rules_version', sa.String(length=32), nullable=False),
+    sa.Column('uses_draft_config', sa.Boolean(), nullable=False),
+    sa.Column('status', sa.Enum('issued', 'used', 'void', name='sheet_status'), nullable=False),
+    sa.Column('note', sa.Text(), nullable=True),
     sa.Column('created_by', sa.UUID(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['created_by'], ['users.id'], name=op.f('fk_batches_created_by_users')),
-    sa.ForeignKeyConstraint(['detector_config_version_id'], ['detector_config_versions.id'], name=op.f('fk_batches_detector_config_version_id_detector_config_versions')),
-    sa.ForeignKeyConstraint(['draw_rule_id'], ['draw_rules.id'], name=op.f('fk_batches_draw_rule_id_draw_rules')),
-    sa.ForeignKeyConstraint(['product_card_id'], ['product_cards.id'], name=op.f('fk_batches_product_card_id_product_cards')),
-    sa.ForeignKeyConstraint(['product_id'], ['products.id'], name=op.f('fk_batches_product_id_products')),
-    sa.ForeignKeyConstraint(['redline_lexicon_version_id'], ['redline_lexicon_versions.id'], name=op.f('fk_batches_redline_lexicon_version_id_redline_lexicon_versions')),
-    sa.ForeignKeyConstraint(['rubric_version_id'], ['rubric_versions.id'], name=op.f('fk_batches_rubric_version_id_rubric_versions')),
-    sa.PrimaryKeyConstraint('id', name=op.f('pk_batches'))
+    sa.ForeignKeyConstraint(['created_by'], ['users.id'], name=op.f('fk_audition_sheets_created_by_users')),
+    sa.ForeignKeyConstraint(['product_card_id'], ['product_cards.id'], name=op.f('fk_audition_sheets_product_card_id_product_cards')),
+    sa.ForeignKeyConstraint(['product_id'], ['products.id'], name=op.f('fk_audition_sheets_product_id_products')),
+    sa.ForeignKeyConstraint(['reading_script_id'], ['reading_scripts.id'], name=op.f('fk_audition_sheets_reading_script_id_reading_scripts')),
+    sa.ForeignKeyConstraint(['redline_lexicon_version_id'], ['redline_lexicon_versions.id'], name=op.f('fk_audition_sheets_redline_lexicon_version_id_redline_lexicon_versions')),
+    sa.ForeignKeyConstraint(['rubric_version_id'], ['rubric_versions.id'], name=op.f('fk_audition_sheets_rubric_version_id_rubric_versions')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_audition_sheets')),
+    sa.UniqueConstraint('code', name=op.f('uq_audition_sheets_code'))
     )
-    op.create_index(op.f('ix_batches_created_by'), 'batches', ['created_by'], unique=False)
-    op.create_index(op.f('ix_batches_detector_config_version_id'), 'batches', ['detector_config_version_id'], unique=False)
-    op.create_index(op.f('ix_batches_draw_rule_id'), 'batches', ['draw_rule_id'], unique=False)
-    op.create_index(op.f('ix_batches_product_card_id'), 'batches', ['product_card_id'], unique=False)
-    op.create_index(op.f('ix_batches_product_id'), 'batches', ['product_id'], unique=False)
-    op.create_index(op.f('ix_batches_redline_lexicon_version_id'), 'batches', ['redline_lexicon_version_id'], unique=False)
-    op.create_index(op.f('ix_batches_rubric_version_id'), 'batches', ['rubric_version_id'], unique=False)
-    op.create_table('invitations',
+    op.create_index(op.f('ix_audition_sheets_created_by'), 'audition_sheets', ['created_by'], unique=False)
+    op.create_index(op.f('ix_audition_sheets_product_card_id'), 'audition_sheets', ['product_card_id'], unique=False)
+    op.create_index(op.f('ix_audition_sheets_product_id'), 'audition_sheets', ['product_id'], unique=False)
+    op.create_index(op.f('ix_audition_sheets_reading_script_id'), 'audition_sheets', ['reading_script_id'], unique=False)
+    op.create_index(op.f('ix_audition_sheets_redline_lexicon_version_id'), 'audition_sheets', ['redline_lexicon_version_id'], unique=False)
+    op.create_index(op.f('ix_audition_sheets_rubric_version_id'), 'audition_sheets', ['rubric_version_id'], unique=False)
+    op.create_table('consent_records',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('batch_id', sa.UUID(), nullable=False),
     sa.Column('candidate_id', sa.UUID(), nullable=False),
-    sa.Column('token_hash', sa.String(length=80), nullable=False),
-    sa.Column('location', sa.Enum('studio', 'home', name='recording_location'), nullable=True),
-    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('attempts_used', sa.Integer(), nullable=False),
-    sa.Column('revoked', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['batch_id'], ['batches.id'], name=op.f('fk_invitations_batch_id_batches')),
-    sa.ForeignKeyConstraint(['candidate_id'], ['candidates.id'], name=op.f('fk_invitations_candidate_id_candidates')),
-    sa.PrimaryKeyConstraint('id', name=op.f('pk_invitations')),
-    sa.UniqueConstraint('token_hash', name=op.f('uq_invitations_token_hash'))
-    )
-    op.create_index(op.f('ix_invitations_batch_id'), 'invitations', ['batch_id'], unique=False)
-    op.create_index(op.f('ix_invitations_candidate_id'), 'invitations', ['candidate_id'], unique=False)
-    op.create_table('consents',
-    sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('invitation_id', sa.UUID(), nullable=False),
     sa.Column('consent_text_version', sa.String(length=64), nullable=False),
-    sa.Column('granted', sa.Boolean(), nullable=False),
-    sa.Column('at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('ip', sa.String(length=64), nullable=True),
-    sa.Column('user_agent', sa.String(length=512), nullable=True),
-    sa.ForeignKeyConstraint(['invitation_id'], ['invitations.id'], name=op.f('fk_consents_invitation_id_invitations')),
-    sa.PrimaryKeyConstraint('id', name=op.f('pk_consents'))
+    sa.Column('signed_on', sa.Date(), nullable=False),
+    sa.Column('attachment_asset_id', sa.UUID(), nullable=True),
+    sa.Column('registered_by', sa.UUID(), nullable=False),
+    sa.Column('registered_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['candidate_id'], ['candidates.id'], name=op.f('fk_consent_records_candidate_id_candidates')),
+    sa.ForeignKeyConstraint(['registered_by'], ['users.id'], name=op.f('fk_consent_records_registered_by_users')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_consent_records'))
     )
-    op.create_index(op.f('ix_consents_invitation_id'), 'consents', ['invitation_id'], unique=False)
-    op.create_table('attempts',
+    op.create_index(op.f('ix_consent_records_candidate_id'), 'consent_records', ['candidate_id'], unique=False)
+    op.create_index(op.f('ix_consent_records_registered_by'), 'consent_records', ['registered_by'], unique=False)
+    op.create_table('recordings',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('invitation_id', sa.UUID(), nullable=False),
-    sa.Column('attempt_no', sa.Integer(), nullable=False),
-    sa.Column('status', sa.Enum('created', 'recording', 'uploading', 'submitted', 'processing', 'done', 'failed', 'interrupted', name='attempt_status'), nullable=False),
-    sa.Column('location', sa.Enum('studio', 'home', name='recording_location'), nullable=False),
-    sa.Column('consent_id', sa.UUID(), nullable=True),
-    sa.Column('drawn_objections', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-    sa.Column('drawn_questions', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-    sa.Column('reading_script_id', sa.UUID(), nullable=True),
-    sa.Column('events', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('candidate_id', sa.UUID(), nullable=False),
+    sa.Column('sheet_id', sa.UUID(), nullable=False),
+    sa.Column('consent_record_id', sa.UUID(), nullable=False),
+    sa.Column('audience', sa.String(length=32), nullable=False),
+    sa.Column('props_available', sa.Boolean(), nullable=False),
+    sa.Column('status', sa.Enum('uploading', 'uploaded', 'processing', 'done', 'failed', name='recording_status'), nullable=False),
+    sa.Column('segments', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('objection_times', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.Column('main_duration_ms', sa.Integer(), nullable=True),
-    sa.Column('retake_reason', sa.String(length=64), nullable=True),
-    sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('uploaded_by', sa.UUID(), nullable=False),
     sa.Column('submitted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['consent_id'], ['consents.id'], name=op.f('fk_attempts_consent_id_consents')),
-    sa.ForeignKeyConstraint(['invitation_id'], ['invitations.id'], name=op.f('fk_attempts_invitation_id_invitations')),
-    sa.ForeignKeyConstraint(['reading_script_id'], ['reading_scripts.id'], name=op.f('fk_attempts_reading_script_id_reading_scripts')),
-    sa.PrimaryKeyConstraint('id', name=op.f('pk_attempts')),
-    sa.UniqueConstraint('invitation_id', 'attempt_no', name=op.f('uq_attempts_invitation_id'))
+    sa.ForeignKeyConstraint(['candidate_id'], ['candidates.id'], name=op.f('fk_recordings_candidate_id_candidates')),
+    sa.ForeignKeyConstraint(['consent_record_id'], ['consent_records.id'], name=op.f('fk_recordings_consent_record_id_consent_records')),
+    sa.ForeignKeyConstraint(['sheet_id'], ['audition_sheets.id'], name=op.f('fk_recordings_sheet_id_audition_sheets')),
+    sa.ForeignKeyConstraint(['uploaded_by'], ['users.id'], name=op.f('fk_recordings_uploaded_by_users')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_recordings')),
+    sa.UniqueConstraint('sheet_id', name=op.f('uq_recordings_sheet_id'))
     )
-    op.create_index(op.f('ix_attempts_consent_id'), 'attempts', ['consent_id'], unique=False)
-    op.create_index(op.f('ix_attempts_invitation_id'), 'attempts', ['invitation_id'], unique=False)
-    op.create_index(op.f('ix_attempts_reading_script_id'), 'attempts', ['reading_script_id'], unique=False)
+    op.create_index(op.f('ix_recordings_candidate_id'), 'recordings', ['candidate_id'], unique=False)
+    op.create_index(op.f('ix_recordings_consent_record_id'), 'recordings', ['consent_record_id'], unique=False)
+    op.create_index(op.f('ix_recordings_uploaded_by'), 'recordings', ['uploaded_by'], unique=False)
     op.create_table('gold_samples',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('gold_set_id', sa.UUID(), nullable=False),
-    sa.Column('attempt_id', sa.UUID(), nullable=False),
-    sa.ForeignKeyConstraint(['attempt_id'], ['attempts.id'], name=op.f('fk_gold_samples_attempt_id_attempts')),
+    sa.Column('recording_id', sa.UUID(), nullable=False),
     sa.ForeignKeyConstraint(['gold_set_id'], ['gold_sets.id'], name=op.f('fk_gold_samples_gold_set_id_gold_sets')),
+    sa.ForeignKeyConstraint(['recording_id'], ['recordings.id'], name=op.f('fk_gold_samples_recording_id_recordings')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_gold_samples')),
-    sa.UniqueConstraint('gold_set_id', 'attempt_id', name=op.f('uq_gold_samples_gold_set_id'))
+    sa.UniqueConstraint('gold_set_id', 'recording_id', name=op.f('uq_gold_samples_gold_set_id'))
     )
-    op.create_index(op.f('ix_gold_samples_attempt_id'), 'gold_samples', ['attempt_id'], unique=False)
     op.create_index(op.f('ix_gold_samples_gold_set_id'), 'gold_samples', ['gold_set_id'], unique=False)
+    op.create_index(op.f('ix_gold_samples_recording_id'), 'gold_samples', ['recording_id'], unique=False)
     op.create_table('media_assets',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('attempt_id', sa.UUID(), nullable=False),
-    sa.Column('kind', sa.Enum('raw_video', 'normalized_video', 'audio', 'frame', 'clip', 'upload_part', name='media_kind'), nullable=False),
+    sa.Column('recording_id', sa.UUID(), nullable=False),
+    sa.Column('kind', sa.Enum('raw_video', 'normalized_video', 'audio', 'frame', 'clip', 'upload_part', 'consent_scan', name='media_kind'), nullable=False),
     sa.Column('segment', sa.String(length=32), nullable=True),
     sa.Column('storage_key', sa.String(length=512), nullable=False),
     sa.Column('size_bytes', sa.BigInteger(), nullable=True),
@@ -294,15 +280,15 @@ def upgrade() -> None:
     sa.Column('retention_until', sa.DateTime(timezone=True), nullable=True),
     sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['attempt_id'], ['attempts.id'], name=op.f('fk_media_assets_attempt_id_attempts')),
+    sa.ForeignKeyConstraint(['recording_id'], ['recordings.id'], name=op.f('fk_media_assets_recording_id_recordings')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_media_assets')),
     sa.UniqueConstraint('storage_key', name=op.f('uq_media_assets_storage_key'))
     )
-    op.create_index(op.f('ix_media_assets_attempt_id'), 'media_assets', ['attempt_id'], unique=False)
+    op.create_index(op.f('ix_media_assets_recording_id'), 'media_assets', ['recording_id'], unique=False)
     op.create_index(op.f('ix_media_assets_retention_until'), 'media_assets', ['retention_until'], unique=False)
     op.create_table('pipeline_runs',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('attempt_id', sa.UUID(), nullable=False),
+    sa.Column('recording_id', sa.UUID(), nullable=False),
     sa.Column('round_no', sa.Integer(), nullable=False),
     sa.Column('status', sa.Enum('queued', 'running', 'completed', 'failed', name='run_status'), nullable=False),
     sa.Column('stage', sa.String(length=32), nullable=True),
@@ -313,42 +299,24 @@ def upgrade() -> None:
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('finished_at', sa.DateTime(timezone=True), nullable=True),
     sa.CheckConstraint('round_no >= 1', name=op.f('ck_pipeline_runs_round_no_positive')),
-    sa.ForeignKeyConstraint(['attempt_id'], ['attempts.id'], name=op.f('fk_pipeline_runs_attempt_id_attempts')),
+    sa.ForeignKeyConstraint(['recording_id'], ['recordings.id'], name=op.f('fk_pipeline_runs_recording_id_recordings')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_pipeline_runs')),
-    sa.UniqueConstraint('attempt_id', 'round_no', name=op.f('uq_pipeline_runs_attempt_id'))
+    sa.UniqueConstraint('recording_id', 'round_no', name=op.f('uq_pipeline_runs_recording_id'))
     )
-    op.create_index(op.f('ix_pipeline_runs_attempt_id'), 'pipeline_runs', ['attempt_id'], unique=False)
+    op.create_index(op.f('ix_pipeline_runs_recording_id'), 'pipeline_runs', ['recording_id'], unique=False)
     op.create_table('upload_sessions',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('attempt_id', sa.UUID(), nullable=False),
+    sa.Column('recording_id', sa.UUID(), nullable=False),
     sa.Column('segment', sa.String(length=32), nullable=False),
     sa.Column('storage_key', sa.String(length=512), nullable=False),
     sa.Column('multipart_upload_id', sa.String(length=256), nullable=True),
     sa.Column('parts', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.Column('status', sa.Enum('open', 'completed', 'aborted', name='upload_status'), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['attempt_id'], ['attempts.id'], name=op.f('fk_upload_sessions_attempt_id_attempts')),
+    sa.ForeignKeyConstraint(['recording_id'], ['recordings.id'], name=op.f('fk_upload_sessions_recording_id_recordings')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_upload_sessions'))
     )
-    op.create_index(op.f('ix_upload_sessions_attempt_id'), 'upload_sessions', ['attempt_id'], unique=False)
-    op.create_table('video_access_requests',
-    sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('requester_id', sa.UUID(), nullable=False),
-    sa.Column('attempt_id', sa.UUID(), nullable=False),
-    sa.Column('reason', sa.Text(), nullable=False),
-    sa.Column('status', sa.Enum('pending', 'approved', 'denied', 'expired', name='access_status'), nullable=False),
-    sa.Column('decided_by', sa.UUID(), nullable=True),
-    sa.Column('decided_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['attempt_id'], ['attempts.id'], name=op.f('fk_video_access_requests_attempt_id_attempts')),
-    sa.ForeignKeyConstraint(['decided_by'], ['users.id'], name=op.f('fk_video_access_requests_decided_by_users')),
-    sa.ForeignKeyConstraint(['requester_id'], ['users.id'], name=op.f('fk_video_access_requests_requester_id_users')),
-    sa.PrimaryKeyConstraint('id', name=op.f('pk_video_access_requests'))
-    )
-    op.create_index(op.f('ix_video_access_requests_attempt_id'), 'video_access_requests', ['attempt_id'], unique=False)
-    op.create_index(op.f('ix_video_access_requests_decided_by'), 'video_access_requests', ['decided_by'], unique=False)
-    op.create_index(op.f('ix_video_access_requests_requester_id'), 'video_access_requests', ['requester_id'], unique=False)
+    op.create_index(op.f('ix_upload_sessions_recording_id'), 'upload_sessions', ['recording_id'], unique=False)
     op.create_table('acoustic_features',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('run_id', sa.UUID(), nullable=False),
@@ -414,7 +382,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_evidence_run_id'), 'evidence', ['run_id'], unique=False)
     op.create_table('reports',
     sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('attempt_id', sa.UUID(), nullable=False),
+    sa.Column('recording_id', sa.UUID(), nullable=False),
     sa.Column('revision', sa.Integer(), nullable=False),
     sa.Column('rubric_version_id', sa.UUID(), nullable=False),
     sa.Column('config_hash', sa.String(length=80), nullable=False),
@@ -428,16 +396,16 @@ def upgrade() -> None:
     sa.Column('display_run_id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('superseded_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['attempt_id'], ['attempts.id'], name=op.f('fk_reports_attempt_id_attempts')),
     sa.ForeignKeyConstraint(['detector_config_version_id'], ['detector_config_versions.id'], name=op.f('fk_reports_detector_config_version_id_detector_config_versions')),
     sa.ForeignKeyConstraint(['display_run_id'], ['pipeline_runs.id'], name=op.f('fk_reports_display_run_id_pipeline_runs')),
+    sa.ForeignKeyConstraint(['recording_id'], ['recordings.id'], name=op.f('fk_reports_recording_id_recordings')),
     sa.ForeignKeyConstraint(['rubric_version_id'], ['rubric_versions.id'], name=op.f('fk_reports_rubric_version_id_rubric_versions')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_reports')),
-    sa.UniqueConstraint('attempt_id', 'revision', name=op.f('uq_reports_attempt_id'))
+    sa.UniqueConstraint('recording_id', 'revision', name=op.f('uq_reports_recording_id'))
     )
-    op.create_index(op.f('ix_reports_attempt_id'), 'reports', ['attempt_id'], unique=False)
     op.create_index(op.f('ix_reports_detector_config_version_id'), 'reports', ['detector_config_version_id'], unique=False)
     op.create_index(op.f('ix_reports_display_run_id'), 'reports', ['display_run_id'], unique=False)
+    op.create_index(op.f('ix_reports_recording_id'), 'reports', ['recording_id'], unique=False)
     op.create_index(op.f('ix_reports_rubric_version_id'), 'reports', ['rubric_version_id'], unique=False)
     op.create_table('score_results',
     sa.Column('id', sa.UUID(), nullable=False),
@@ -480,9 +448,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_score_results_rubric_version_id'), table_name='score_results')
     op.drop_table('score_results')
     op.drop_index(op.f('ix_reports_rubric_version_id'), table_name='reports')
+    op.drop_index(op.f('ix_reports_recording_id'), table_name='reports')
     op.drop_index(op.f('ix_reports_display_run_id'), table_name='reports')
     op.drop_index(op.f('ix_reports_detector_config_version_id'), table_name='reports')
-    op.drop_index(op.f('ix_reports_attempt_id'), table_name='reports')
     op.drop_table('reports')
     op.drop_index(op.f('ix_evidence_run_id'), table_name='evidence')
     op.drop_index(op.f('ix_evidence_item_id'), table_name='evidence')
@@ -494,37 +462,30 @@ def downgrade() -> None:
     op.drop_table('calibration_assignments')
     op.drop_index(op.f('ix_acoustic_features_run_id'), table_name='acoustic_features')
     op.drop_table('acoustic_features')
-    op.drop_index(op.f('ix_video_access_requests_requester_id'), table_name='video_access_requests')
-    op.drop_index(op.f('ix_video_access_requests_decided_by'), table_name='video_access_requests')
-    op.drop_index(op.f('ix_video_access_requests_attempt_id'), table_name='video_access_requests')
-    op.drop_table('video_access_requests')
-    op.drop_index(op.f('ix_upload_sessions_attempt_id'), table_name='upload_sessions')
+    op.drop_index(op.f('ix_upload_sessions_recording_id'), table_name='upload_sessions')
     op.drop_table('upload_sessions')
-    op.drop_index(op.f('ix_pipeline_runs_attempt_id'), table_name='pipeline_runs')
+    op.drop_index(op.f('ix_pipeline_runs_recording_id'), table_name='pipeline_runs')
     op.drop_table('pipeline_runs')
     op.drop_index(op.f('ix_media_assets_retention_until'), table_name='media_assets')
-    op.drop_index(op.f('ix_media_assets_attempt_id'), table_name='media_assets')
+    op.drop_index(op.f('ix_media_assets_recording_id'), table_name='media_assets')
     op.drop_table('media_assets')
+    op.drop_index(op.f('ix_gold_samples_recording_id'), table_name='gold_samples')
     op.drop_index(op.f('ix_gold_samples_gold_set_id'), table_name='gold_samples')
-    op.drop_index(op.f('ix_gold_samples_attempt_id'), table_name='gold_samples')
     op.drop_table('gold_samples')
-    op.drop_index(op.f('ix_attempts_reading_script_id'), table_name='attempts')
-    op.drop_index(op.f('ix_attempts_invitation_id'), table_name='attempts')
-    op.drop_index(op.f('ix_attempts_consent_id'), table_name='attempts')
-    op.drop_table('attempts')
-    op.drop_index(op.f('ix_consents_invitation_id'), table_name='consents')
-    op.drop_table('consents')
-    op.drop_index(op.f('ix_invitations_candidate_id'), table_name='invitations')
-    op.drop_index(op.f('ix_invitations_batch_id'), table_name='invitations')
-    op.drop_table('invitations')
-    op.drop_index(op.f('ix_batches_rubric_version_id'), table_name='batches')
-    op.drop_index(op.f('ix_batches_redline_lexicon_version_id'), table_name='batches')
-    op.drop_index(op.f('ix_batches_product_id'), table_name='batches')
-    op.drop_index(op.f('ix_batches_product_card_id'), table_name='batches')
-    op.drop_index(op.f('ix_batches_draw_rule_id'), table_name='batches')
-    op.drop_index(op.f('ix_batches_detector_config_version_id'), table_name='batches')
-    op.drop_index(op.f('ix_batches_created_by'), table_name='batches')
-    op.drop_table('batches')
+    op.drop_index(op.f('ix_recordings_uploaded_by'), table_name='recordings')
+    op.drop_index(op.f('ix_recordings_consent_record_id'), table_name='recordings')
+    op.drop_index(op.f('ix_recordings_candidate_id'), table_name='recordings')
+    op.drop_table('recordings')
+    op.drop_index(op.f('ix_consent_records_registered_by'), table_name='consent_records')
+    op.drop_index(op.f('ix_consent_records_candidate_id'), table_name='consent_records')
+    op.drop_table('consent_records')
+    op.drop_index(op.f('ix_audition_sheets_rubric_version_id'), table_name='audition_sheets')
+    op.drop_index(op.f('ix_audition_sheets_redline_lexicon_version_id'), table_name='audition_sheets')
+    op.drop_index(op.f('ix_audition_sheets_reading_script_id'), table_name='audition_sheets')
+    op.drop_index(op.f('ix_audition_sheets_product_id'), table_name='audition_sheets')
+    op.drop_index(op.f('ix_audition_sheets_product_card_id'), table_name='audition_sheets')
+    op.drop_index(op.f('ix_audition_sheets_created_by'), table_name='audition_sheets')
+    op.drop_table('audition_sheets')
     op.drop_index(op.f('ix_rubric_versions_created_by'), table_name='rubric_versions')
     op.drop_table('rubric_versions')
     op.drop_index(op.f('ix_redline_lexicon_versions_created_by'), table_name='redline_lexicon_versions')

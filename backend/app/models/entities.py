@@ -5,17 +5,19 @@
 - 媒体文件只存在对象存储，这里只记位置、到期时间和删除时间。
 - 评分标准、卖点卡、红线词表都按版本存，批次固定引用某个版本；报告记录所用版本和模型清单。
 - 临界样本的每一轮是一条 pipeline_runs（round_no 1–3）；失败重试只增加 retry_count，不新增轮次。
+- 不做邀请链接和系统内录制（C18）：管理员生成题单，候选人按题单在系统外录制，员工上传录像。
 """
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -40,7 +42,6 @@ def _enum(*values: str, name: str) -> Enum:
 
 ROLE = _enum("admin", "compliance", "calibrator", "hr", "anchor", name="user_role")
 VERSION_STATUS = _enum("draft", "published", "retired", name="version_status")
-LOCATION = _enum("studio", "home", name="recording_location")
 HIRING = _enum("undecided", "hired", "not_hired", name="hiring_status")
 LABEL = _enum("recommend", "pending", "not_recommend", name="verdict_label")
 
@@ -187,23 +188,29 @@ class RedlineLexiconVersion(Base):
     created_at: Mapped[datetime] = created_at()
 
 
-# ───────────────────────── 批次与候选人 ─────────────────────────
+# ───────────────────────── 题单、候选人、录制记录（C18、C26–C30） ─────────────────────────
 
 
-class Batch(Base):
-    __tablename__ = "batches"
+class AuditionSheet(Base):
+    """试镜题单：按抽题规则抽好的 4 条异议、6 道题和朗读稿，可打印给候选人按此录制（C29）。
+    生成时固定所用的评分标准、卖点卡、红线词表版本；任一为草稿时 uses_draft_config 为真，报告须标注“非正式”。"""
+
+    __tablename__ = "audition_sheets"
     id: Mapped[uuid.UUID] = uuid_pk()
-    name: Mapped[str] = mapped_column(String(128))
+    code: Mapped[str] = mapped_column(String(32), unique=True)
     product_id: Mapped[uuid.UUID] = fk_uuid("products.id")
     product_card_id: Mapped[uuid.UUID] = fk_uuid("product_cards.id")
     rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")
-    detector_config_version_id: Mapped[uuid.UUID] = fk_uuid("detector_config_versions.id")
     redline_lexicon_version_id: Mapped[uuid.UUID] = fk_uuid("redline_lexicon_versions.id")
-    draw_rule_id: Mapped[uuid.UUID] = fk_uuid("draw_rules.id")
-    audience: Mapped[str] = mapped_column(String(32))  # 达标线键；由谁设置待确认（B5）
-    materials_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    max_attempts: Mapped[int] = mapped_column(Integer, default=2)
+    draw_rule_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
+    objections: Mapped[list[Any]] = mapped_column(JSON)  # [{objection_id, text, at_ms}]
+    questions: Mapped[list[Any]] = mapped_column(JSON)  # [{question_id, text}]
+    reading_script_id: Mapped[uuid.UUID] = fk_uuid("reading_scripts.id")
+    reading_text: Mapped[str] = mapped_column(Text)
+    recording_rules_version: Mapped[str] = mapped_column(String(32))
+    uses_draft_config: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[str] = mapped_column(_enum("issued", "used", "void", name="sheet_status"), default="issued")
+    note: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)
     created_at: Mapped[datetime] = created_at()
 
@@ -211,64 +218,49 @@ class Batch(Base):
 class Candidate(Base):
     __tablename__ = "candidates"
     id: Mapped[uuid.UUID] = uuid_pk()
-    name_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    name_enc: Mapped[bytes] = mapped_column(LargeBinary)
     phone_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     phone_hash: Mapped[str | None] = mapped_column(String(80), index=True)
     hiring_status: Mapped[str] = mapped_column(HIRING, default="undecided")
     hiring_status_by: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)
-    linked_user_id: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)  # 已录用新主播的账号（B16）
+    linked_user_id: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)  # 已录用新主播的账号，只能看本人记录（C31）
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 
-class Invitation(Base):
-    __tablename__ = "invitations"
+class ConsentRecord(Base):
+    """候选人书面同意的登记（C30）：系统外签署，上传前由员工登记。"""
+
+    __tablename__ = "consent_records"
     id: Mapped[uuid.UUID] = uuid_pk()
-    batch_id: Mapped[uuid.UUID] = fk_uuid("batches.id")
     candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
-    token_hash: Mapped[str] = mapped_column(String(80), unique=True)
-    location: Mapped[str | None] = mapped_column(LOCATION)  # 由谁指定待确认（B6）
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    attempts_used: Mapped[int] = mapped_column(Integer, default=0)
-    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = created_at()
-
-
-class Consent(Base):
-    __tablename__ = "consents"
-    id: Mapped[uuid.UUID] = uuid_pk()
-    invitation_id: Mapped[uuid.UUID] = fk_uuid("invitations.id")
     consent_text_version: Mapped[str] = mapped_column(String(64))
-    granted: Mapped[bool] = mapped_column(Boolean)
-    at: Mapped[datetime] = created_at()
-    ip: Mapped[str | None] = mapped_column(String(64))
-    user_agent: Mapped[str | None] = mapped_column(String(512))
+    signed_on: Mapped[date] = mapped_column(Date)
+    attachment_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # 扫描件（media_assets.kind=consent_scan）
+    registered_by: Mapped[uuid.UUID] = fk_uuid("users.id")
+    registered_at: Mapped[datetime] = created_at()
 
 
-class Attempt(Base):
-    """一次完整录制。重录是新的一条（attempt_no + 1）。"""
+class Recording(Base):
+    """一条上传的试镜录像。一张题单只对应一条录像。"""
 
-    __tablename__ = "attempts"
+    __tablename__ = "recordings"
     id: Mapped[uuid.UUID] = uuid_pk()
-    invitation_id: Mapped[uuid.UUID] = fk_uuid("invitations.id")
-    attempt_no: Mapped[int] = mapped_column(Integer)
+    candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
+    sheet_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("audition_sheets.id"), unique=True)
+    consent_record_id: Mapped[uuid.UUID] = fk_uuid("consent_records.id")
+    audience: Mapped[str] = mapped_column(String(32))  # 必选适用达标线（C27）
+    props_available: Mapped[bool] = mapped_column(Boolean)  # 画面里有无贴片 / KT 板（C26）
     status: Mapped[str] = mapped_column(
-        _enum("created", "recording", "uploading", "submitted", "processing", "done", "failed", "interrupted", name="attempt_status"),
-        default="created",
+        _enum("uploading", "uploaded", "processing", "done", "failed", name="recording_status"), default="uploading"
     )
-    location: Mapped[str] = mapped_column(LOCATION)
-    consent_id: Mapped[uuid.UUID | None] = fk_uuid("consents.id", nullable=True)
-    drawn_objections: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{objection_id, popup_ms, shown_at_ms}]
-    drawn_questions: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    reading_script_id: Mapped[uuid.UUID | None] = fk_uuid("reading_scripts.id", nullable=True)
-    events: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 切屏、切后台、中断等
+    segments: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{segment, start_ms, end_ms}]（C28）
+    objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{objection_id, at_ms}]，默认取题单（C29）
     main_duration_ms: Mapped[int | None] = mapped_column(Integer)
-    retake_reason: Mapped[str | None] = mapped_column(String(64))
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uploaded_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
-    __table_args__ = (UniqueConstraint("invitation_id", "attempt_no"),)
 
 
 class MediaAsset(Base):
@@ -276,9 +268,9 @@ class MediaAsset(Base):
 
     __tablename__ = "media_assets"
     id: Mapped[uuid.UUID] = uuid_pk()
-    attempt_id: Mapped[uuid.UUID] = fk_uuid("attempts.id")
+    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
     kind: Mapped[str] = mapped_column(
-        _enum("raw_video", "normalized_video", "audio", "frame", "clip", "upload_part", name="media_kind")
+        _enum("raw_video", "normalized_video", "audio", "frame", "clip", "upload_part", "consent_scan", name="media_kind")
     )
     segment: Mapped[str | None] = mapped_column(String(32))  # main / question:<id> / reading
     storage_key: Mapped[str] = mapped_column(String(512), unique=True)
@@ -295,7 +287,7 @@ class UploadSession(Base):
 
     __tablename__ = "upload_sessions"
     id: Mapped[uuid.UUID] = uuid_pk()
-    attempt_id: Mapped[uuid.UUID] = fk_uuid("attempts.id")
+    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
     segment: Mapped[str] = mapped_column(String(32))
     storage_key: Mapped[str] = mapped_column(String(512))
     multipart_upload_id: Mapped[str | None] = mapped_column(String(256))
@@ -312,7 +304,7 @@ class PipelineRun(Base):
 
     __tablename__ = "pipeline_runs"
     id: Mapped[uuid.UUID] = uuid_pk()
-    attempt_id: Mapped[uuid.UUID] = fk_uuid("attempts.id")
+    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
     round_no: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(
         _enum("queued", "running", "completed", "failed", name="run_status"), default="queued"
@@ -325,7 +317,7 @@ class PipelineRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
-        UniqueConstraint("attempt_id", "round_no"),
+        UniqueConstraint("recording_id", "round_no"),
         CheckConstraint("round_no >= 1", name="round_no_positive"),
     )
 
@@ -417,7 +409,7 @@ class Report(Base):
 
     __tablename__ = "reports"
     id: Mapped[uuid.UUID] = uuid_pk()
-    attempt_id: Mapped[uuid.UUID] = fk_uuid("attempts.id")
+    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
     revision: Mapped[int] = mapped_column(Integer, default=1)
     rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")
     config_hash: Mapped[str] = mapped_column(String(80))
@@ -431,22 +423,7 @@ class Report(Base):
     display_run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id")
     created_at: Mapped[datetime] = created_at()
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    __table_args__ = (UniqueConstraint("attempt_id", "revision"),)
-
-
-class VideoAccessRequest(Base):
-    """HR 申请查看原始视频（审批人待确认 B13）。"""
-
-    __tablename__ = "video_access_requests"
-    id: Mapped[uuid.UUID] = uuid_pk()
-    requester_id: Mapped[uuid.UUID] = fk_uuid("users.id")
-    attempt_id: Mapped[uuid.UUID] = fk_uuid("attempts.id")
-    reason: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(_enum("pending", "approved", "denied", "expired", name="access_status"), default="pending")
-    decided_by: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = created_at()
+    __table_args__ = (UniqueConstraint("recording_id", "revision"),)
 
 
 class Notification(Base):
@@ -480,9 +457,9 @@ class GoldSample(Base):
     __tablename__ = "gold_samples"
     id: Mapped[uuid.UUID] = uuid_pk()
     gold_set_id: Mapped[uuid.UUID] = fk_uuid("gold_sets.id")
-    attempt_id: Mapped[uuid.UUID] = fk_uuid("attempts.id")
+    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
     gold_set: Mapped[GoldSet] = relationship(back_populates="samples")
-    __table_args__ = (UniqueConstraint("gold_set_id", "attempt_id"),)
+    __table_args__ = (UniqueConstraint("gold_set_id", "recording_id"),)
 
 
 class CalibrationAssignment(Base):

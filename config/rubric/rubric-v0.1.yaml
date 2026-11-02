@@ -32,7 +32,7 @@ redlines:
   calibration_required: true
 
 dimensions:
-  # ─────────────── 人设塑造：公司直播间满分 95，在家 P9 不适用、满分 90（C2） ───────────────
+  # ─────────────── 人设塑造：有道具满分 95；无道具 P9 不适用、满分 90（C2、C26） ───────────────
   - id: P
     name: 人设塑造
     items:
@@ -130,7 +130,7 @@ dimensions:
         max: 5
         awards: {sticker: 2, kt_board: 1}
         cap: 5
-        applicable_if: studio
+        applicable_if: props_available   # C26：上传时登记画面里有无贴片 / KT 板
 
       - id: P10
         name: 嘻嘻哈哈

@@ -408,9 +408,9 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
             evs = [e for e in by_item.get(it.id, []) if not e.excluded]
             res.evidence_ids = [e.evidence_id for e in _order(evs)]
             items.append(res)
-            if it.applicable_if is not None and it.applicable_if != ctx.location:
+            if it.applicable_if == "props_available" and not ctx.props_available:
                 res.status = "not_applicable"
-                res.notes.append(f"仅在{'公司直播间' if it.applicable_if == 'studio' else '在家'}录制时适用")
+                res.notes.append("画面里没有贴片或 KT 板，本条不适用")
                 continue
             app_max += it.max
             if it.id not in ctx.completed_detectors:
