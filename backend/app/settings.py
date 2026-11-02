@@ -34,6 +34,15 @@ class Settings:
     cookie_secure: bool = True
     retention_days: int = 30  # 未录用候选人媒体保存天数；30 仅为开发测试占位（C13、C24）
     frontend_dist: str | None = None
+    env: str = "development"  # production 时禁止本地目录存储
+    storage: str = "local"  # local / s3
+    storage_dir: str | None = None
+    s3_endpoint: str | None = None
+    s3_region: str | None = None
+    s3_bucket: str | None = None
+    s3_sse: str = "AES256"
+    max_upload_bytes: int = 8 * 1024**3
+    upload_part_bytes: int = 8 * 1024**2  # S3 分片最小 5 MB
 
 
 @lru_cache
@@ -50,4 +59,13 @@ def get_settings() -> Settings:
         cookie_secure=os.environ.get("APP_COOKIE_SECURE", "true").lower() != "false",
         retention_days=int(os.environ.get("APP_RETENTION_DAYS", "30")),
         frontend_dist=os.environ.get("APP_FRONTEND_DIST") or None,
+        env=os.environ.get("APP_ENV", "development"),
+        storage=os.environ.get("APP_STORAGE", "local"),
+        storage_dir=os.environ.get("APP_STORAGE_DIR") or None,
+        s3_endpoint=os.environ.get("APP_S3_ENDPOINT") or None,
+        s3_region=os.environ.get("APP_S3_REGION") or None,
+        s3_bucket=os.environ.get("APP_S3_BUCKET") or None,
+        s3_sse=os.environ.get("APP_S3_SSE", "AES256"),
+        max_upload_bytes=int(os.environ.get("APP_MAX_UPLOAD_BYTES", str(8 * 1024**3))),
+        upload_part_bytes=int(os.environ.get("APP_UPLOAD_PART_BYTES", str(8 * 1024**2))),
     )

@@ -21,7 +21,8 @@ class Perm(str, Enum):
     sheet_write = "sheet.write"
     users_manage = "users.manage"
     audit_read = "audit.read"
-    recording_upload = "recording.upload"  # 里程碑 3
+    recording_upload = "recording.upload"  # 登记候选人和授权、上传录像、标分段
+    hiring_update = "hiring.update"  # 标记录用状态（决定未录用者的媒体到期删除）
     report_read_all = "report.read_all"  # 里程碑 5：全部报告与视频
     report_read_own = "report.read_own"  # 里程碑 5：本人记录
 
@@ -37,6 +38,7 @@ MATRIX: dict[Perm, frozenset[Role]] = {
     Perm.users_manage: frozenset({R.admin}),
     Perm.audit_read: frozenset({R.admin}),
     Perm.recording_upload: frozenset({R.admin, R.hr}),
+    Perm.hiring_update: frozenset({R.admin, R.hr}),
     Perm.report_read_all: frozenset({R.admin, R.hr}),
     Perm.report_read_own: frozenset({R.anchor}),
 }

@@ -41,7 +41,10 @@ export default function SheetDetail() {
       <List bordered dataSource={s.questions} style={{ marginBottom: 24 }} renderItem={(q, i) => <List.Item>{i + 1}. {q.text}</List.Item>} />
       <Typography.Title level={5}>朗读稿</Typography.Title>
       <Typography.Paragraph style={{ background: "#fafafa", padding: 16 }}>{s.reading_text}</Typography.Paragraph>
-      <Typography.Text type="secondary">可打印的题单和录制规则在里程碑 3 提供。</Typography.Text>
+      <Space>
+        <Button href={`/sheets/${s.id}/print?copy=staff`} target="_blank">打印工作人员联</Button>
+        <Button href={`/sheets/${s.id}/print?copy=candidate`} target="_blank">打印候选人联</Button>
+      </Space>
     </>
   );
 }

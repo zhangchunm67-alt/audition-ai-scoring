@@ -27,6 +27,19 @@ CASES = [
     ("get", "/api/sheets", None, Perm.sheet_read),
     ("post", f"/api/sheets/{X}/void", None, Perm.sheet_write),
     ("get", "/api/audit-logs", None, Perm.audit_read),
+    ("get", "/api/recording-rules/rules-v1", None, Perm.sheet_read),
+    ("get", "/api/candidates", None, Perm.report_read_all),
+    ("post", "/api/candidates", {"name": "张三"}, Perm.recording_upload),
+    ("get", f"/api/candidates/{X}", None, Perm.report_read_all),
+    ("patch", f"/api/candidates/{X}/hiring", {"hiring_status": "hired"}, Perm.hiring_update),
+    ("get", "/api/recordings", None, Perm.report_read_all),
+    ("get", f"/api/recordings/{X}", None, Perm.report_read_all),
+    ("put", f"/api/recordings/{X}/segments", {"main_start_ms": 0, "question_starts_ms": [], "reading_start_ms": 1, "objection_offsets_ms": []}, Perm.recording_upload),
+    ("post", f"/api/recordings/{X}/submit", None, Perm.recording_upload),
+    ("post", f"/api/recordings/{X}/cancel", None, Perm.recording_upload),
+    ("get", f"/api/uploads/{X}", None, Perm.recording_upload),
+    ("post", f"/api/uploads/{X}/complete", None, Perm.recording_upload),
+    ("get", f"/api/media/{X}", None, Perm.report_read_all),
 ]
 
 

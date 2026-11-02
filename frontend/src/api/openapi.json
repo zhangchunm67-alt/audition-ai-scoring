@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "主播试镜 AI 评分系统",
-  "version": "0.2.0"
+  "version": "0.3.0"
  },
  "paths": {
   "/api/auth/login": {
@@ -1488,6 +1488,860 @@
     }
    }
   },
+  "/api/recording-rules/{version}": {
+   "get": {
+    "tags": [
+     "录制规则"
+    ],
+    "summary": "Get Rules",
+    "operationId": "get_rules_api_recording_rules__version__get",
+    "parameters": [
+     {
+      "name": "version",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Version"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Get Rules Api Recording Rules  Version  Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/candidates": {
+   "get": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "List Candidates",
+    "operationId": "list_candidates_api_candidates_get",
+    "parameters": [
+     {
+      "name": "phone",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Phone"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/CandidateRow"
+         },
+         "title": "Response List Candidates Api Candidates Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "Create Candidate",
+    "operationId": "create_candidate_api_candidates_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CandidateIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CandidateRow"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/candidates/{cid}": {
+   "get": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "Get Detail",
+    "operationId": "get_detail_api_candidates__cid__get",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Cid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CandidateDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/candidates/{cid}/hiring": {
+   "patch": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "Set Hiring",
+    "operationId": "set_hiring_api_candidates__cid__hiring_patch",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Cid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HiringIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CandidateRow"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/candidates/{cid}/consents": {
+   "post": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "Register Consent",
+    "description": "登记“已取得候选人书面同意”：同意书版本、签署日期必填，扫描件可选（PDF / JPG / PNG，≤ 10 MB）。",
+    "operationId": "register_consent_api_candidates__cid__consents_post",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Cid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_register_consent_api_candidates__cid__consents_post"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConsentOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings": {
+   "get": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "List Recordings",
+    "operationId": "list_recordings_api_recordings_get",
+    "parameters": [
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/RecordingOut"
+         },
+         "title": "Response List Recordings Api Recordings Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Create Recording",
+    "operationId": "create_recording_api_recordings_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecordingIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}": {
+   "get": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Get Recording",
+    "operationId": "get_recording_api_recordings__rid__get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}/uploads": {
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Replace Video",
+    "description": "换一个视频文件（传错了或文件损坏）。只能在提交处理前进行，已标的分段会清空。",
+    "operationId": "replace_video_api_recordings__rid__uploads_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FileIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}/segments": {
+   "put": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Set Segments",
+    "operationId": "set_segments_api_recordings__rid__segments_put",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SegmentsIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}/submit": {
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Submit",
+    "operationId": "submit_api_recordings__rid__submit_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}/cancel": {
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Cancel",
+    "description": "取消：删除已上传的视频，题单恢复为未使用。",
+    "operationId": "cancel_api_recordings__rid__cancel_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/uploads/{uid}": {
+   "get": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Upload Status",
+    "description": "断点续传：返回已收到的分片，客户端只补传缺的。",
+    "operationId": "upload_status_api_uploads__uid__get",
+    "parameters": [
+     {
+      "name": "uid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Uid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UploadOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/uploads/{uid}/parts/{part_no}": {
+   "put": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Upload Part",
+    "operationId": "upload_part_api_uploads__uid__parts__part_no__put",
+    "parameters": [
+     {
+      "name": "uid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Uid"
+      }
+     },
+     {
+      "name": "part_no",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Part No"
+      }
+     },
+     {
+      "name": "x-content-sha256",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Content-Sha256"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UploadOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/uploads/{uid}/complete": {
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Complete Upload",
+    "operationId": "complete_upload_api_uploads__uid__complete_post",
+    "parameters": [
+     {
+      "name": "uid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Uid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/uploads/{uid}/abort": {
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Abort Upload",
+    "operationId": "abort_upload_api_uploads__uid__abort_post",
+    "parameters": [
+     {
+      "name": "uid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Uid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UploadOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/media/{asset_id}": {
+   "get": {
+    "tags": [
+     "媒体"
+    ],
+    "summary": "Read Media",
+    "operationId": "read_media_api_media__asset_id__get",
+    "parameters": [
+     {
+      "name": "asset_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Asset Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/audit-logs": {
    "get": {
     "tags": [
@@ -1691,6 +2545,190 @@
     ],
     "title": "AuditOut"
    },
+   "Body_register_consent_api_candidates__cid__consents_post": {
+    "properties": {
+     "consent_text_version": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Consent Text Version"
+     },
+     "signed_on": {
+      "type": "string",
+      "format": "date",
+      "title": "Signed On"
+     },
+     "attachment": {
+      "anyOf": [
+       {
+        "type": "string",
+        "contentMediaType": "application/octet-stream"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Attachment"
+     }
+    },
+    "type": "object",
+    "required": [
+     "consent_text_version",
+     "signed_on"
+    ],
+    "title": "Body_register_consent_api_candidates__cid__consents_post"
+   },
+   "CandidateDetail": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "phone_masked": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Phone Masked"
+     },
+     "hiring_status": {
+      "type": "string",
+      "title": "Hiring Status"
+     },
+     "consent_count": {
+      "type": "integer",
+      "title": "Consent Count"
+     },
+     "recording_count": {
+      "type": "integer",
+      "title": "Recording Count"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "phone": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Phone"
+     },
+     "consents": {
+      "items": {
+       "$ref": "#/components/schemas/ConsentOut"
+      },
+      "type": "array",
+      "title": "Consents"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "phone_masked",
+     "hiring_status",
+     "consent_count",
+     "recording_count",
+     "created_at",
+     "phone",
+     "consents"
+    ],
+    "title": "CandidateDetail"
+   },
+   "CandidateIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "phone": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^[0-9 +-]{6,20}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Phone"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "CandidateIn"
+   },
+   "CandidateRow": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "phone_masked": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Phone Masked"
+     },
+     "hiring_status": {
+      "type": "string",
+      "title": "Hiring Status"
+     },
+     "consent_count": {
+      "type": "integer",
+      "title": "Consent Count"
+     },
+     "recording_count": {
+      "type": "integer",
+      "title": "Recording Count"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "phone_masked",
+     "hiring_status",
+     "consent_count",
+     "recording_count",
+     "created_at"
+    ],
+    "title": "CandidateRow"
+   },
    "CardContent": {
     "properties": {
      "checklist": {
@@ -1819,6 +2857,50 @@
     ],
     "title": "CardPoint"
    },
+   "ConsentOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "consent_text_version": {
+      "type": "string",
+      "title": "Consent Text Version"
+     },
+     "signed_on": {
+      "type": "string",
+      "format": "date",
+      "title": "Signed On"
+     },
+     "attachment_asset_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Attachment Asset Id"
+     },
+     "registered_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Registered At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "consent_text_version",
+     "signed_on",
+     "attachment_asset_id",
+     "registered_at"
+    ],
+    "title": "ConsentOut"
+   },
    "DrawRuleIn": {
     "properties": {
      "objection_count": {
@@ -1919,6 +3001,33 @@
     ],
     "title": "DrawRuleOut"
    },
+   "FileIn": {
+    "properties": {
+     "filename": {
+      "type": "string",
+      "maxLength": 255,
+      "minLength": 1,
+      "title": "Filename"
+     },
+     "content_type": {
+      "type": "string",
+      "pattern": "^video/[\\w.+-]+$",
+      "title": "Content Type"
+     },
+     "size_bytes": {
+      "type": "integer",
+      "exclusiveMinimum": 0.0,
+      "title": "Size Bytes"
+     }
+    },
+    "type": "object",
+    "required": [
+     "filename",
+     "content_type",
+     "size_bytes"
+    ],
+    "title": "FileIn"
+   },
    "GlossaryEntry": {
     "properties": {
      "term": {
@@ -1951,6 +3060,20 @@
     },
     "type": "object",
     "title": "HTTPValidationError"
+   },
+   "HiringIn": {
+    "properties": {
+     "hiring_status": {
+      "type": "string",
+      "pattern": "^(undecided|hired|not_hired)$",
+      "title": "Hiring Status"
+     }
+    },
+    "type": "object",
+    "required": [
+     "hiring_status"
+    ],
+    "title": "HiringIn"
    },
    "ItemRow": {
     "properties": {
@@ -2379,6 +3502,238 @@
     ],
     "title": "QuestionOut"
    },
+   "RecordingIn": {
+    "properties": {
+     "filename": {
+      "type": "string",
+      "maxLength": 255,
+      "minLength": 1,
+      "title": "Filename"
+     },
+     "content_type": {
+      "type": "string",
+      "pattern": "^video/[\\w.+-]+$",
+      "title": "Content Type"
+     },
+     "size_bytes": {
+      "type": "integer",
+      "exclusiveMinimum": 0.0,
+      "title": "Size Bytes"
+     },
+     "candidate_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Candidate Id"
+     },
+     "sheet_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Sheet Id"
+     },
+     "consent_record_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Consent Record Id"
+     },
+     "audience": {
+      "type": "string",
+      "title": "Audience"
+     },
+     "props_available": {
+      "type": "boolean",
+      "title": "Props Available"
+     }
+    },
+    "type": "object",
+    "required": [
+     "filename",
+     "content_type",
+     "size_bytes",
+     "candidate_id",
+     "sheet_id",
+     "consent_record_id",
+     "audience",
+     "props_available"
+    ],
+    "title": "RecordingIn"
+   },
+   "RecordingOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "candidate_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Candidate Id"
+     },
+     "candidate_name": {
+      "type": "string",
+      "title": "Candidate Name"
+     },
+     "sheet_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Sheet Id"
+     },
+     "sheet_code": {
+      "type": "string",
+      "title": "Sheet Code"
+     },
+     "product_name": {
+      "type": "string",
+      "title": "Product Name"
+     },
+     "uses_draft_config": {
+      "type": "boolean",
+      "title": "Uses Draft Config"
+     },
+     "audience": {
+      "type": "string",
+      "title": "Audience"
+     },
+     "props_available": {
+      "type": "boolean",
+      "title": "Props Available"
+     },
+     "sheet_objections": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Sheet Objections"
+     },
+     "sheet_questions": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Sheet Questions"
+     },
+     "main_seconds": {
+      "type": "integer",
+      "title": "Main Seconds"
+     },
+     "video_asset_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Video Asset Id"
+     },
+     "video_duration_ms": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Video Duration Ms"
+     },
+     "main_duration_ms": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Main Duration Ms"
+     },
+     "segments": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Segments"
+     },
+     "objection_times": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Objection Times"
+     },
+     "upload": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/UploadOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "warnings": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Warnings"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "submitted_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Submitted At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "status",
+     "candidate_id",
+     "candidate_name",
+     "sheet_id",
+     "sheet_code",
+     "product_name",
+     "uses_draft_config",
+     "audience",
+     "props_available",
+     "sheet_objections",
+     "sheet_questions",
+     "main_seconds",
+     "video_asset_id",
+     "video_duration_ms",
+     "main_duration_ms",
+     "segments",
+     "objection_times",
+     "upload",
+     "warnings",
+     "created_at",
+     "submitted_at"
+    ],
+    "title": "RecordingOut"
+   },
    "RedlineEntry": {
     "properties": {
      "name": {
@@ -2652,6 +4007,42 @@
     ],
     "title": "ScriptOut"
    },
+   "SegmentsIn": {
+    "properties": {
+     "main_start_ms": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Main Start Ms"
+     },
+     "question_starts_ms": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Question Starts Ms"
+     },
+     "reading_start_ms": {
+      "type": "integer",
+      "title": "Reading Start Ms"
+     },
+     "objection_offsets_ms": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Objection Offsets Ms"
+     }
+    },
+    "type": "object",
+    "required": [
+     "main_start_ms",
+     "question_starts_ms",
+     "reading_start_ms",
+     "objection_offsets_ms"
+    ],
+    "title": "SegmentsIn",
+    "description": "时间都以毫秒计。知识题起点按题单顺序；异议时间相对主体段起点。"
+   },
    "SheetIn": {
     "properties": {
      "product_id": {
@@ -2854,6 +4245,53 @@
      "text"
     ],
     "title": "SheetQuestion"
+   },
+   "UploadOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "part_size": {
+      "type": "integer",
+      "title": "Part Size"
+     },
+     "total_size": {
+      "type": "integer",
+      "title": "Total Size"
+     },
+     "part_count": {
+      "type": "integer",
+      "title": "Part Count"
+     },
+     "received_parts": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Received Parts"
+     },
+     "received_bytes": {
+      "type": "integer",
+      "title": "Received Bytes"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "status",
+     "part_size",
+     "total_size",
+     "part_count",
+     "received_parts",
+     "received_bytes"
+    ],
+    "title": "UploadOut"
    },
    "UserIn": {
     "properties": {

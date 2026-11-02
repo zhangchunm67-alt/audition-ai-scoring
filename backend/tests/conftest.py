@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import base64
 import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,9 @@ if URL:
     for k in ("APP_SESSION_KEY", "APP_DATA_KEY", "APP_HASH_KEY"):
         os.environ.setdefault(k, base64.b64encode(os.urandom(32)).decode())
     os.environ["APP_COOKIE_SECURE"] = "false"  # 测试客户端走 http
+    os.environ["APP_STORAGE"] = "local"
+    os.environ["APP_STORAGE_DIR"] = tempfile.mkdtemp(prefix="audition-test-storage-")
+    os.environ["APP_UPLOAD_PART_BYTES"] = str(64 * 1024)  # 测试用小分片，确保走多片
 
 
 def pytest_collection_modifyitems(config, items):
@@ -113,3 +118,28 @@ def seeded(db):
 
     seed_demo(db)
     return db
+
+
+def _ffmpeg(path: Path, *args: str) -> Path:
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *args, str(path)], check=True)
+    return path
+
+
+@pytest.fixture(scope="session")
+def media_dir():
+    with tempfile.TemporaryDirectory(prefix="audition-test-media-") as d:
+        yield Path(d)
+
+
+@pytest.fixture(scope="session")
+def video_file(media_dir) -> Path:
+    """20 秒、带画面和声音的测试视频。"""
+    return _ffmpeg(media_dir / "audition.mp4", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15:duration=20",
+                   "-f", "lavfi", "-i", "sine=frequency=440:duration=20", "-c:v", "libx264", "-preset", "ultrafast",
+                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest")
+
+
+@pytest.fixture(scope="session")
+def silent_video(media_dir) -> Path:
+    return _ffmpeg(media_dir / "silent.mp4", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=3",
+                   "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p")

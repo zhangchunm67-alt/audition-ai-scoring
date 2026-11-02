@@ -81,6 +81,84 @@ try {
     await hr.getByText("仅合规角色可以编辑红线词表").waitFor();
   });
 
+  // ───────────── 里程碑 3：登记候选人和授权、上传、标分段、提交、打印题单 ─────────────
+  const sheetUrl = page.url();
+  const sheetCode = (await page.getByText(/^题单 TS/).textContent()).replace("题单 ", "").trim();
+  const firstObjection = (await page.locator(".ant-list").first().locator(".ant-list-item").first().textContent()).replace(/^\d\d:\d\d/, "").trim();
+
+  await step("打印题单：工作人员联有异议，候选人联不含异议和分值", async () => {
+    const pr = await (await browser.newContext()).newPage();
+    await loginAs(pr, "e2e-admin");
+    await pr.goto(`${sheetUrl}/print?copy=staff`);
+    await pr.getByText("主体段异议（到时间点时提出）").waitFor();
+    await pr.getByText(firstObjection).waitFor();
+    await pr.goto(`${sheetUrl}/print?copy=candidate`);
+    await pr.getByText("录制时逐条给出，不提前提供").waitFor();
+    assert.equal(await pr.getByText(firstObjection).count(), 0);
+    assert.equal(await pr.getByText(/\d+\s*分(?!钟)/).count(), 0); // 不含任何分值（“15 分钟”这类时长除外）
+    await pr.getByText("必讲要点：").waitFor();
+  });
+
+  await step("HR 新建候选人，未登记授权时先登记，再选题单、达标线、有无道具并分片上传", async () => {
+    await hr.getByRole("menuitem", { name: "试镜录像" }).click();
+    await hr.getByRole("button", { name: "上传录像" }).click();
+    await hr.getByRole("button", { name: "新 建" }).click();
+    const dlg = hr.getByRole("dialog");
+    await dlg.getByLabel("姓名").fill("王小明");
+    await dlg.getByLabel("手机号（可选）").fill("13700001111");
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await hr.getByText("该候选人还没有登记书面同意，未登记不能上传").waitFor();
+    await hr.getByLabel("同意书版本").fill("consent-v1");
+    await hr.getByRole("button", { name: "登 记" }).click();
+    await hr.getByText("consent-v1，签署于").waitFor();
+    await hr.getByLabel("试镜题单").click();
+    await hr.getByTitle(new RegExp(sheetCode)).click();
+    await hr.getByText("新主播内部试播（总档位 < 15）").click();
+    await hr.getByText("有", { exact: true }).click();
+    await hr.locator('input[type="file"]').last().setInputFiles(process.env.E2E_VIDEO);
+    await hr.getByRole("button", { name: "开始上传" }).click();
+    await hr.getByText("保存分段").waitFor({ timeout: 30000 });
+  });
+
+  await step("边看边标分段和异议时间，保存后提交处理", async () => {
+    const setTime = (sec) => hr.locator('[data-testid="marker-video"]').evaluate((v, t) => { v.currentTime = t; }, sec);
+    const tables = hr.locator(".ant-table");
+    const segRows = tables.nth(0).locator("tbody tr");
+    const marks = [1, 9, 10, 11, 12, 13, 14, 16];
+    for (let i = 0; i < marks.length; i++) {
+      await setTime(marks[i]);
+      await segRows.nth(i).getByRole("button", { name: "设为当前时间" }).click();
+    }
+    const objRows = tables.nth(1).locator("tbody tr");
+    const objs = [3, 4.5, 6, 7];
+    for (let i = 0; i < objs.length; i++) {
+      await setTime(objs[i]);
+      await objRows.nth(i).getByRole("button", { name: "设为当前时间" }).click();
+    }
+    await hr.getByRole("button", { name: "保存分段" }).click();
+    await hr.getByText("分段已保存").waitFor();
+    await hr.getByRole("button", { name: "提交处理" }).click();
+    await hr.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await hr.getByText("已提交，待处理").waitFor();
+  });
+
+  await step("刷新后视频经后端代理播放（Range 请求）", async () => {
+    const media = [];
+    hr.on("response", (r) => r.url().includes("/api/media/") && media.push(`${r.status()} ${r.request().headers()["range"] ?? ""}`));
+    await hr.reload();
+    await hr.locator("video").first().waitFor();
+    const ok = await hr.locator("video").first().evaluate((v) => new Promise((res) => {
+      if (v.readyState >= 1) return res(true);
+      v.addEventListener("loadedmetadata", () => res(true), { once: true });
+      v.addEventListener("error", () => res(false), { once: true });
+      setTimeout(() => res(false), 15000);
+    }));
+    const diag = await hr.locator("video").first().evaluate((v) => ({ rs: v.readyState, ns: v.networkState, err: v.error?.code, msg: v.error?.message }));
+    assert.equal(ok, true, `视频未能加载：${JSON.stringify(diag)}；媒体请求：${media.join(", ")}`);
+    assert.ok(media.some((m) => m.startsWith("206")), `应有 206 区间响应：${media.join(", ")}`);
+    assert.match(await hr.locator("video").first().getAttribute("src"), /^\/api\/media\//);
+  });
+
   console.log(`\n端到端测试通过：${steps.length} 步`);
 } finally {
   await browser.close();

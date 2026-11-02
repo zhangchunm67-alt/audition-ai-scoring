@@ -22,11 +22,13 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -237,7 +239,9 @@ class ConsentRecord(Base):
     candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
     consent_text_version: Mapped[str] = mapped_column(String(64))
     signed_on: Mapped[date] = mapped_column(Date)
-    attachment_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # 扫描件（media_assets.kind=consent_scan）
+    attachment_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_assets.id", use_alter=True, name="fk_consent_records_attachment_asset_id_media_assets")
+    )  # 扫描件（media_assets.kind=consent_scan）
     registered_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     registered_at: Mapped[datetime] = created_at()
 
@@ -248,19 +252,25 @@ class Recording(Base):
     __tablename__ = "recordings"
     id: Mapped[uuid.UUID] = uuid_pk()
     candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
-    sheet_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("audition_sheets.id"), unique=True)
+    sheet_id: Mapped[uuid.UUID] = fk_uuid("audition_sheets.id")
     consent_record_id: Mapped[uuid.UUID] = fk_uuid("consent_records.id")
     audience: Mapped[str] = mapped_column(String(32))  # 必选适用达标线（C27）
     props_available: Mapped[bool] = mapped_column(Boolean)  # 画面里有无贴片 / KT 板（C26）
     status: Mapped[str] = mapped_column(
-        _enum("uploading", "uploaded", "processing", "done", "failed", name="recording_status"), default="uploading"
+        _enum("uploading", "uploaded", "submitted", "processing", "done", "failed", "cancelled", name="recording_status"),
+        default="uploading",
     )
-    segments: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{segment, start_ms, end_ms}]（C28）
-    objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{objection_id, at_ms}]，默认取题单（C29）
+    # 分段（C28），时间都相对整段视频：[{segment: main | question:<id> | reading, start_ms, end_ms}]
+    segments: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # 异议时间（C29）：[{objection_id, at_ms 相对主体段起点, video_ms 相对整段视频}]，默认取题单
+    objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)
     main_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    video_duration_ms: Mapped[int | None] = mapped_column(Integer)
     uploaded_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
+    # 一张题单只对应一条有效录像；取消的不占用，题单可以重新使用
+    __table_args__ = (Index("uq_recordings_active_sheet", "sheet_id", unique=True, postgresql_where=text("status <> 'cancelled'")),)
 
 
 class MediaAsset(Base):
@@ -268,7 +278,8 @@ class MediaAsset(Base):
 
     __tablename__ = "media_assets"
     id: Mapped[uuid.UUID] = uuid_pk()
-    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
+    recording_id: Mapped[uuid.UUID | None] = fk_uuid("recordings.id", nullable=True)
+    candidate_id: Mapped[uuid.UUID | None] = fk_uuid("candidates.id", nullable=True)  # 授权书扫描件挂在候选人上
     kind: Mapped[str] = mapped_column(
         _enum("raw_video", "normalized_video", "audio", "frame", "clip", "upload_part", "consent_scan", name="media_kind")
     )
@@ -276,10 +287,14 @@ class MediaAsset(Base):
     storage_key: Mapped[str] = mapped_column(String(512), unique=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     sha256: Mapped[str | None] = mapped_column(String(64))
-    encrypted: Mapped[bool] = mapped_column(Boolean, default=True)
+    content_type: Mapped[str | None] = mapped_column(String(128))
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    encrypted: Mapped[bool] = mapped_column(Boolean, default=True)  # 存储侧加密（S3 SSE）；本地开发存储为 false
     retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
+    __table_args__ = (CheckConstraint("recording_id IS NOT NULL OR candidate_id IS NOT NULL", name="has_owner"),)
 
 
 class UploadSession(Base):
@@ -291,9 +306,15 @@ class UploadSession(Base):
     segment: Mapped[str] = mapped_column(String(32))
     storage_key: Mapped[str] = mapped_column(String(512))
     multipart_upload_id: Mapped[str | None] = mapped_column(String(256))
-    parts: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{part_no, etag, size}]
+    parts: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{part_no, etag, size, sha256}]
     status: Mapped[str] = mapped_column(_enum("open", "completed", "aborted", name="upload_status"), default="open")
+    part_size: Mapped[int] = mapped_column(Integer)
+    total_size: Mapped[int] = mapped_column(BigInteger)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(128))
+    created_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     created_at: Mapped[datetime] = created_at()
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # ───────────────────────── 处理（M3/M4） ─────────────────────────
