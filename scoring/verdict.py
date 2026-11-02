@@ -16,7 +16,11 @@ def rounds_required(first: RoundResult, cfg: RubricConfig) -> int:
     """首轮之后总共需要几轮。首轮不完整时无法判断，由流水线先重试首轮。"""
     if first.status != "complete":
         raise VerdictError("首轮不完整，不能判断是否临界；请先重试首轮（重试不算新的投票轮次）")
-    return cfg.critical.total_rounds if first.critical else 1
+    if not first.critical:
+        return 1
+    if first.redline_hits:
+        return 1  # C17：首轮已命中红线的临界样本不追加轮次（结论已确定为不推荐）
+    return cfg.critical.total_rounds
 
 
 def _summary(i: int, r: RoundResult) -> RoundSummary:
@@ -78,7 +82,10 @@ def finalize(rounds: list[RoundResult], cfg: RubricConfig) -> FinalVerdict:
 
     thr = first.threshold
     t = display.total_grade
-    vote_txt = f"{votes}/{len(summaries)} 轮总档位达标"
+    if critical and len(summaries) == 1:
+        vote_txt = "首轮已命中红线，未追加轮次"
+    else:
+        vote_txt = f"{votes}/{len(summaries)} 轮总档位达标"
     if redline:
         rl = "、".join(f"{h.redline_id}（第 {n} 轮）" for n, h in hits)
         reason = f"命中合规红线 {rl}，结论为不达标"

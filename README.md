@@ -1,9 +1,10 @@
 # 主播试镜 AI 评分系统
 
-候选人按固定流程录约 17 分钟的试镜视频，系统按《主播评分标准 · 机器可执行版》自动打分、出报告，供 HR 做录用参考。
+候选人按录制规则录好约 17 分钟的试镜视频，员工上传到系统，系统按《主播评分标准 · 机器可执行版》自动打分、出报告，供 HR 做录用参考。
 
 - 需求：[`docs/prd.md`](docs/prd.md)
 - 评分标准：[`docs/rubric.md`](docs/rubric.md)
+- 原始评分表：[`docs/source/主播评分标准-20241025.xls`](docs/source/)
 - 冲突、决定、待确认项：[`docs/decisions.md`](docs/decisions.md)
 
 ## 当前进度
@@ -12,7 +13,7 @@
 |---|---|---|
 | 1 | 计分引擎、23 条计分配置、配置校验与发布检查、数据模型与迁移、单元测试 | 已完成 |
 | 2 | 平台底座（登录、权限、审计、加密）和配置后台 M1 | 未开始 |
-| 3 | 候选人录制端 M2 | 未开始 |
+| 3 | 视频上传与录制规则（取代原候选人录制端 M2，见 decisions.md C18） | 未开始 |
 | 4 | AI 处理流水线 M3 和自动判定 M4（先用 Mock） | 未开始 |
 | 5 | 报告 M5 | 未开始 |
 | 6 | 校准与看板 M6 | 未开始 |
@@ -94,12 +95,12 @@ cd backend && DATABASE_URL=postgresql+psycopg://user:pass@host/db ../.venv/bin/a
 
 | 用例（PRD 第 6 节） | 验证方式 | 状态 |
 |---|---|---|
-| 不同意授权时无法进入录制 | 接口测试 + Playwright | 里程碑 2–3 |
-| 4 条异议按配置时间点弹出，证据时间戳与视频对得上 | Playwright 控制时钟 + 后端对齐测试 | 里程碑 3–4 |
+| 不同意授权时无法进入录制 → 改为：未登记候选人授权不能上传和处理（待 P-UP-CONSENT） | 接口测试 | 里程碑 3 |
+| 4 条异议按配置时间点弹出 → 改为：登记的异议时间点与证据时间戳对得上（待 P-UP-OBJ） | 后端对齐测试 | 里程碑 3–4 |
 | 口头禅在转写中保留，未被顺滑删掉 | 测试检查请求带"关闭顺滑"参数；数据库约束已加（`transcripts.disfluency_removal` 必须为 false）；接真实供应商后用固定样本手动验证 | 约束已完成，其余在里程碑 4 |
 | 人设塑造按 95 分满分正确折算 | `tests/scoring/test_dimensions_and_round.py::test_persona_scaled_from_95_studio`、`::test_persona_home_p9_not_applicable_scaled_from_90` | 已完成 |
 | 红线命中时结论为"不达标"，报告附原句 | 引擎与汇总：`test_redline_*`、`test_redline_any_round_not_recommend`；报告展示在里程碑 5 | 引擎已完成 |
-| 临界样本自动重跑 3 次，报告标"临界" | 汇总规则：`tests/scoring/test_verdict.py`；流水线自动追加轮次在里程碑 4 | 规则已完成 |
+| 临界样本自动重跑 3 次，报告标"临界"（共 3 轮，首轮参与投票；首轮已命中红线不追加） | 汇总规则：`tests/scoring/test_verdict.py`；流水线自动追加轮次在里程碑 4 | 规则已完成 |
 | 报告里的标准版本、模型版本完整 | `test_traceability_fields`、`backend/tests/test_models.py::test_full_chain_and_evidence_round_trip` | 数据层已完成，报告页在里程碑 5 |
 | 到期视频自动删除，报告保留 | 到期删除任务测试 | 里程碑 4 |
 

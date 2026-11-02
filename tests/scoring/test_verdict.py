@@ -73,6 +73,23 @@ def test_redline_any_round_not_recommend(cfg, round_for_total):
     assert "R4（第 2 轮）" in v.reason and "临界" in v.reason
 
 
+def test_critical_first_round_redline_no_extra_rounds(cfg, round_for_total):
+    """C17：首轮已命中红线的临界样本不追加 2 轮；临界标记保留。"""
+    r1 = round_for_total(14, redline=("R3", 0.9))
+    assert r1.critical is True
+    assert rounds_required(r1, cfg) == 1
+    v = finalize([r1], cfg)
+    assert (v.status, v.label, v.critical, v.redline_hit, v.rounds_received) == ("complete", "not_recommend", True, True, 1)
+    assert "临界" in v.reason and "未追加轮次" in v.reason
+    with pytest.raises(VerdictError):
+        finalize([r1, round_for_total(14), round_for_total(14)], cfg)
+
+
+def test_critical_redline_below_threshold_still_three_rounds(cfg, round_for_total):
+    r1 = round_for_total(14, redline=("R3", 0.5))
+    assert not r1.redline_hits and rounds_required(r1, cfg) == 3
+
+
 def test_redline_non_critical_not_recommend(cfg, round_for_total):
     v = finalize([round_for_total(4, redline=("R1", 0.95))], cfg)
     assert (v.label, v.critical, v.conclusion) == ("not_recommend", False, "fail")
@@ -117,6 +134,7 @@ def test_label_precedence(cfg, round_for_total, critical, majority_pass, redline
     else:
         totals = (12,) if majority_pass else (17,)
     rs = [round_for_total(t, redline=("R2", 0.9) if (redline and i == 0) else None) for i, t in enumerate(totals)]
+    rs = rs[: rounds_required(rs[0], cfg)]  # 首轮命中红线的临界样本只有 1 轮
     v = finalize(rs, cfg)
     assert v.label == label and v.critical is critical
 
