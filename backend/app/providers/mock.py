@@ -244,7 +244,7 @@ class MockLLM:
     def _s4_closing(self, p):
         rules = [("herd", ("位家长",), True), ("loss_aversion", ("还得自己掏", "自己付"), True), ("authority", ("承保公司",), True),
                  ("price_split", ("每天不到",), True), ("sunk_cost", ("看了这么久",), True), ("herd", ("全网都在抢",), False),
-                 ("loss_aversion", ("最后", "停售"), False), ("authority", ("国家推荐",), False)]
+                 ("loss_aversion", ("最后10单", "最后十单", "最后几单", "明天停售"), False), ("authority", ("国家推荐",), False)]
         items = []
         for s in _sents(p["transcript"]):
             for method, keys, ok in rules:
@@ -306,6 +306,15 @@ class MockLLM:
         hits = sum(1 for fp in p["full_points"] if fp[:4] in a)
         level = "full" if hits == len(p["full_points"]) and hits else "partial" if a.strip() else "zero"
         return {"level": level, "reason": f"要点 {hits}/{len(p['full_points'])}", "confidence": 0.8}
+
+    def _rewrite(self, p):
+        s = p["sentence"]
+        for w in ("那么，", "那么", "这边给你", "什么呀", "，懂了吗", "懂了吗", "，对不对", "对不对"):
+            s = s.replace(w, "")
+        s = re.sub(r"一个(非常好的)一个", r"一个\1", s).replace("做一个讲解", "讲解")
+        if s == p["sentence"]:
+            s = s.rstrip("。！？") + "（以条款为准）。"
+        return {"suggestion": s, "reason": "去掉口头禅，表述更准确", "confidence": 0.7}
 
     def _redline_judge(self, p):
         return {"items": [{"id": c["id"], "hit": not _has(c["sentence"], "不能说", "不是"), "confidence": 0.9, "reason": "命中典型说法"} for c in p["candidates"]]}

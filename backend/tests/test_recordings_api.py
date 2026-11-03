@@ -310,8 +310,9 @@ def test_media_range_requests_each_audited(login, seeded, video_file, db):
 
 def test_media_permissions(login, seeded, video_file):
     rec = _uploaded(login("hr"), seeded, video_file)
-    for role in ("compliance", "calibrator", "anchor"):
+    for role in ("compliance", "calibrator"):
         assert login(role).get(f"/api/media/{rec['video_asset_id']}").status_code == 403, role
+    assert login("anchor").get(f"/api/media/{rec['video_asset_id']}").status_code == 404  # 不是本人的录像（C31）
     assert login("admin", "adm2").get(f"/api/media/{rec['video_asset_id']}", headers={"Range": "bytes=0-9"}).status_code == 206
 
 

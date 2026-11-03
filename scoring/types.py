@@ -148,6 +148,7 @@ class RoundResult(BaseModel):
     threshold: int
     grade_pass: bool | None  # 只看总档位是否达标，不含红线
     critical: bool | None
+    redlines_enabled: bool = True
     redlines_completed: bool
     redline_hits: list[RedlineHit]
     redline_below_threshold: list[RedlineHit]  # 判为红线但置信度未达阈值，只展示不影响结论

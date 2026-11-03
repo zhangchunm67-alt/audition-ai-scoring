@@ -286,6 +286,7 @@ class LowConfidence(_Node):
 class Redlines(_Node):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
+    enabled: bool = True  # C33：试镜不做红线（False）；以后直播评分可打开
     ids: list[str] = Field(alias="list")  # YAML 里沿用标准第 9 节的键名 list
     hit_threshold: float = Field(ge=0, le=1)
     per_redline_threshold: dict[str, float] = Field(default_factory=dict)

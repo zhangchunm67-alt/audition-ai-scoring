@@ -8,11 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..models.entities import MediaAsset, User
-from ..security.rbac import Perm
+from ..models.entities import Candidate, MediaAsset, Recording, User
+from ..security.rbac import Perm, allowed
 from ..services import audit
 from ..services.storage import get_storage
-from .deps import DB, require
+from .deps import DB, current_user
 
 router = APIRouter(prefix="/media", tags=["媒体"])
 _RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -34,10 +34,21 @@ def _parse_range(header: str | None, size: int) -> tuple[int, int] | None:
     return start, end
 
 
+def _may_read(db: Session, user: User, asset: MediaAsset) -> bool:
+    if allowed(user.role, Perm.report_read_all):
+        return True
+    if allowed(user.role, Perm.report_read_own) and asset.recording_id:  # 新主播只能看本人录像（C31），授权书扫描件不开放
+        rec = db.get(Recording, asset.recording_id)
+        return db.get(Candidate, rec.candidate_id).linked_user_id == user.id
+    return False
+
+
 @router.get("/{asset_id}")
-def read_media(asset_id: uuid.UUID, request: Request, db: Session = DB, viewer: User = Depends(require(Perm.report_read_all))):
+def read_media(asset_id: uuid.UUID, request: Request, db: Session = DB, viewer: User = Depends(current_user)):
     asset = db.get(MediaAsset, asset_id)
-    if asset is None:
+    if asset is None or not _may_read(db, viewer, asset):
+        if not (allowed(viewer.role, Perm.report_read_all) or allowed(viewer.role, Perm.report_read_own)):
+            raise HTTPException(403, "没有权限")
         raise HTTPException(404, "媒体不存在")
     if asset.deleted_at is not None:
         raise HTTPException(410, "媒体已按保存期限或申请删除")

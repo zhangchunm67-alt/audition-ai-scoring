@@ -6,6 +6,8 @@ import AuditLogs from "./pages/AuditLogs";
 import Candidates from "./pages/Candidates";
 import NewRecording from "./pages/NewRecording";
 import RecordingDetail from "./pages/RecordingDetail";
+import ReportDetail from "./pages/ReportDetail";
+import Reports from "./pages/Reports";
 import Recordings from "./pages/Recordings";
 import SheetPrint from "./pages/SheetPrint";
 import Login from "./pages/Login";
@@ -27,6 +29,8 @@ const NAV = [
   { key: "/sheets", label: "试镜题单", perm: "sheet.read" },
   { key: "/candidates", label: "候选人", perm: "report.read_all" },
   { key: "/recordings", label: "试镜录像", perm: "report.read_all" },
+  { key: "/reports", label: "报告与排名", perm: "report.read_all" },
+  { key: "/reports", label: "我的试镜记录", perm: "report.read_own" },
   { key: "/users", label: "账号管理", perm: "users.manage" },
   { key: "/audit", label: "审计日志", perm: "audit.read" },
 ];
@@ -78,6 +82,8 @@ export default function App() {
             <Route path="/recordings" element={<Recordings />} />
             <Route path="/recordings/new" element={<NewRecording />} />
             <Route path="/recordings/:id" element={<RecordingDetail />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/reports/:id" element={<ReportDetail />} />
             <Route path="/users" element={<Users />} />
             <Route path="/audit" element={<AuditLogs />} />
             <Route path="*" element={<Typography.Text>页面不存在</Typography.Text>} />

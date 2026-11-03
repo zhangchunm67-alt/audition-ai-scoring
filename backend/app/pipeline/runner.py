@@ -47,6 +47,17 @@ def detector_config(db: Session) -> tuple[DetectorConfigVersion, DetectorConfig]
     return row, parse_detector_cfg(row.content)
 
 
+def scoring_context(rec: Recording, sheet: AuditionSheet, card: dict, completed: set[str], manifest: dict) -> ScoringContext:
+    """计分上下文。流水线每轮和“按新版重算”共用，保证同一份证据算出同样的结果。"""
+    return ScoringContext(
+        props_available=rec.props_available, audience=rec.audience, completed_detectors=completed,
+        checklist=[ChecklistPoint(**{k: p[k] for k in ("id", "name", "points", "compliance_required") if k in p}) for p in card.get("checklist", [])],
+        expected_questions={"S3": [o["objection_id"] for o in rec.objection_times], "O5": [q["question_id"] for q in sheet.questions]},
+        main_duration_ms=rec.main_duration_ms,
+        model_manifest=manifest,
+    )
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -71,7 +82,7 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
     db.commit()
 
     card = db.get(ProductCard, sheet.product_card_id).content
-    lexicon = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id).content
+    lexicon = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id).content if sheet.redline_lexicon_version_id else {}
     objs = {str(o.id): o for o in db.scalars(select(Objection).where(Objection.id.in_([uuid.UUID(x["objection_id"]) for x in sheet.objections])))}
     qs = {str(q.id): q for q in db.scalars(select(Question).where(Question.id.in_([uuid.UUID(x["question_id"]) for x in sheet.questions])))}
     objections = [{"objection_id": o["objection_id"], "text": next(x["text"] for x in sheet.objections if x["objection_id"] == o["objection_id"]),
@@ -114,7 +125,8 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         ctx = Ctx(round_no=round_no, props_available=rec.props_available, segments=rec.segments, objections=objections, questions=questions,
                   reading_text=sheet.reading_text, card=card, lexicon=lexicon, cfg=dcfg, texts=texts, acoustic=feats, media=media,
                   providers=providers)
-        todo = {k: fn for k, fn in DETECTORS.items() if not (k in NEEDS_PROPS and not rec.props_available)}
+        todo = {k: fn for k, fn in DETECTORS.items()
+                if not (k in NEEDS_PROPS and not rec.props_available) and not (k == "redlines" and not cfg.redlines.enabled)}
 
         def one(item: str):
             try:
@@ -134,14 +146,9 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         db.add_all([evidence_to_row(e, run.id) for e in evidence])
 
         run.stage = "scoring"
-        sctx = ScoringContext(
-            props_available=rec.props_available, audience=rec.audience, completed_detectors=completed,
-            checklist=[ChecklistPoint(**{k: p[k] for k in ("id", "name", "points", "compliance_required") if k in p}) for p in card.get("checklist", [])],
-            expected_questions={"S3": [o["objection_id"] for o in objections], "O5": [q["question_id"] for q in questions]},
-            main_duration_ms=rec.main_duration_ms,
-            model_manifest={**manifest, "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
-                            "temperature": "0", "asr_disfluency_removal": "false"},
-        )
+        sctx = scoring_context(rec, sheet, card, completed,
+                               {**manifest, "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
+                                "temperature": "0", "asr_disfluency_removal": "false"})
         result = score_round(evidence, cfg, sctx)
         db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=result.config_hash, result=result.model_dump(mode="json")))
         run.model_manifest = result.model_manifest

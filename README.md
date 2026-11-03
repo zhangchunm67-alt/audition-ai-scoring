@@ -15,7 +15,7 @@
 | 2 | 平台底座（登录、权限、审计、字段加密）和配置后台：评分标准版本、卖点卡、异议库、知识题库、朗读稿、抽题规则、红线词表、试镜题单、账号 | 已完成 |
 | 3 | 视频上传与录制规则：候选人与书面同意登记、可打印题单（工作人员联 / 候选人联）、分片上传与断点续传、边看边标分段和异议时间、媒体读取审计（取代原候选人录制端，见 decisions.md C18） | 已完成 |
 | 4 | AI 处理流水线 M3 和自动判定 M4：四类能力接口与 Mock、媒体准备、声学特征、23 条检测器与红线检测、临界三轮、两级重试、失败通知与告警、到期删除、压测 | 已完成（全部用 Mock） |
-| 5 | 报告 M5 | 未开始 |
+| 5 | 报告 M5：内部报告（结论标签与原因、维度与条目、证据、临界各轮、低置信、追溯信息）、逐句评分与 AI 示范说法、按日期范围排名、Excel / PDF 导出、按新版评分标准重算、新主播查看本人记录 | 已完成 |
 | 6 | 校准与看板 M6 | 未开始 |
 
 ## 目录
@@ -85,6 +85,7 @@ scripts/load_test.py     压测：5 条同时处理
    | `APP_LIMIT_LLM`、`APP_LIMIT_ASR` | 同时调用大模型、语音识别的上限（所有 worker 合计），默认 8、3；按供应商的并发配额设 |
    | `APP_RETRY_BACKOFF_S` | 一轮处理失败后重试的等待秒数，默认 `5,20`（即重试 2 次） |
    | `APP_CALL_RETRY_BACKOFF_S` | 单次供应商调用失败后重试的等待秒数，默认 `1,3` |
+   | `APP_CHROMIUM` | 导出 PDF 用的 Chromium 路径（不设则自动查找） |
 
    服务器上需要安装 ffmpeg（检查上传的视频、抽音频和抽帧）。
 
@@ -170,11 +171,11 @@ cd frontend && npm run typecheck
 
 | 角色 | 能做什么 |
 |---|---|
-| 管理员 | 维护评分标准、卖点卡、异议库、知识题库、朗读稿、抽题规则；生成题单；管理账号；查看审计日志 |
-| 合规 | 维护红线词表和正确说法（只有合规能改） |
-| HR | 查看全部内容（含原始视频）；登记候选人和书面同意、上传录像、标分段、标记录用状态 |
+| 管理员 | 维护评分标准、卖点卡、异议库、知识题库、朗读稿、抽题规则；生成题单；管理账号；查看审计日志；看全部报告；按新版评分标准重算报告 |
+| 合规 | 维护红线词表和正确说法（只有合规能改；试镜不做红线，词表留给以后的直播评分，C33） |
+| HR | 查看全部内容（含原始视频、全部报告和排名）；登记候选人和书面同意、上传录像、标分段、标记录用状态、关联新主播账号；导出 Excel / PDF |
 | 校准员 | 查看配置；给抽中的样本打金标准（里程碑 6） |
-| 新主播 | 只看本人记录的全部内容（里程碑 5） |
+| 新主播 | 只看本人记录的全部内容（报告、逐句评分、本人录像）；由 HR 在候选人页关联账号 |
 
 完整矩阵见 `backend/app/security/rbac.py`。登录、账号变更、配置导入与发布、题单生成、查看审计日志都会写审计记录。
 
@@ -186,9 +187,23 @@ cd frontend && npm run typecheck
 4. 上传完成后边看视频边标出主体段、每道知识题、朗读段的起点，异议时间默认取题单，可按视频修正。保存后点“提交处理”。
 5. 系统自动评分：
    - 媒体准备：抽各段音频和画面帧，只做一次；
-   - 每一轮：语音识别（关闭顺滑）→ 声学特征 → 23 个检测器和红线检测并行出证据 → 计分引擎算分；
-   - 首轮临界且未命中红线时，自动追加 2 轮（共 3 轮取多数）；
+   - 每一轮：语音识别（关闭顺滑）→ 声学特征 → 23 个检测器并行出证据（试镜不做红线检测，C33） → 计分引擎算分；
+   - 首轮临界时，自动追加 2 轮（共 3 轮取多数）；
    - 偶发失败先就地重试单次调用，再按整轮重试 2 次；仍失败则通知候选人重录、告警管理员，录像页可点“重新处理”。
+
+## 看报告
+
+- **报告与排名**：按提交日期范围列出最新报告并排名，可按结论标签筛选、按单个维度排序，可导出 Excel。
+- **报告页**：
+  - 顶部：结论标签（推荐 / 待定 / 不推荐）和一句话原因；
+  - 提示：非正式报告、临界样本（列出各轮结果）、低置信条目；
+  - 总览：四个维度的分数和档位，23 个条目的得分，点开看证据（原句、时间、判定、加扣分、理由、置信度）；
+  - 逐句评分：每句标出命中的条目和加扣分，有问题的句子附 AI 示范说法，点时间跳到视频对应位置；
+  - 追溯信息：评分标准、检测配置、各供应商和模型版本、提示词版本、修订历史；
+  - 操作：导出 PDF；管理员可按新版评分标准重算（不重跑模型，生成新修订）。
+- **新主播**：HR 在候选人页把录用的新主播账号关联到本人记录后，新主播登录只能看到“我的试镜记录”。
+
+导出 PDF 需要服务器装有 Chromium（推荐 chrome-headless-shell）和中文字体（如 `fonts-wqy-zenhei` 或 Noto Sans CJK）。路径可用 `APP_CHROMIUM` 指定。
 
 ## 处理时效（压测结果）
 
@@ -258,7 +273,7 @@ PRD 第 6 节的 8 条用例。其中两条以系统内录制为前提，已按�
 | 4 条异议按配置时间点弹出 → 改为：题单的异议时间点（可按视频修正）与证据时间戳对得上（C29） | `test_segments_and_objection_alignment`（视频时间 = 主体段起点 + 相对时间）；`backend/tests/test_pipeline.py::test_objection_times_align_with_evidence`（S3 证据都在对应异议弹出之后、主体段之内） | 已完成 |
 | 口头禅在转写中保留，未被顺滑删掉 | `test_full_length_critical_three_rounds_and_traceability`（转写里有“那么”“一个”，P2 逐条出证据）；`test_asr_must_keep_disfluencies`（供应商开了顺滑即拒绝）；数据库约束 `transcripts.disfluency_removal` 必须为 false；接真实供应商后按上文第 5 步手动验证 | 自动化已完成，真实供应商待手动验证 |
 | 人设塑造按 95 分满分正确折算 | `tests/scoring/test_dimensions_and_round.py::test_persona_scaled_from_95_with_props`、`::test_persona_no_props_p9_not_applicable_scaled_from_90` | 已完成 |
-| 红线命中时结论为"不达标"，报告附原句 | 引擎与汇总：`test_redline_*`、`test_redline_any_round_not_recommend`；流水线：`test_first_round_redline_no_extra_rounds`（报告数据含原句）；报告页展示在里程碑 5 | 数据已完成 |
-| 临界样本自动重跑 3 次，报告标"临界"（共 3 轮，首轮参与投票；首轮已命中红线不追加） | 汇总规则：`tests/scoring/test_verdict.py`；流水线：`test_full_length_critical_three_rounds_and_traceability`、`test_rounds_can_disagree_majority_decides`、`test_first_round_redline_no_extra_rounds` | 已完成（报告页展示在里程碑 5） |
-| 报告里的标准版本、模型版本完整 | `test_traceability_fields`、`test_full_length_critical_three_rounds_and_traceability`（供应商与模型版本、提示词版本、检测配置版本、温度、顺滑设置、配置哈希） | 数据已完成，报告页在里程碑 5 |
+| 红线命中时结论为"不达标"，报告附原句 | 试镜不适用（C33：不做红线）；`test_redlines_off_for_audition` 验证红线话术不影响结论。红线逻辑保留给以后的直播评分，在打开红线的配置下仍有测试：`test_redline_*`、`test_redline_path_when_enabled` | 试镜不适用 |
+| 临界样本自动重跑 3 次，报告标"临界"（共 3 轮，首轮参与投票） | 汇总规则：`tests/scoring/test_verdict.py`；流水线：`test_full_length_critical_three_rounds_and_traceability`、`test_rounds_can_disagree_majority_decides`；报告页显示临界和各轮结果（端到端测试、`test_report_html_contents`） | 已完成 |
+| 报告里的标准版本、模型版本完整 | `test_traceability_fields`、`test_full_length_critical_three_rounds_and_traceability`；报告接口与 PDF：`test_list_and_detail`、`test_report_html_contents` | 已完成 |
 | 到期视频自动删除，报告保留 | `test_retention_purge_keeps_reports`、`test_retention_keeps_hired_and_unexpired`、`test_stale_uploads_aborted` | 已完成 |

@@ -67,6 +67,7 @@ class CandidateRow(BaseModel):
 class CandidateDetail(CandidateRow):
     phone: str | None
     consents: list[ConsentOut]
+    linked_user_id: uuid.UUID | None = None
 
 
 class HiringIn(BaseModel):
@@ -120,7 +121,7 @@ def create_candidate(body: CandidateIn, request: Request, db: Session = DB, acto
 def get_detail(cid: uuid.UUID, request: Request, db: Session = DB, viewer: User = Read) -> CandidateDetail:
     c = get_candidate(db, cid)
     consents = db.scalars(select(ConsentRecord).where(ConsentRecord.candidate_id == cid).order_by(ConsentRecord.registered_at.desc()))
-    out = CandidateDetail(**_row(db, c).model_dump(), phone=phone_of(c),
+    out = CandidateDetail(**_row(db, c).model_dump(), phone=phone_of(c), linked_user_id=c.linked_user_id,
                           consents=[ConsentOut.model_validate(x, from_attributes=True) for x in consents])
     audit.record(db, request, actor_type="user", actor_id=str(viewer.id), action="candidate_view", target_type="candidate", target_id=str(cid))
     db.commit()
@@ -136,6 +137,26 @@ def set_hiring(cid: uuid.UUID, body: HiringIn, request: Request, db: Session = D
                  before=before, after=body.hiring_status)
     db.commit()
     return _row(db, c)
+
+
+class LinkIn(BaseModel):
+    user_id: uuid.UUID | None  # None 表示解除关联
+
+
+@router.put("/{cid}/linked-user", response_model=CandidateDetail)
+def link_user(cid: uuid.UUID, body: LinkIn, request: Request, db: Session = DB,
+              actor: User = Depends(require(Perm.hiring_update))) -> CandidateDetail:
+    """把已录用的新主播账号关联到本人的试镜记录（C31）：关联后该账号只能看到本人记录。"""
+    c = get_candidate(db, cid)
+    if body.user_id is not None:
+        u = db.get(User, body.user_id)
+        if u is None or u.role != "anchor" or not u.is_active:
+            raise HTTPException(422, "只能关联启用中的“新主播”角色账号")
+    before, c.linked_user_id = c.linked_user_id, body.user_id
+    audit.record(db, request, actor_type="user", actor_id=str(actor.id), action="candidate_link_user", target_type="candidate", target_id=str(cid),
+                 before=str(before) if before else None, after=str(body.user_id) if body.user_id else None)
+    db.commit()
+    return get_detail(cid, request, db, actor)
 
 
 @router.post("/{cid}/consents", response_model=ConsentOut, status_code=201)

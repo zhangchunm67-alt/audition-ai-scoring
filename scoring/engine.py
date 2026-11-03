@@ -463,7 +463,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
     # 红线
     hits: list[RedlineHit] = []
     below: list[RedlineHit] = []
-    for e in _order(redline_evs):
+    for e in _order(redline_evs) if cfg.redlines.enabled else []:  # 红线关闭时（C33）红线证据不参与
         if e.excluded or (e.segment and e.segment in cfg.redlines.exclude_segments):
             continue
         if not _binary(e):
@@ -479,7 +479,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
         else:
             below.append(h)
 
-    redlines_done = "redlines" in ctx.completed_detectors
+    redlines_done = (not cfg.redlines.enabled) or "redlines" in ctx.completed_detectors
     all_dims = all(d.status == "scored" for d in dims)
     status = "complete" if all_dims and redlines_done else "incomplete"
     threshold = cfg.thresholds[ctx.audience]
@@ -503,6 +503,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
         threshold=threshold,
         grade_pass=grade_pass,
         critical=critical,
+        redlines_enabled=cfg.redlines.enabled,
         redlines_completed=redlines_done,
         redline_hits=hits,
         redline_below_threshold=below,

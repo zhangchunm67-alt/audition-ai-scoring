@@ -19,6 +19,7 @@ export default function Redlines() {
   return (
     <>
       <Typography.Title level={4}>红线词表与正确说法</Typography.Title>
+      <Alert type="info" showIcon style={{ marginBottom: 16 }} message="试镜评分不做合规红线（C33：原始评分表不含合规内容，候选人不是正式员工）。词表保留给以后的直播评分使用。" />
       {!can("redline.write") && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="仅合规角色可以编辑红线词表（PRD M1-5）。" />}
       {can("redline.write") && !editing && (
         <Button

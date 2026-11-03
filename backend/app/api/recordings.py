@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, PipelineRun, Product, Recording, RubricVersion, UploadSession, User
+from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, PipelineRun, Product, Recording, Report, RubricVersion, UploadSession, User
 from ..pipeline import orchestrator
 from ..security.rbac import Perm
 from ..services import audit
@@ -99,6 +99,7 @@ class RecordingOut(BaseModel):
     processing_started_at: datetime | None = None
     finished_at: datetime | None = None
     failure_reason: str | None = None
+    report_id: uuid.UUID | None = None
 
 
 def _upload_out(u: UploadSession) -> UploadOut:
@@ -133,6 +134,7 @@ def _out(db: Session, rec: Recording) -> RecordingOut:
         segments=rec.segments, objection_times=rec.objection_times, upload=_upload_out(up) if up else None,
         warnings=_warnings(rec, sheet), created_at=rec.created_at, submitted_at=rec.submitted_at,
         processing_started_at=rec.processing_started_at, finished_at=rec.finished_at, failure_reason=rec.failure_reason,
+        report_id=db.scalar(select(Report.id).where(Report.recording_id == rec.id, Report.superseded_at.is_(None))),
     )
 
 

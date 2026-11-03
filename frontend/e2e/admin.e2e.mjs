@@ -160,6 +160,70 @@ try {
     assert.match(await hr.locator("video").first().getAttribute("src"), /^\/api\/media\//);
   });
 
+  // ───────────── 里程碑 5：报告、逐句评分、导出、新主播只看本人 ─────────────
+  await step("从录像打开报告：结论标签、维度分、条目与证据", async () => {
+    await hr.getByRole("button", { name: "查看报告" }).click();
+    await hr.getByText("王小明 的试镜报告").waitFor();
+    assert.match(await hr.getByTestId("label").textContent(), /^(推荐|待定|不推荐)$/);
+    await hr.getByText("非正式报告").waitFor();
+    await hr.getByText("人设塑造").first().waitFor();
+    await hr.getByText("P2 语言干净").waitFor();
+  });
+
+  await step("逐句评分：点句子时间跳到视频对应位置，有问题的句子附 AI 示范说法", async () => {
+    await hr.getByRole("tab", { name: "逐句评分" }).click();
+    const rows = hr.getByTestId("sentence");
+    assert.ok((await rows.count()) > 5);
+    await hr.getByText(/示范说法（AI 生成）/).first().waitFor();
+    const v = hr.getByTestId("report-video");
+    await v.evaluate((el) => new Promise((res) => (el.readyState >= 1 ? res() : el.addEventListener("loadedmetadata", res, { once: true }))));
+    const target = rows.nth(3);
+    const label = await target.locator("a").first().textContent();
+    await target.locator("a").first().click();
+    await hr.waitForTimeout(500);
+    const t = await v.evaluate((el) => el.currentTime);
+    const [mm, ss] = label.split(":").map(Number);
+    assert.ok(Math.abs(t - (mm * 60 + ss)) < 2, `视频时间 ${t} 与句子时间 ${label} 对不上`);
+  });
+
+  await step("导出 PDF 与 Excel", async () => {
+    const reportUrl = hr.url();
+    const id = reportUrl.split("/reports/")[1];
+    const pdf = await hr.request.get(`${BASE}/api/reports/${id}/pdf`);
+    assert.equal(pdf.status(), 200);
+    assert.equal((await pdf.body()).subarray(0, 5).toString(), "%PDF-");
+    await hr.getByRole("menuitem", { name: "报告与排名" }).click();
+    await hr.getByText("王小明").waitFor();
+    const xlsx = await hr.request.get(`${BASE}/api/reports/export.xlsx`);
+    assert.equal(xlsx.status(), 200);
+    assert.match(xlsx.headers()["content-type"], /spreadsheetml/);
+  });
+
+  await step("管理员建新主播账号，HR 关联后新主播只看到本人记录", async () => {
+    await page.getByRole("menuitem", { name: "账号管理" }).click();
+    await page.getByRole("button", { name: "新建账号" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("用户名").fill("e2e-anchor");
+    await dlg.getByLabel("姓名").fill("王小明");
+    await dlg.getByLabel("角色").click();
+    await page.getByTitle("新主播").click();
+    await dlg.getByLabel("初始密码").fill(PW);
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await page.getByText("已创建").waitFor();
+    await hr.getByRole("menuitem", { name: "候选人" }).click();
+    await hr.getByRole("cell", { name: "王小明" }).click();
+    await hr.getByText("关联新主播账号").waitFor();
+    await hr.locator(".ant-drawer .ant-select", { hasText: "录用后关联本人" }).click();
+    await hr.getByTitle("王小明（e2e-anchor）").click();
+    await hr.getByText("已关联").waitFor();
+    const an = await (await browser.newContext()).newPage();
+    await loginAs(an, "e2e-anchor");
+    await an.getByRole("menuitem", { name: "我的试镜记录" }).click();
+    await an.getByRole("link", { name: "王小明" }).click();
+    await an.getByText("王小明 的试镜报告").waitFor();
+    assert.equal(await an.getByRole("menuitem", { name: "试镜录像" }).count(), 0);
+  });
+
   console.log(`\n端到端测试通过：${steps.length} 步`);
 } finally {
   await browser.close();

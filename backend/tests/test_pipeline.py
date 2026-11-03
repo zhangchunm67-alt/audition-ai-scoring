@@ -57,7 +57,8 @@ def test_end_to_end_short_video(login, seeded, video_file, db):
     runs = _runs(db, rec)
     assert all(r.status == "completed" and r.retry_count == 0 for r in runs)
     dets = db.scalars(select(DetectorRun).where(DetectorRun.run_id == runs[0].id)).all()
-    assert {d.detector_id for d in dets} >= {"P1", "P2", "S2", "S3", "O5", "redlines"} and all(d.status == "completed" for d in dets)
+    assert {d.detector_id for d in dets} >= {"P1", "P2", "S2", "S3", "O5"} and all(d.status == "completed" for d in dets)
+    assert "redlines" not in {d.detector_id for d in dets}  # C33：试镜不做红线检测
     rep = _report(db, rec)
     assert rep.informal is True  # 演示用的评分标准、红线词表、检测配置都是草稿
     assert rep.label in ("recommend", "pending", "not_recommend") and rep.verdict["reason"]
@@ -116,13 +117,33 @@ def test_rounds_can_disagree_majority_decides(login, seeded, full_video, db):
     assert rep.display_run_id == _runs(db, rec)[0].id
 
 
-def test_first_round_redline_no_extra_rounds(login, seeded, full_video, db):
-    """C17：首轮命中红线的临界样本不追加轮次；红线原句写进报告。"""
+def test_redlines_off_for_audition(login, seeded, full_video, db):
+    """C33：试镜不做红线。候选人说了“稳赚不赔”“加我微信”，也不影响结论，不做红线检测。"""
     set_providers(_providers(asr=MockASR("redline")))
     rec = _submit(login("hr"), seeded, full_video, seg=FULL_SEG)
-    runs = _runs(db, rec)
     rep = _report(db, rec)
-    assert len(runs) == 1 and rep.redline_hit and rep.label == "not_recommend" and rep.conclusion == "fail"
+    assert not rep.redline_hit and rep.verdict["redline_hits"] == []
+    assert rep.label == "pending" and len(_runs(db, rec)) == 3  # 仍按总档位判临界、跑满三轮
+    assert db.scalars(select(EvidenceRow).where(EvidenceRow.kind == "redline")).first() is None
+
+
+def test_redline_path_when_enabled(login, seeded, full_video, db):
+    """红线逻辑保留给以后的直播评分：配置打开红线时，命中即不推荐，首轮命中不追加轮次（C17），原句写进报告。"""
+    import yaml as _yaml
+
+    from app.models.entities import RubricVersion
+    from scoring import config_hash, parse_config
+
+    rv = db.scalar(select(RubricVersion))
+    data = _yaml.safe_load(rv.yaml_text)
+    data["redlines"]["enabled"] = True
+    rv.yaml_text = _yaml.safe_dump(data, allow_unicode=True)
+    rv.config_hash = config_hash(parse_config(data))
+    db.commit()
+    set_providers(_providers(asr=MockASR("redline")))
+    rec = _submit(login("hr"), seeded, full_video, seg=FULL_SEG)
+    rep = _report(db, rec)
+    assert len(_runs(db, rec)) == 1 and rep.redline_hit and rep.label == "not_recommend" and rep.conclusion == "fail"
     quotes = [h[1]["quote"] for h in rep.verdict["redline_hits"]]
     assert any("稳赚不赔" in q for q in quotes) and any("加我微信" in q for q in quotes)
 

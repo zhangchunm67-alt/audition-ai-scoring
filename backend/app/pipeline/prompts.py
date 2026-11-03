@@ -98,6 +98,10 @@ class Answer(_Judged):
     level: Literal["full", "partial", "zero"]
 
 
+class Rewrite(_Judged):
+    suggestion: str
+
+
 class RedlineJudgment(_Judged):
     id: str
     hit: bool
@@ -141,6 +145,8 @@ TASKS: dict[str, tuple[str, type[BaseModel]]] = {
     "o3_scene": ("找出描绘具体使用场景的地方（有具体的人、地点或动作）；抽象说法 valid=false。", Founds),
     "o4_mainline": ("对每条异议，判断主播回答完后是否自然回到讲品主线（returned，按异议顺序）。", Mainline),
     "o5_answer": ("对照满分要点判断这道知识题的回答：full=答到全部要点；partial=方向对但漏了要点或表述不准；zero=答错或没答。", Answer),
+    "rewrite": ("这是主播试镜中有问题的一句话，以及评分时发现的问题。请给出一句示范说法：保留原意，改掉指出的问题"
+                "（去掉口头禅、讲准条款、补上白话解释、去掉施压或夸大等），不编造产品信息，不超过原句长度的 1.5 倍。", Rewrite),
     "redline_judge": ("以下是按合规红线词表召回的候选句。结合上下文判断是否真的触犯对应红线（hit）。"
                       "如实讲条款、否定或纠正错误说法的不算。", RedlineJudgments),
 }

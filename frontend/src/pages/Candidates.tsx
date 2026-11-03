@@ -2,7 +2,7 @@ import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, S
 import type { UploadFile } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useState } from "react";
-import { ApiError, patch, post, type S } from "../api/client";
+import { ApiError, patch, post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { useAction, useFetch } from "../components/hooks";
 
@@ -69,6 +69,21 @@ export function NewCandidateModal({ open, onClose, onCreated }: { open: boolean;
   );
 }
 
+/** 已录用的新主播：关联本人账号后，该账号只能看到本人的试镜记录（C31）。 */
+function AnchorLink({ id, current, onChanged }: { id: string; current: string | null; onChanged: () => void }) {
+  const { data } = useFetch<S<"UserOut">[]>("/users/anchors");
+  const act = useAction();
+  return (
+    <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+      <Descriptions.Item label="关联新主播账号">
+        <Select allowClear placeholder="录用后关联本人的“新主播”账号" style={{ width: 280 }} value={current ?? undefined}
+          options={(data ?? []).map((u) => ({ value: u.id, label: `${u.display_name}（${u.username}）` }))}
+          onChange={async (v) => (await act(() => put(`/candidates/${id}/linked-user`, { user_id: v ?? null }), v ? "已关联" : "已解除关联")) && onChanged()} />
+      </Descriptions.Item>
+    </Descriptions>
+  );
+}
+
 function Detail({ id, onChanged }: { id: string; onChanged: () => void }) {
   const { data, reload } = useFetch<S<"CandidateDetail">>(`/candidates/${id}`);
   const { can } = useAuth();
@@ -95,6 +110,7 @@ function Detail({ id, onChanged }: { id: string; onChanged: () => void }) {
         </Descriptions.Item>
       </Descriptions>
       <Typography.Paragraph type="secondary">未录用候选人的视频按保存期限到期自动删除；已录用的保留（正式政策待法务确认）。</Typography.Paragraph>
+      {can("hiring.update") && <AnchorLink id={id} current={data.linked_user_id ?? null} onChanged={() => (reload(), onChanged())} />}
       <Space style={{ marginBottom: 8 }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
           书面同意登记

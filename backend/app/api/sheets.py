@@ -53,8 +53,8 @@ class SheetOut(BaseModel):
     product_card_version: int
     rubric_version_id: uuid.UUID
     rubric_version: str
-    redline_lexicon_version_id: uuid.UUID
-    redline_lexicon_version: str
+    redline_lexicon_version_id: uuid.UUID | None
+    redline_lexicon_version: str | None
     uses_draft_config: bool
     draw_rule: dict
     objections: list[SheetObjection]
@@ -72,7 +72,7 @@ def _out(db: Session, s: AuditionSheet) -> SheetOut:
         product_card_id=s.product_card_id, product_card_version=db.get(ProductCard, s.product_card_id).version,
         rubric_version_id=s.rubric_version_id, rubric_version=db.get(RubricVersion, s.rubric_version_id).version,
         redline_lexicon_version_id=s.redline_lexicon_version_id,
-        redline_lexicon_version=db.get(RedlineLexiconVersion, s.redline_lexicon_version_id).version,
+        redline_lexicon_version=db.get(RedlineLexiconVersion, s.redline_lexicon_version_id).version if s.redline_lexicon_version_id else None,
         uses_draft_config=s.uses_draft_config, draw_rule=s.draw_rule_snapshot, objections=s.objections, questions=s.questions,
         reading_script_id=s.reading_script_id, reading_text=s.reading_text, recording_rules_version=s.recording_rules_version,
         note=s.note, created_at=s.created_at,
@@ -103,17 +103,19 @@ def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User 
     card = db.scalar(select(ProductCard).where(ProductCard.product_id == product.id, ProductCard.status == "published"))
     if card is None:
         raise HTTPException(422, "该产品还没有已发布的卖点卡")
-    lex = db.scalar(
-        select(RedlineLexiconVersion).where(RedlineLexiconVersion.status != "retired")
-        .order_by(case((RedlineLexiconVersion.status == "published", 0), else_=1), RedlineLexiconVersion.created_at.desc()).limit(1)
-    )
-    if lex is None:
-        raise HTTPException(422, "还没有红线词表")
+    cfg = load(rv)
+    lex = None
+    if cfg.redlines.enabled:  # 试镜关闭红线（C33）时不需要词表
+        lex = db.scalar(
+            select(RedlineLexiconVersion).where(RedlineLexiconVersion.status != "retired")
+            .order_by(case((RedlineLexiconVersion.status == "published", 0), else_=1), RedlineLexiconVersion.created_at.desc()).limit(1)
+        )
+        if lex is None:
+            raise HTTPException(422, "该评分标准启用了红线，但还没有红线词表")
     rule = db.scalar(select(DrawRule).where(DrawRule.product_id == product.id).order_by(DrawRule.created_at.desc()).limit(1))
     if rule is None:
         raise HTTPException(422, "该产品还没有抽题规则")
 
-    cfg = load(rv)
     check_card_total(card.content, checklist_max(cfg))  # C25：按所选评分标准再校验一次
     counts = question_counts(cfg)
     if counts.get("S3") != rule.objection_count or counts.get("O5") != rule.question_count:
@@ -133,17 +135,17 @@ def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User 
     script = _rng.choice(scripts)
 
     s = AuditionSheet(
-        code=_code(), product_id=product.id, product_card_id=card.id, rubric_version_id=rv.id, redline_lexicon_version_id=lex.id,
+        code=_code(), product_id=product.id, product_card_id=card.id, rubric_version_id=rv.id, redline_lexicon_version_id=lex.id if lex else None,
         draw_rule_snapshot={k: getattr(rule, k) for k in ("objection_count", "question_count", "objection_times_ms", "prep_seconds", "question_seconds", "main_seconds")},
         objections=[{"objection_id": str(o.id), "text": o.text, "at_ms": t} for o, t in zip(drawn_o, rule.objection_times_ms)],
         questions=[{"question_id": str(q.id), "text": q.text} for q in drawn_q],
         reading_script_id=script.id, reading_text=script.text, recording_rules_version=RECORDING_RULES_VERSION,
-        uses_draft_config=rv.status != "published" or lex.status != "published", note=body.note, created_by=actor.id,
+        uses_draft_config=rv.status != "published" or (lex is not None and lex.status != "published"), note=body.note, created_by=actor.id,
     )
     db.add(s)
     db.flush()
     audit.record(db, request, actor_type="user", actor_id=str(actor.id), action="sheet_create", target_type="audition_sheet", target_id=str(s.id),
-                 code=s.code, rubric_version=rv.version, uses_draft_config=s.uses_draft_config)
+                 code=s.code, rubric_version=rv.version, uses_draft_config=s.uses_draft_config, redlines_enabled=cfg.redlines.enabled)
     db.commit()
     return _out(db, s)
 

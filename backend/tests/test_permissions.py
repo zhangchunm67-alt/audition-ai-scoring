@@ -39,7 +39,13 @@ CASES = [
     ("post", f"/api/recordings/{X}/cancel", None, Perm.recording_upload),
     ("get", f"/api/uploads/{X}", None, Perm.recording_upload),
     ("post", f"/api/uploads/{X}/complete", None, Perm.recording_upload),
-    ("get", f"/api/media/{X}", None, Perm.report_read_all),
+    ("get", f"/api/media/{X}", None, (Perm.report_read_all, Perm.report_read_own)),  # 新主播可看本人录像（C31）
+    ("get", "/api/reports", None, (Perm.report_read_all, Perm.report_read_own)),
+    ("get", f"/api/reports/{X}", None, (Perm.report_read_all, Perm.report_read_own)),
+    ("get", "/api/reports/export.xlsx", None, Perm.report_read_all),
+    ("post", f"/api/reports/{X}/rescore", {"rubric_version_id": X}, Perm.config_write),
+    ("put", f"/api/candidates/{X}/linked-user", {"user_id": None}, Perm.hiring_update),
+    ("get", "/api/users/anchors", None, Perm.hiring_update),
 ]
 
 
@@ -49,7 +55,8 @@ def test_matrix(login, role):
     for method, path, body, perm in CASES:
         kw = {"json": body} if body is not None else {}
         status = getattr(api, method)(path, **kw).status_code
-        if Role(role) in MATRIX[perm]:
+        perms = perm if isinstance(perm, tuple) else (perm,)
+        if any(Role(role) in MATRIX[p] for p in perms):
             assert status not in (401, 403), (role, method, path, status)
         else:
             assert status == 403, (role, method, path, status)

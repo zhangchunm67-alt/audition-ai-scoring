@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import audit_logs, auth, candidates, media, products, recordings, redlines, rubrics, rules, scripts, sheets, users
+from .api import audit_logs, auth, candidates, media, products, recordings, redlines, reports, rubrics, rules, scripts, sheets, users
 from .settings import get_settings
 
 CSRF_HEADER = "x-requested-with"
@@ -16,7 +16,7 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="主播试镜 AI 评分系统", version="0.3.0", docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
+    app = FastAPI(title="主播试镜 AI 评分系统", version="0.5.0", docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
 
     @app.middleware("http")
     async def csrf_guard(request: Request, call_next):
@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         return response
 
-    for r in (auth, users, rubrics, products, scripts, redlines, sheets, rules, candidates, recordings, media, audit_logs):
+    for r in (auth, users, rubrics, products, scripts, redlines, sheets, rules, candidates, recordings, media, reports, audit_logs):
         app.include_router(r.router, prefix="/api")
 
     @app.get("/api/health", tags=["系统"])

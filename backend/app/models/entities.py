@@ -203,7 +203,7 @@ class AuditionSheet(Base):
     product_id: Mapped[uuid.UUID] = fk_uuid("products.id")
     product_card_id: Mapped[uuid.UUID] = fk_uuid("product_cards.id")
     rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")
-    redline_lexicon_version_id: Mapped[uuid.UUID] = fk_uuid("redline_lexicon_versions.id")
+    redline_lexicon_version_id: Mapped[uuid.UUID | None] = fk_uuid("redline_lexicon_versions.id", nullable=True)  # 评分标准关闭红线时为空（C33）
     draw_rule_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     objections: Mapped[list[Any]] = mapped_column(JSON)  # [{objection_id, text, at_ms}]
     questions: Mapped[list[Any]] = mapped_column(JSON)  # [{question_id, text}]
@@ -446,7 +446,8 @@ class Report(Base):
     critical: Mapped[bool] = mapped_column(Boolean)
     redline_hit: Mapped[bool] = mapped_column(Boolean)
     display_run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id")
-    informal: Mapped[bool] = mapped_column(Boolean, default=False)  # 用了草稿评分标准、红线词表或检测配置：报告标“非正式”
+    informal: Mapped[bool] = mapped_column(Boolean, default=False)
+    suggestions: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 逐句评分的示范说法（AI 生成）：[{segment, start_ms, end_ms, sentence, suggestion}]  # 用了草稿评分标准、红线词表或检测配置：报告标“非正式”
     created_at: Mapped[datetime] = created_at()
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint("recording_id", "revision"),)

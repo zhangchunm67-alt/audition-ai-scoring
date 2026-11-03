@@ -24,12 +24,13 @@ low_confidence:
   default_threshold: 0.6
   calibration_required: true
 
+# C33：试镜评分不涉及合规红线（原始评分表无此项，候选人不是正式员工），关闭红线否决。
+# 结构保留给以后的直播评分：打开前须合规确认 R1–R8（Q19），并校准判定阈值（目前 0.8 只是测试值）。
 redlines:
+  enabled: false
   list: [R1, R2, R3, R4, R5, R6, R7, R8]
   hit_threshold: 0.8                # 判定命中：judgment=count 且置信度 ≥ 阈值（I3）
   exclude_segments: [reading]       # C10：朗读段不做红线检测
-  pending: [Q19]
-  calibration_required: true
 
 dimensions:
   # ─────────────── 人设塑造：有道具满分 95；无道具 P9 不适用、满分 90（C2、C26） ───────────────

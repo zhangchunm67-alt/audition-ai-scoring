@@ -48,6 +48,12 @@ def list_users(db: Session = DB, _: User = Admin) -> list[UserOut]:
     return [_out(u) for u in db.scalars(select(User).order_by(User.created_at))]
 
 
+@router.get("/anchors", response_model=list[UserOut])
+def list_anchors(db: Session = DB, _: User = Depends(require(Perm.hiring_update))) -> list[UserOut]:
+    """供 HR 关联新主播账号时选择。"""
+    return [_out(u) for u in db.scalars(select(User).where(User.role == "anchor", User.is_active).order_by(User.display_name))]
+
+
 @router.post("", response_model=UserOut, status_code=201)
 def create_user(body: UserIn, request: Request, db: Session = DB, actor: User = Admin) -> UserOut:
     if db.scalar(select(User).where(User.username == body.username)):

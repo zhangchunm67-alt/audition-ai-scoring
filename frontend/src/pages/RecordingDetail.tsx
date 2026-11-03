@@ -1,7 +1,7 @@
 import { Alert, Button, Card, Col, Descriptions, Popconfirm, Progress, Row, Space, Table, Tag, Typography, Upload } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { AUDIENCE_ZH, useAction, useFetch } from "../components/hooks";
@@ -104,6 +104,7 @@ function Resume({ rec, onDone }: { rec: Rec; onDone: (r: Rec) => void }) {
 export default function RecordingDetail() {
   const { id } = useParams();
   const { data, reload } = useFetch<Rec>(`/recordings/${id}`);
+  const nav = useNavigate();
   const [rec, setRec] = useState<Rec | undefined>();
   const { can } = useAuth();
   const act = useAction();
@@ -132,7 +133,10 @@ export default function RecordingDetail() {
           action={editable && <Button onClick={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); }}>重新处理</Button>} />
       )}
       {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="正在自动评分，完成后在这里查看结果（目标 30 分钟内）。" action={<Button onClick={reload}>刷新</Button>} />}
-      {rec.status === "done" && <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成。报告页面在里程碑 5 提供。" />}
+      {rec.status === "done" && (
+        <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成"
+          action={rec.report_id && <Button type="primary" onClick={() => nav(`/reports/${rec.report_id}`)}>查看报告</Button>} />
+      )}
       {rec.uses_draft_config && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="题单使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
       {rec.warnings.map((w) => <Alert key={w} type="info" showIcon style={{ marginBottom: 8 }} message={w} />)}
       <Descriptions size="small" bordered column={3} style={{ marginBottom: 16 }}>

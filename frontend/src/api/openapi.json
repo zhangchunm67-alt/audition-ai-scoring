@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "主播试镜 AI 评分系统",
-  "version": "0.3.0"
+  "version": "0.5.0"
  },
  "paths": {
   "/api/auth/login": {
@@ -138,6 +138,32 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/users/anchors": {
+   "get": {
+    "tags": [
+     "账号"
+    ],
+    "summary": "List Anchors",
+    "description": "供 HR 关联新主播账号时选择。",
+    "operationId": "list_anchors_api_users_anchors_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/UserOut"
+         },
+         "type": "array",
+         "title": "Response List Anchors Api Users Anchors Get"
         }
        }
       }
@@ -1720,6 +1746,60 @@
     }
    }
   },
+  "/api/candidates/{cid}/linked-user": {
+   "put": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "Link User",
+    "description": "把已录用的新主播账号关联到本人的试镜记录（C31）：关联后该账号只能看到本人记录。",
+    "operationId": "link_user_api_candidates__cid__linked_user_put",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Cid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LinkIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CandidateDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/candidates/{cid}/consents": {
    "post": {
     "tags": [
@@ -2386,6 +2466,418 @@
     }
    }
   },
+  "/api/reports": {
+   "get": {
+    "tags": [
+     "报告"
+    ],
+    "summary": "List Reports",
+    "description": "排名口径（C9、I4）：同一日期范围内的报告一起排名，筛选标签不改变名次。",
+    "operationId": "list_reports_api_reports_get",
+    "parameters": [
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     },
+     {
+      "name": "label",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^(recommend|pending|not_recommend)$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Label"
+      }
+     },
+     {
+      "name": "audience",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Audience"
+      }
+     },
+     {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "default",
+       "title": "Sort"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ReportRow"
+         },
+         "title": "Response List Reports Api Reports Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/export.xlsx": {
+   "get": {
+    "tags": [
+     "报告"
+    ],
+    "summary": "Export Xlsx",
+    "operationId": "export_xlsx_api_reports_export_xlsx_get",
+    "parameters": [
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     },
+     {
+      "name": "label",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^(recommend|pending|not_recommend)$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Label"
+      }
+     },
+     {
+      "name": "audience",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Audience"
+      }
+     },
+     {
+      "name": "sort",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "default": "default",
+       "title": "Sort"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{rid}": {
+   "get": {
+    "tags": [
+     "报告"
+    ],
+    "summary": "Get Report",
+    "operationId": "get_report_api_reports__rid__get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Get Report Api Reports  Rid  Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{rid}/revisions": {
+   "get": {
+    "tags": [
+     "报告"
+    ],
+    "summary": "Revisions",
+    "operationId": "revisions_api_reports__rid__revisions_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "additionalProperties": true
+         },
+         "title": "Response Revisions Api Reports  Rid  Revisions Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{rid}/pdf": {
+   "get": {
+    "tags": [
+     "报告"
+    ],
+    "summary": "Export Pdf",
+    "operationId": "export_pdf_api_reports__rid__pdf_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/{rid}/rescore": {
+   "post": {
+    "tags": [
+     "报告"
+    ],
+    "summary": "Rescore Report",
+    "operationId": "rescore_report_api_reports__rid__rescore_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RescoreIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Rescore Report Api Reports  Rid  Rescore Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/audit-logs": {
    "get": {
     "tags": [
@@ -2678,6 +3170,18 @@
       },
       "type": "array",
       "title": "Consents"
+     },
+     "linked_user_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linked User Id"
      }
     },
     "type": "object",
@@ -3233,6 +3737,27 @@
     ],
     "title": "LexiconOut"
    },
+   "LinkIn": {
+    "properties": {
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "user_id"
+    ],
+    "title": "LinkIn"
+   },
    "LoginIn": {
     "properties": {
      "username": {
@@ -3784,6 +4309,18 @@
        }
       ],
       "title": "Failure Reason"
+     },
+     "report_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Report Id"
      }
     },
     "type": "object",
@@ -3858,6 +4395,124 @@
      "correct"
     ],
     "title": "RedlineEntry"
+   },
+   "ReportRow": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "recording_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Recording Id"
+     },
+     "candidate_name": {
+      "type": "string",
+      "title": "Candidate Name"
+     },
+     "submitted_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Submitted At"
+     },
+     "audience": {
+      "type": "string",
+      "title": "Audience"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     },
+     "total_grade": {
+      "type": "integer",
+      "title": "Total Grade"
+     },
+     "threshold": {
+      "type": "integer",
+      "title": "Threshold"
+     },
+     "dimension_scores": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Dimension Scores"
+     },
+     "dimension_grades": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Dimension Grades"
+     },
+     "critical": {
+      "type": "boolean",
+      "title": "Critical"
+     },
+     "informal": {
+      "type": "boolean",
+      "title": "Informal"
+     },
+     "low_confidence_count": {
+      "type": "integer",
+      "title": "Low Confidence Count"
+     },
+     "revision": {
+      "type": "integer",
+      "title": "Revision"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "rank",
+     "recording_id",
+     "candidate_name",
+     "submitted_at",
+     "audience",
+     "label",
+     "reason",
+     "total_grade",
+     "threshold",
+     "dimension_scores",
+     "dimension_grades",
+     "critical",
+     "informal",
+     "low_confidence_count",
+     "revision"
+    ],
+    "title": "ReportRow"
+   },
+   "RescoreIn": {
+    "properties": {
+     "rubric_version_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Rubric Version Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "rubric_version_id"
+    ],
+    "title": "RescoreIn"
    },
    "Role": {
     "type": "string",
@@ -4220,12 +4875,26 @@
       "title": "Rubric Version"
      },
      "redline_lexicon_version_id": {
-      "type": "string",
-      "format": "uuid",
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Redline Lexicon Version Id"
      },
      "redline_lexicon_version": {
-      "type": "string",
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Redline Lexicon Version"
      },
      "uses_draft_config": {
