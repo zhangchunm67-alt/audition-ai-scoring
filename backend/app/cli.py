@@ -1,7 +1,9 @@
 """命令行工具。
 
   python -m app.cli create-user --username admin --role admin --display-name 管理员   # 密码从环境变量 NEW_USER_PASSWORD 或交互输入
-  python -m app.cli seed-demo                                                          # 导入评分标准 v0.1 和一套演示数据
+  python -m app.cli seed-demo                                                          # 导入评分标准 v0.1、检测配置 v1 和一套演示数据
+  python -m app.cli purge-expired                                                      # 删除到期媒体（每天由定时任务执行）
+  python -m app.cli worker                                                             # 启动处理队列 worker（APP_QUEUE=rq）
 
 演示数据取自 docs/rubric.md 的示例，标明“演示”，正式使用前须由培训、合规审定替换。
 """
@@ -20,7 +22,7 @@ from sqlalchemy.orm import Session
 from scoring import config_hash, parse_config
 
 from .db import get_engine
-from .models.entities import DrawRule, Objection, Product, ProductCard, Question, ReadingScript, RedlineLexiconVersion, RubricVersion, User
+from .models.entities import DetectorConfigVersion, DrawRule, Objection, Product, ProductCard, Question, ReadingScript, RedlineLexiconVersion, RubricVersion, User
 from .security.passwords import hash_password
 from .security.rbac import Role
 
@@ -50,7 +52,7 @@ DEMO_REDLINES = {
     "R1": ("承诺收益或保本", ["稳赚不赔", "保本保息"], ["如实讲合同约定的给付"]),
     "R2": ("夸大保障、隐瞒重要条件", ["什么都能报", "100% 赔", "没有等待期"], ["按条款讲，并说明免赔额、等待期、责任免除"]),
     "R3": ("制造焦虑、恐吓营销", ["后悔一辈子", "出事你就"], ["用真实费用场景讲风险"]),
-    "R4": ("限时、停售、涨价施压", ["最后", "明天停售", "马上涨价"], ["产品确有调整时，按公司统一口径说明"]),
+    "R4": ("限时、停售、涨价施压", ["最后10单", "最后十单", "明天停售", "马上涨价"], ["产品确有调整时，按公司统一口径说明"]),
     "R5": ("虚构背书、绝对化用语", ["国家推荐", "政府补贴", "全网第一", "最好的保险"], ["引用真实的承保公司、真实获奖信息"]),
     "R6": ("诋毁同业", ["都是坑", "理赔就是骗人"], ["客观对比条款差异"]),
     "R7": ("诱导不如实告知", ["随便填", "先买了再说"], ["提醒如实告知，有疑问走人工核保"]),
@@ -67,7 +69,16 @@ def create_user(db: Session, username: str, role: str, display_name: str, passwo
     return u
 
 
+def seed_detector_config(db: Session) -> None:
+    from .pipeline.detector_config import content_hash, load_file
+
+    cfg, data = load_file()
+    if not db.scalar(select(DetectorConfigVersion).where(DetectorConfigVersion.version == cfg.version)):
+        db.add(DetectorConfigVersion(version=cfg.version, status="draft", content=data, content_hash=content_hash(data)))
+
+
 def seed_demo(db: Session) -> None:
+    seed_detector_config(db)
     text = RUBRIC_PATH.read_text("utf-8")
     cfg = parse_config(yaml.safe_load(text))
     if not db.scalar(select(RubricVersion).where(RubricVersion.version == cfg.version)):
@@ -108,12 +119,29 @@ def main(argv: list[str] | None = None) -> None:
     cu.add_argument("--role", required=True, choices=[r.value for r in Role])
     cu.add_argument("--display-name", required=True)
     sub.add_parser("seed-demo")
+    sub.add_parser("purge-expired")
+    sub.add_parser("worker")
     args = ap.parse_args(argv)
+    if args.cmd == "worker":
+        from redis import Redis
+        from rq import Queue, Worker
+
+        from .pipeline.orchestrator import QUEUE_NAME
+        from .settings import get_settings
+
+        conn = Redis.from_url(get_settings().redis_url)
+        Worker([Queue(QUEUE_NAME, connection=conn)], connection=conn).work()
+        return
     with Session(get_engine()) as db:
         if args.cmd == "create-user":
             pw = os.environ.get("NEW_USER_PASSWORD") or getpass.getpass("密码（至少 10 位）：")
             u = create_user(db, args.username, args.role, args.display_name, pw)
             print(f"已创建 {u.username}（{u.role}）")
+        elif args.cmd == "purge-expired":
+            from .services.retention import purge_expired
+            from .services.storage import get_storage
+
+            print(purge_expired(db, get_storage()))
         else:
             seed_demo(db)
 

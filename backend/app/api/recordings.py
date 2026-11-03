@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, Product, Recording, RubricVersion, UploadSession, User
+from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, PipelineRun, Product, Recording, RubricVersion, UploadSession, User
+from ..pipeline import orchestrator
 from ..security.rbac import Perm
 from ..services import audit
 from ..services.media import ProbeError, probe
@@ -95,6 +96,9 @@ class RecordingOut(BaseModel):
     warnings: list[str]
     created_at: datetime
     submitted_at: datetime | None
+    processing_started_at: datetime | None = None
+    finished_at: datetime | None = None
+    failure_reason: str | None = None
 
 
 def _upload_out(u: UploadSession) -> UploadOut:
@@ -128,6 +132,7 @@ def _out(db: Session, rec: Recording) -> RecordingOut:
         video_asset_id=v.id if v else None, video_duration_ms=rec.video_duration_ms, main_duration_ms=rec.main_duration_ms,
         segments=rec.segments, objection_times=rec.objection_times, upload=_upload_out(up) if up else None,
         warnings=_warnings(rec, sheet), created_at=rec.created_at, submitted_at=rec.submitted_at,
+        processing_started_at=rec.processing_started_at, finished_at=rec.finished_at, failure_reason=rec.failure_reason,
     )
 
 
@@ -282,6 +287,24 @@ def submit(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
     rec.status, rec.submitted_at = "submitted", _now()
     _log(db, request, actor, "recording_submit", "recording", rec.id)
     db.commit()
+    orchestrator.start(rec.id)  # rq：入队后立即返回；inline：同步处理完再返回
+    db.refresh(rec)
+    return _out(db, rec)
+
+
+@router.post("/recordings/{rid}/reprocess", response_model=RecordingOut)
+def reprocess(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Write) -> RecordingOut:
+    """处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。"""
+    rec = _get(db, rid)
+    if rec.status != "failed":
+        raise HTTPException(409, "只有处理失败的录像可以重新处理")
+    for run in db.scalars(select(PipelineRun).where(PipelineRun.recording_id == rec.id)):
+        db.delete(run)
+    rec.status, rec.failure_reason, rec.finished_at, rec.processing_started_at = "submitted", None, None, None
+    _log(db, request, actor, "recording_reprocess", "recording", rec.id)
+    db.commit()
+    orchestrator.start(rec.id)
+    db.refresh(rec)
     return _out(db, rec)
 
 

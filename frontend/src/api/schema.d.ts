@@ -640,6 +640,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/reprocess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reprocess
+         * @description 处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。
+         */
+        post: operations["reprocess_api_recordings__rid__reprocess_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/{rid}/cancel": {
         parameters: {
             query?: never;
@@ -1327,6 +1347,12 @@ export interface components {
             created_at: string;
             /** Submitted At */
             submitted_at: string | null;
+            /** Processing Started At */
+            processing_started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Failure Reason */
+            failure_reason?: string | null;
         };
         /** RedlineEntry */
         RedlineEntry: {
@@ -3074,6 +3100,37 @@ export interface operations {
         };
     };
     submit_api_recordings__rid__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reprocess_api_recordings__rid__reprocess_post: {
         parameters: {
             query?: never;
             header?: never;

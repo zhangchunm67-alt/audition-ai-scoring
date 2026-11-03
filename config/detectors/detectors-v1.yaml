@@ -1,0 +1,37 @@
+# 检测配置 v1：词表、阈值、抽帧频率、提示词版本。改动需要重跑模型（与计分配置分开，T3）。
+# pending / calibration_required 标记的含义与计分配置相同：草稿可用于开发测试，正式发布前须清零。
+version: detectors-v1
+status: draft
+asr:
+  disfluency_removal: false     # 必须关闭顺滑，保留口头禅
+  word_timestamps: true
+frames:
+  appearance_every_s: 30        # P1 形象：每 30 秒 1 帧
+  motion_fps: 1                 # P8 小动作：每秒 1 帧（rubric：1–2 帧）
+p2:
+  pending: [Q7]                 # 是否加入“嗯、啊、然后、就是、对吧”
+  categories:                   # 原评分表 8 类
+    - {label: "是……的", pattern: "是[^，。！？；]{1,12}?的"}
+    - {label: "一个", pattern: "一个"}
+    - {label: "……的情况下/的话", pattern: "的情况下|的话"}
+    - {label: "这边给你", pattern: "这边给你"}
+    - {label: "那么", pattern: "那么"}
+    - {label: "什么呀", pattern: "什么呀"}
+    - {label: "懂了吗", pattern: "懂了吗"}
+    - {label: "对不对", pattern: "对不对"}
+p7:
+  pause_ms: 300                 # 停顿：静音 ≥ 0.3 秒
+  run_on_ms: 30000              # 连讲：连续 30 秒没有停顿
+  stall_gap_ms: 3000            # 卡壳：句中静音 ≥ 3 秒
+  objection_grace_ms: 5000      # 弹幕弹出后 5 秒内的停顿不算卡壳
+  repetition_patterns: ["(这个){2,}", "(那个){2,}", "不是，是"]
+p8:
+  pending: [Q11]                # 低头看稿超过 3 秒是否计次
+  merge_within_ms: 5000         # 同一动作 5 秒内重复算 1 次
+p9:
+  guide_phrases: ["看这里", "看屏幕", "左上角", "右上角", "这块板子", "大家看"]
+  dedupe_within_ms: 60000       # 同一块内容 1 分钟内重复指只算 1 次
+o4:
+  dead_air_ms: 5000             # 冷场：静音 ≥ 5 秒
+redlines:
+  context_chars: 40             # 召回候选句时带上的前后文字数

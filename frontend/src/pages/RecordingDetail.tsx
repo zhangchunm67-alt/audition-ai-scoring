@@ -1,4 +1,5 @@
 import { Alert, Button, Card, Col, Descriptions, Popconfirm, Progress, Row, Space, Table, Tag, Typography, Upload } from "antd";
+import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { post, put, type S } from "../api/client";
@@ -126,6 +127,12 @@ export default function RecordingDetail() {
           </Popconfirm>
         )}
       </Space>
+      {rec.status === "failed" && (
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="处理失败，已通知候选人重录并告警管理员" description={rec.failure_reason}
+          action={editable && <Button onClick={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); }}>重新处理</Button>} />
+      )}
+      {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="正在自动评分，完成后在这里查看结果（目标 30 分钟内）。" action={<Button onClick={reload}>刷新</Button>} />}
+      {rec.status === "done" && <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成。报告页面在里程碑 5 提供。" />}
       {rec.uses_draft_config && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="题单使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
       {rec.warnings.map((w) => <Alert key={w} type="info" showIcon style={{ marginBottom: 8 }} message={w} />)}
       <Descriptions size="small" bordered column={3} style={{ marginBottom: 16 }}>
@@ -134,7 +141,8 @@ export default function RecordingDetail() {
         <Descriptions.Item label="道具">{rec.props_available ? "有（计 P9）" : "无（P9 不适用）"}</Descriptions.Item>
         <Descriptions.Item label="视频时长">{fmtMs(rec.video_duration_ms)}</Descriptions.Item>
         <Descriptions.Item label="主体段时长">{fmtMs(rec.main_duration_ms)}</Descriptions.Item>
-        <Descriptions.Item label="提交时间">{rec.submitted_at ?? "—"}</Descriptions.Item>
+        <Descriptions.Item label="提交时间">{rec.submitted_at ? dayjs(rec.submitted_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
+        <Descriptions.Item label="出结果时间">{rec.finished_at ? dayjs(rec.finished_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
       </Descriptions>
       {rec.status === "uploading" && rec.upload && editable && <Resume rec={rec} onDone={(r) => (setRec(r), reload())} />}
       {rec.status === "uploaded" && src && editable && <Marker rec={rec} src={src} onSaved={setRec} />}

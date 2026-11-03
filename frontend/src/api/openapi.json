@@ -2059,6 +2059,50 @@
     }
    }
   },
+  "/api/recordings/{rid}/reprocess": {
+   "post": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Reprocess",
+    "description": "处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。",
+    "operationId": "reprocess_api_recordings__rid__reprocess_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/recordings/{rid}/cancel": {
    "post": {
     "tags": [
@@ -3705,6 +3749,41 @@
        }
       ],
       "title": "Submitted At"
+     },
+     "processing_started_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Processing Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "failure_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Failure Reason"
      }
     },
     "type": "object",

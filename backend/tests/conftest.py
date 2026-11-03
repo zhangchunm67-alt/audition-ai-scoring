@@ -21,6 +21,9 @@ if URL:
     os.environ["APP_STORAGE"] = "local"
     os.environ["APP_STORAGE_DIR"] = tempfile.mkdtemp(prefix="audition-test-storage-")
     os.environ["APP_UPLOAD_PART_BYTES"] = str(64 * 1024)  # 测试用小分片，确保走多片
+    os.environ["APP_QUEUE"] = "inline"  # 提交后同步处理
+    os.environ["APP_RETRY_BACKOFF_S"] = "0,0"  # 重试不等待
+    os.environ["APP_CALL_RETRY_BACKOFF_S"] = "0,0"
 
 
 def pytest_collection_modifyitems(config, items):
@@ -38,10 +41,16 @@ def engine():
     from alembic.config import Config
     from sqlalchemy import create_engine
 
-    cfg = Config(str(BACKEND / "alembic.ini"))
-    command.downgrade(cfg, "base")
-    command.upgrade(cfg, "head")
+    from sqlalchemy import text
+
     eng = create_engine(URL)
+    with eng.begin() as c:  # 清空重建，避免上次残留数据影响迁移
+        c.execute(text("DROP SCHEMA public CASCADE"))
+        c.execute(text("CREATE SCHEMA public"))
+    cfg = Config(str(BACKEND / "alembic.ini"))
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, "base")  # 空库上验证全部迁移可降级
+    command.upgrade(cfg, "head")
     yield eng
     eng.dispose()
 
@@ -143,3 +152,15 @@ def video_file(media_dir) -> Path:
 def silent_video(media_dir) -> Path:
     return _ffmpeg(media_dir / "silent.mp4", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=3",
                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p")
+
+
+@pytest.fixture(scope="session")
+def full_video(media_dir) -> Path:
+    """约 17 分钟的合成试镜视频（低分辨率，生成很快）：主体段 00:05–10:05、6 道题各 60 秒、朗读 1 分钟。"""
+    return _ffmpeg(media_dir / "full.mp4", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=5:duration=1030",
+                   "-f", "lavfi", "-i", "sine=frequency=220:duration=1030", "-c:v", "libx264", "-preset", "ultrafast",
+                   "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "32k", "-shortest")
+
+
+FULL_SEG = {"main_start_ms": 5000, "question_starts_ms": [605000 + i * 60000 for i in range(6)], "reading_start_ms": 965000,
+            "objection_offsets_ms": [240000, 330000, 420000, 480000]}

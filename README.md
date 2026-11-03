@@ -14,7 +14,7 @@
 | 1 | 计分引擎、23 条计分配置、配置校验与发布检查、数据模型与迁移 | 已完成 |
 | 2 | 平台底座（登录、权限、审计、字段加密）和配置后台：评分标准版本、卖点卡、异议库、知识题库、朗读稿、抽题规则、红线词表、试镜题单、账号 | 已完成 |
 | 3 | 视频上传与录制规则：候选人与书面同意登记、可打印题单（工作人员联 / 候选人联）、分片上传与断点续传、边看边标分段和异议时间、媒体读取审计（取代原候选人录制端，见 decisions.md C18） | 已完成 |
-| 4 | AI 处理流水线 M3 和自动判定 M4（先用 Mock，含视觉） | 未开始 |
+| 4 | AI 处理流水线 M3 和自动判定 M4：四类能力接口与 Mock、媒体准备、声学特征、23 条检测器与红线检测、临界三轮、两级重试、失败通知与告警、到期删除、压测 | 已完成（全部用 Mock） |
 | 5 | 报告 M5 | 未开始 |
 | 6 | 校准与看板 M6 | 未开始 |
 
@@ -28,19 +28,23 @@ backend/app/
   content/               录制规则（按版本）
   models/                数据模型（SQLAlchemy）
   security/              密码、会话、字段加密、角色权限矩阵
-  services/              审计、评分标准版本公共逻辑、对象存储、视频探测
-  cli.py                 建账号、导入演示数据
+  services/              审计、评分标准版本公共逻辑、对象存储、视频探测、通知（Mock）、到期删除
+  providers/             外部 AI 能力接口（语音识别、普通话评测、大模型、视觉、笑声检测）及 Mock 实现、限流与重试
+  pipeline/              处理流水线：媒体准备、声学特征、逐字稿工具、提示词、检测器（detectors/）、每轮执行、编排
+  cli.py                 建账号、导入演示数据、到期删除、启动 worker
+config/detectors/        检测配置（P2 词表、停顿阈值、抽帧频率等；改了需重跑模型）
 backend/migrations/      数据库迁移（Alembic）
 frontend/                管理后台（React + TypeScript + Ant Design）
 tests/scoring/           计分引擎测试
 backend/tests/           后端接口与数据模型测试（需要 PostgreSQL）
 frontend/e2e/            管理后台端到端测试（Playwright）
 scripts/run_e2e.sh       端到端测试一键运行
+scripts/load_test.py     压测：5 条同时处理
 ```
 
 ## 本地启动
 
-需要：Python 3.12+、Node.js 20+、PostgreSQL 14+。
+需要：Python 3.12+、Node.js 20+、PostgreSQL 14+、ffmpeg；生产还需要 Redis（处理队列）。
 
 1. 安装后端依赖：
 
@@ -75,8 +79,14 @@ scripts/run_e2e.sh       端到端测试一键运行
    | `APP_S3_ENDPOINT`、`APP_S3_REGION`、`APP_S3_BUCKET` | S3 兼容存储地址、区域、桶名（阿里云 OSS、腾讯云 COS 等境内服务均可）；访问密钥用标准的 `AWS_ACCESS_KEY_ID`、`AWS_SECRET_ACCESS_KEY` |
    | `APP_S3_SSE` | 服务端加密方式，默认 `AES256`，可设 `aws:kms` |
    | `APP_MAX_UPLOAD_BYTES` | 单个视频大小上限，默认 8 GB |
+   | `APP_QUEUE` | `rq`（生产：Redis 队列，多个 worker 并行）或 `inline`（开发：提交后在当前进程同步处理） |
+   | `APP_REDIS_URL` | 默认 `redis://localhost:6379/0` |
+   | `APP_PROVIDERS` | AI 供应商实现，目前只有 `mock`；接入真实供应商见下文 |
+   | `APP_LIMIT_LLM`、`APP_LIMIT_ASR` | 同时调用大模型、语音识别的上限（所有 worker 合计），默认 8、3；按供应商的并发配额设 |
+   | `APP_RETRY_BACKOFF_S` | 一轮处理失败后重试的等待秒数，默认 `5,20`（即重试 2 次） |
+   | `APP_CALL_RETRY_BACKOFF_S` | 单次供应商调用失败后重试的等待秒数，默认 `1,3` |
 
-   服务器上需要安装 ffmpeg（用 ffprobe 检查上传的视频）。
+   服务器上需要安装 ffmpeg（检查上传的视频、抽音频和抽帧）。
 
 3. 建表、导入演示数据、建管理员账号：
 
@@ -106,6 +116,16 @@ scripts/run_e2e.sh       端到端测试一键运行
 
    浏览器打开 http://127.0.0.1:8000 。接口文档在 http://127.0.0.1:8000/api/docs 。
 
+   生产用队列模式时，另外启动 worker（按并发需要启动多个，压测用了 5 个），并每天执行一次到期删除：
+
+   ```bash
+   cd backend && APP_QUEUE=rq ../.venv/bin/python -m app.cli worker
+   ```
+
+   ```bash
+   cd backend && ../.venv/bin/python -m app.cli purge-expired
+   ```
+
    改前端时可以用热更新：后端照常跑在 8000 端口，另开一个终端运行 `cd frontend && npm run dev`，打开 http://127.0.0.1:5173 。
 
 后端接口有改动时，重新生成前端类型：
@@ -134,6 +154,12 @@ TEST_DATABASE_URL=postgresql+psycopg://audition:audition@localhost/audition_test
 E2E_ADMIN_URL=postgresql://audition:audition@localhost/postgres ./scripts/run_e2e.sh
 ```
 
+压测（5 条同时处理，见下文“处理时效”）：
+
+```bash
+E2E_ADMIN_URL=postgresql://audition:audition@localhost/postgres .venv/bin/python scripts/load_test.py
+```
+
 前端类型检查：
 
 ```bash
@@ -158,6 +184,40 @@ cd frontend && npm run typecheck
 2. 候选人签署书面同意书，按题单在系统外连续录成一个视频文件。
 3. HR 在“试镜录像 → 上传录像”：选候选人（没有就新建），登记书面同意（未登记不能上传），选题单、适用达标线、画面里有无贴片或 KT 板，选文件上传。上传中断后，打开这条录像重新选择同一文件即可续传。
 4. 上传完成后边看视频边标出主体段、每道知识题、朗读段的起点，异议时间默认取题单，可按视频修正。保存后点“提交处理”。
+5. 系统自动评分：
+   - 媒体准备：抽各段音频和画面帧，只做一次；
+   - 每一轮：语音识别（关闭顺滑）→ 声学特征 → 23 个检测器和红线检测并行出证据 → 计分引擎算分；
+   - 首轮临界且未命中红线时，自动追加 2 轮（共 3 轮取多数）；
+   - 偶发失败先就地重试单次调用，再按整轮重试 2 次；仍失败则通知候选人重录、告警管理员，录像页可点“重新处理”。
+
+## 处理时效（压测结果）
+
+`scripts/load_test.py`：5 条 17 分钟录像同时提交，5 个 worker。供应商延迟按 1/10 缩小模拟，再乘回 10 估算真实耗时：
+- 延迟假设：语音识别耗时 = 音频时长 × 0.15；大模型每次 15 秒；语音评测 10 秒；视觉 30 秒；
+- 每次调用 3% 随机失败；
+- 演示剧本恰好落在临界区间，每条都要跑满 3 轮，属于最坏情况。
+
+| 大模型并发上限 | 估算最长耗时 | 结论 |
+|---|---|---|
+| 4 | 34.7 分钟 | 超过 30 分钟目标 |
+| 8（默认） | 20.4 分钟（中位数 18.1） | 达标 |
+
+所以选大模型供应商时要确认支持至少 8 路并发。接入真实供应商后，用实际延迟重跑压测（参数见脚本开头）。
+
+## 更换真实 AI 供应商
+
+四类能力（以及笑声检测）都在 `backend/app/providers/base.py` 定义了接口，流水线只依赖接口。接入步骤：
+
+1. 在 `backend/app/providers/` 下新建实现，例如 `xxx_asr.py`，实现对应接口：
+   - **语音识别** `transcribe()`：必须关闭顺滑（`disfluency_removal=False`），返回字级时间戳；返回的 `params` 里要如实带回 `disfluency_removal: False`，否则这一轮会被拒绝；
+   - **普通话评测** `assess()`：带参考文本，返回 0–100 分；
+   - **大模型** `complete_json()`：温度固定 0，用 JSON 模式输出，结构见 `backend/app/pipeline/prompts.py`；
+   - **视觉** `analyze()`：任务分 `appearance`（形象）、`fidget`（小动作）、`prop_pointing`（指向道具）；
+   - 调用失败抛 `ProviderError`，系统会自动重试。
+2. 在 `backend/app/providers/registry.py` 的 `get_providers()` 里按 `APP_PROVIDERS` 注册（可以混用，例如只换语音识别）。
+3. 供应商必须是境内服务；密钥通过环境变量传入，不要写进代码。
+4. 换模型或改提示词前，先在金标准集上跑回归，一致率不下降才发布（PRD 第 5 节）。报告会记录供应商、模型版本和提示词版本。
+5. 用固定样本手动验证一次“口头禅保留”：录一段含“那么”“一个”“对不对”的话，确认转写里都在，且 P2 证据逐条列出。
 
 ## 修改评分配置
 
@@ -186,7 +246,7 @@ cd frontend && npm run typecheck
 | T5 阈值 | P4 | `metric`、`limit`、`score_by_over` 超限段数 → 分数 |
 | T6 逐题 | S3、O5 | `count` 题数；`levels` 按等级给分，或 `elements` 按要素给分加 `zero_labels` |
 
-检测配置（P2 词表、抽帧率、提示词等）单独管理，改了需要重跑模型。这部分在里程碑 4 实现。
+检测配置在 `config/detectors/detectors-v1.yaml`（P2 词表、停顿和卡壳阈值、抽帧频率、道具引导语等），与计分配置分开管理，改了需要重跑模型。提示词在 `backend/app/pipeline/prompts.py`，改动须升版本号。
 
 ## P0 验收用例
 
@@ -195,12 +255,10 @@ PRD 第 6 节的 8 条用例。其中两条以系统内录制为前提，已按�
 | 用例 | 验证方式 | 状态 |
 |---|---|---|
 | 不同意授权时无法进入录制 → 改为：未登记候选人书面同意，不能上传和处理（C30） | `backend/tests/test_recordings_api.py::test_no_consent_no_upload`；端到端测试“未登记授权时先登记” | 已完成 |
-| 4 条异议按配置时间点弹出 → 改为：题单的异议时间点（可按视频修正）与证据时间戳对得上（C29） | 时间换算已测（`test_segments_and_objection_alignment`：视频时间 = 主体段起点 + 相对时间）；与检测器证据的对齐测试在里程碑 4 | 部分完成 |
-| 口头禅在转写中保留，未被顺滑删掉 | 测试检查请求带"关闭顺滑"参数；数据库约束已加（`transcripts.disfluency_removal` 必须为 false）；接真实供应商后用固定样本手动验证 | 约束已完成，其余在里程碑 4 |
+| 4 条异议按配置时间点弹出 → 改为：题单的异议时间点（可按视频修正）与证据时间戳对得上（C29） | `test_segments_and_objection_alignment`（视频时间 = 主体段起点 + 相对时间）；`backend/tests/test_pipeline.py::test_objection_times_align_with_evidence`（S3 证据都在对应异议弹出之后、主体段之内） | 已完成 |
+| 口头禅在转写中保留，未被顺滑删掉 | `test_full_length_critical_three_rounds_and_traceability`（转写里有“那么”“一个”，P2 逐条出证据）；`test_asr_must_keep_disfluencies`（供应商开了顺滑即拒绝）；数据库约束 `transcripts.disfluency_removal` 必须为 false；接真实供应商后按上文第 5 步手动验证 | 自动化已完成，真实供应商待手动验证 |
 | 人设塑造按 95 分满分正确折算 | `tests/scoring/test_dimensions_and_round.py::test_persona_scaled_from_95_with_props`、`::test_persona_no_props_p9_not_applicable_scaled_from_90` | 已完成 |
-| 红线命中时结论为"不达标"，报告附原句 | 引擎与汇总：`test_redline_*`、`test_redline_any_round_not_recommend`；报告展示在里程碑 5 | 引擎已完成 |
-| 临界样本自动重跑 3 次，报告标"临界"（共 3 轮，首轮参与投票；首轮已命中红线不追加） | 汇总规则：`tests/scoring/test_verdict.py`；流水线自动追加轮次在里程碑 4 | 规则已完成 |
-| 报告里的标准版本、模型版本完整 | `test_traceability_fields`、`backend/tests/test_models.py::test_full_chain_and_evidence_round_trip` | 数据层已完成，报告页在里程碑 5 |
-| 到期视频自动删除，报告保留 | 到期删除任务测试 | 里程碑 4 |
-
-更换真实 AI 供应商的说明会在里程碑 4 补上。
+| 红线命中时结论为"不达标"，报告附原句 | 引擎与汇总：`test_redline_*`、`test_redline_any_round_not_recommend`；流水线：`test_first_round_redline_no_extra_rounds`（报告数据含原句）；报告页展示在里程碑 5 | 数据已完成 |
+| 临界样本自动重跑 3 次，报告标"临界"（共 3 轮，首轮参与投票；首轮已命中红线不追加） | 汇总规则：`tests/scoring/test_verdict.py`；流水线：`test_full_length_critical_three_rounds_and_traceability`、`test_rounds_can_disagree_majority_decides`、`test_first_round_redline_no_extra_rounds` | 已完成（报告页展示在里程碑 5） |
+| 报告里的标准版本、模型版本完整 | `test_traceability_fields`、`test_full_length_critical_three_rounds_and_traceability`（供应商与模型版本、提示词版本、检测配置版本、温度、顺滑设置、配置哈希） | 数据已完成，报告页在里程碑 5 |
+| 到期视频自动删除，报告保留 | `test_retention_purge_keeps_reports`、`test_retention_keeps_hired_and_unexpired`、`test_stale_uploads_aborted` | 已完成 |

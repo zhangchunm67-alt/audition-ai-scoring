@@ -43,6 +43,13 @@ class Settings:
     s3_sse: str = "AES256"
     max_upload_bytes: int = 8 * 1024**3
     upload_part_bytes: int = 8 * 1024**2  # S3 分片最小 5 MB
+    queue: str = "inline"  # inline（同步执行，开发和测试）/ rq（Redis 队列，生产）
+    redis_url: str = "redis://localhost:6379/0"
+    retry_backoff_s: tuple[float, ...] = (5.0, 20.0)  # 失败自动重试 2 次（M4-4）及每次等待秒数
+    call_retry_backoff_s: tuple[float, ...] = (1.0, 3.0)  # 单次供应商调用失败后再试 2 次
+    limit_llm: int = 8  # 同时调用大模型的上限（所有 worker 合计）；压测表明 ≥ 8 才能在最坏情况下 30 分钟内出报告
+    limit_asr: int = 3
+    detector_workers: int = 6  # 一轮内并行跑检测器的线程数
 
 
 @lru_cache
@@ -68,4 +75,11 @@ def get_settings() -> Settings:
         s3_sse=os.environ.get("APP_S3_SSE", "AES256"),
         max_upload_bytes=int(os.environ.get("APP_MAX_UPLOAD_BYTES", str(8 * 1024**3))),
         upload_part_bytes=int(os.environ.get("APP_UPLOAD_PART_BYTES", str(8 * 1024**2))),
+        queue=os.environ.get("APP_QUEUE", "inline"),
+        redis_url=os.environ.get("APP_REDIS_URL", "redis://localhost:6379/0"),
+        retry_backoff_s=tuple(float(x) for x in os.environ.get("APP_RETRY_BACKOFF_S", "5,20").split(",") if x.strip()),
+        call_retry_backoff_s=tuple(float(x) for x in os.environ.get("APP_CALL_RETRY_BACKOFF_S", "1,3").split(",") if x.strip()),
+        limit_llm=int(os.environ.get("APP_LIMIT_LLM", "8")),
+        limit_asr=int(os.environ.get("APP_LIMIT_ASR", "3")),
+        detector_workers=int(os.environ.get("APP_DETECTOR_WORKERS", "6")),
     )

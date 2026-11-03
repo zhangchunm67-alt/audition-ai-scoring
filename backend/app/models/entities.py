@@ -266,6 +266,9 @@ class Recording(Base):
     objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)
     main_duration_ms: Mapped[int | None] = mapped_column(Integer)
     video_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 出报告或最终失败的时间
+    failure_reason: Mapped[str | None] = mapped_column(Text)
     uploaded_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
@@ -283,7 +286,7 @@ class MediaAsset(Base):
     kind: Mapped[str] = mapped_column(
         _enum("raw_video", "normalized_video", "audio", "frame", "clip", "upload_part", "consent_scan", name="media_kind")
     )
-    segment: Mapped[str | None] = mapped_column(String(32))  # main / question:<id> / reading
+    segment: Mapped[str | None] = mapped_column(String(64))  # main / question:<id> / reading
     storage_key: Mapped[str] = mapped_column(String(512), unique=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     sha256: Mapped[str | None] = mapped_column(String(64))
@@ -303,7 +306,7 @@ class UploadSession(Base):
     __tablename__ = "upload_sessions"
     id: Mapped[uuid.UUID] = uuid_pk()
     recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
-    segment: Mapped[str] = mapped_column(String(32))
+    segment: Mapped[str] = mapped_column(String(64))
     storage_key: Mapped[str] = mapped_column(String(512))
     multipart_upload_id: Mapped[str | None] = mapped_column(String(256))
     parts: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{part_no, etag, size, sha256}]
@@ -332,6 +335,7 @@ class PipelineRun(Base):
     )
     stage: Mapped[str | None] = mapped_column(String(32))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    detector_config_version_id: Mapped[uuid.UUID | None] = fk_uuid("detector_config_versions.id", nullable=True)
     model_manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
     queued_at: Mapped[datetime] = created_at()
@@ -361,7 +365,7 @@ class Transcript(Base):
     __tablename__ = "transcripts"
     id: Mapped[uuid.UUID] = uuid_pk()
     run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id", ondelete="CASCADE")
-    segment: Mapped[str] = mapped_column(String(32))
+    segment: Mapped[str] = mapped_column(String(64))
     text: Mapped[str] = mapped_column(Text)
     words: Mapped[list[Any]] = mapped_column(JSON)  # [{w, start_ms, end_ms, conf}]
     provider: Mapped[str] = mapped_column(String(64))
@@ -375,7 +379,7 @@ class AcousticFeatures(Base):
     __tablename__ = "acoustic_features"
     id: Mapped[uuid.UUID] = uuid_pk()
     run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id", ondelete="CASCADE")
-    segment: Mapped[str] = mapped_column(String(32))
+    segment: Mapped[str] = mapped_column(String(64))
     features: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = created_at()
 
@@ -402,7 +406,7 @@ class EvidenceRow(Base):
     review: Mapped[dict[str, Any]] = mapped_column(JSON, default=lambda: {"status": "pending"})
     ref: Mapped[str | None] = mapped_column(String(128))
     value: Mapped[float | None] = mapped_column(Float)
-    segment: Mapped[str | None] = mapped_column(String(32))
+    segment: Mapped[str | None] = mapped_column(String(64))
     __table_args__ = (
         UniqueConstraint("run_id", "evidence_id"),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
@@ -442,6 +446,7 @@ class Report(Base):
     critical: Mapped[bool] = mapped_column(Boolean)
     redline_hit: Mapped[bool] = mapped_column(Boolean)
     display_run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id")
+    informal: Mapped[bool] = mapped_column(Boolean, default=False)  # 用了草稿评分标准、红线词表或检测配置：报告标“非正式”
     created_at: Mapped[datetime] = created_at()
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint("recording_id", "revision"),)

@@ -120,7 +120,7 @@ try {
     await hr.getByText("保存分段").waitFor({ timeout: 30000 });
   });
 
-  await step("边看边标分段和异议时间，保存后提交处理", async () => {
+  await step("边看边标分段和异议时间，提交后自动评分完成", async () => {
     const setTime = (sec) => hr.locator('[data-testid="marker-video"]').evaluate((v, t) => { v.currentTime = t; }, sec);
     const tables = hr.locator(".ant-table");
     const segRows = tables.nth(0).locator("tbody tr");
@@ -139,7 +139,8 @@ try {
     await hr.getByText("分段已保存").waitFor();
     await hr.getByRole("button", { name: "提交处理" }).click();
     await hr.getByRole("button", { name: /确\s*定|OK/ }).click();
-    await hr.getByText("已提交，待处理").waitFor();
+    await hr.getByText("已出报告").waitFor({ timeout: 90000 }); // inline 模式：提交后同步跑完 Mock 流水线
+    await hr.getByText("评分已完成").waitFor();
   });
 
   await step("刷新后视频经后端代理播放（Range 请求）", async () => {

@@ -276,7 +276,7 @@ def test_submit_requires_segments_then_locks(login, seeded, video_file):
     assert hr.post(f"/api/recordings/{rec['id']}/submit").status_code == 422
     hr.put(f"/api/recordings/{rec['id']}/segments", json=SEG)
     r = hr.post(f"/api/recordings/{rec['id']}/submit")
-    assert r.status_code == 200 and r.json()["status"] == "submitted" and r.json()["submitted_at"]
+    assert r.status_code == 200 and r.json()["status"] in ("submitted", "processing", "done") and r.json()["submitted_at"]
     assert hr.put(f"/api/recordings/{rec['id']}/segments", json=SEG).status_code == 409
     assert hr.post(f"/api/recordings/{rec['id']}/cancel").status_code == 409
 

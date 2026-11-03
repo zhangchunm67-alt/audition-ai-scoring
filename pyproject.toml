@@ -20,6 +20,9 @@ dependencies = [
   "PyJWT>=2.9",
   "python-multipart>=0.0.9",
   "boto3>=1.34",
+  "rq>=1.16",
+  "redis>=5",
+  "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
