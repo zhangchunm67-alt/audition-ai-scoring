@@ -6,9 +6,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models.entities import Candidate, MediaAsset, Recording, User
+from ..models.entities import CalibrationAssignment, Candidate, GoldSample, MediaAsset, Recording, User
 from ..security.rbac import Perm, allowed
 from ..services import audit
 from ..services.storage import get_storage
@@ -40,6 +41,9 @@ def _may_read(db: Session, user: User, asset: MediaAsset) -> bool:
     if allowed(user.role, Perm.report_read_own) and asset.recording_id:  # 新主播只能看本人录像（C31），授权书扫描件不开放
         rec = db.get(Recording, asset.recording_id)
         return db.get(Candidate, rec.candidate_id).linked_user_id == user.id
+    if allowed(user.role, Perm.calibration_score) and asset.recording_id and asset.kind == "raw_video":  # 校准员只看分给自己的样本
+        return db.scalar(select(CalibrationAssignment.id).join(GoldSample, CalibrationAssignment.sample_id == GoldSample.id)
+                         .where(GoldSample.recording_id == asset.recording_id, CalibrationAssignment.calibrator_id == user.id).limit(1)) is not None
     return False
 
 
@@ -47,7 +51,7 @@ def _may_read(db: Session, user: User, asset: MediaAsset) -> bool:
 def read_media(asset_id: uuid.UUID, request: Request, db: Session = DB, viewer: User = Depends(current_user)):
     asset = db.get(MediaAsset, asset_id)
     if asset is None or not _may_read(db, viewer, asset):
-        if not (allowed(viewer.role, Perm.report_read_all) or allowed(viewer.role, Perm.report_read_own)):
+        if not any(allowed(viewer.role, p) for p in (Perm.report_read_all, Perm.report_read_own, Perm.calibration_score)):
             raise HTTPException(403, "没有权限")
         raise HTTPException(404, "媒体不存在")
     if asset.deleted_at is not None:

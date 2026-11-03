@@ -224,6 +224,72 @@ try {
     assert.equal(await an.getByRole("menuitem", { name: "试镜录像" }).count(), 0);
   });
 
+  // ───────────── 里程碑 6：金标准、背对背打分、对比、看板 ─────────────
+  await step("管理员建金标准集、加入样本、分配 2 位校准员", async () => {
+    await page.getByRole("menuitem", { name: "金标准与校准" }).click();
+    await page.getByRole("button", { name: "新建金标准集" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("名称").fill("上线前金标准（演示）");
+    await dlg.getByLabel("评分标准版本").click();
+    await page.getByTitle("rubric-v0.1").click();
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await page.getByRole("heading", { name: "上线前金标准（演示）" }).waitFor();
+    await page.locator(".ant-select", { hasText: "选择已出报告的录像加入" }).click();
+    await page.getByTitle(/王小明/).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "加入样本" }).click();
+    await page.getByRole("cell", { name: "王小明" }).waitFor();
+    await page.locator(".ant-select", { hasText: "选 2–3 位校准员" }).click();
+    await page.getByTitle("校准员1").click();
+    await page.getByTitle("校准员2").click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "分配给全部样本" }).click();
+    await page.getByText("已分配").waitFor();
+  });
+
+  async function scoreAsCalibrator(user) {
+    const c = await (await browser.newContext()).newPage();
+    await loginAs(c, user);
+    assert.equal(await c.getByRole("menuitem", { name: "报告与排名" }).count(), 0); // 校准员看不到 AI 报告
+    await c.getByRole("menuitem", { name: "我的校准任务" }).click();
+    await c.getByRole("link", { name: /^TS/ }).first().click();
+    await c.getByTestId("item-P1").waitFor();
+    await c.evaluate(() => {
+      const skip = new Set(["答错", "没回答", "钩子不实或诱导", "主体段口音明显"]);
+      for (const item of document.querySelectorAll('[data-testid^="item-"]')) {
+        for (const g of item.querySelectorAll(".ant-radio-group")) g.querySelector(".ant-radio-button-wrapper")?.click();
+        for (const cb of item.querySelectorAll(".ant-checkbox-wrapper")) if (!skip.has(cb.textContent.trim())) cb.click();
+      }
+    });
+    await c.getByTestId("item-P2").getByRole("button", { name: "+ 那么" }).click(); // 计次类：看到一次点一次
+    await c.getByRole("button", { name: "提 交" }).click();
+    await c.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await c.getByText("已提交。所有校准员提交后").waitFor();
+  }
+
+  await step("两位校准员背对背打分并提交（不看 AI 结果）", async () => {
+    await scoreAsCalibrator("e2e-cal1");
+    await scoreAsCalibrator("e2e-cal2");
+  });
+
+  await step("金标准定稿，显示与 AI 的逐项对比和一致率", async () => {
+    await page.reload();
+    await page.getByText("已定稿").first().waitFor();
+    await page.getByText(/维度档位相差 ≤ 1 档/).waitFor();
+    await page.getByRole("cell", { name: "王小明" }).click();
+    await page.getByText("金标准总档位").waitFor();
+    await page.getByText("AI 总档位").waitFor();
+  });
+
+  await step("看板：一致率与效率", async () => {
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "看板" }).click();
+    await page.getByText("上线前金标准（演示）").waitFor();
+    await page.getByRole("tab", { name: "效率" }).click();
+    await page.getByText("处理时长（分钟）中位数 / p95 / 最长").waitFor();
+    await page.getByText("各条目低置信比例").waitFor();
+  });
+
   console.log(`\n端到端测试通过：${steps.length} 步`);
 } finally {
   await browser.close();

@@ -2,7 +2,7 @@
  "openapi": "3.1.0",
  "info": {
   "title": "主播试镜 AI 评分系统",
-  "version": "0.5.0"
+  "version": "0.6.0"
  },
  "paths": {
   "/api/auth/login": {
@@ -2878,6 +2878,712 @@
     }
    }
   },
+  "/api/calibration/sets": {
+   "get": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "List Sets",
+    "operationId": "list_sets_api_calibration_sets_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "type": "array",
+         "title": "Response List Sets Api Calibration Sets Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Create Set",
+    "operationId": "create_set_api_calibration_sets_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SetIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "type": "object",
+         "title": "Response Create Set Api Calibration Sets Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/sets/{sid}": {
+   "get": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Get Set",
+    "operationId": "get_set_api_calibration_sets__sid__get",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Get Set Api Calibration Sets  Sid  Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/sets/{sid}/samples": {
+   "post": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Add Samples",
+    "operationId": "add_samples_api_calibration_sets__sid__samples_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AddIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Add Samples Api Calibration Sets  Sid  Samples Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/sets/{sid}/sample-month": {
+   "post": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Sample Month",
+    "description": "每月抽检（PRD：每月抽 10–20 条）：从该月提交且已出报告的录像里随机抽，已在本集里的不重复抽。",
+    "operationId": "sample_month_api_calibration_sets__sid__sample_month_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SampleIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Sample Month Api Calibration Sets  Sid  Sample Month Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/sets/{sid}/assign": {
+   "post": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Assign",
+    "operationId": "assign_api_calibration_sets__sid__assign_post",
+    "parameters": [
+     {
+      "name": "sid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AssignIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Assign Api Calibration Sets  Sid  Assign Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/samples/{sample_id}": {
+   "get": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Sample Detail",
+    "operationId": "sample_detail_api_calibration_samples__sample_id__get",
+    "parameters": [
+     {
+      "name": "sample_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sample Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Sample Detail Api Calibration Samples  Sample Id  Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/samples/{sample_id}/adjudicate": {
+   "post": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Adjudicate",
+    "description": "分歧条目开会裁决后，录入裁决分数和理由；全部裁决后金标准自动定稿。",
+    "operationId": "adjudicate_api_calibration_samples__sample_id__adjudicate_post",
+    "parameters": [
+     {
+      "name": "sample_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Sample Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AdjudicateIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Adjudicate Api Calibration Samples  Sample Id  Adjudicate Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/my-tasks": {
+   "get": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "My Tasks",
+    "operationId": "my_tasks_api_calibration_my_tasks_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "type": "array",
+         "title": "Response My Tasks Api Calibration My Tasks Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/assignments/{aid}": {
+   "get": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Task Detail",
+    "description": "打分所需的全部材料：视频、分段、题单、卖点卡、各条目的打分方式。不含 AI 结果和其他人的打分。",
+    "operationId": "task_detail_api_calibration_assignments__aid__get",
+    "parameters": [
+     {
+      "name": "aid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Aid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Task Detail Api Calibration Assignments  Aid  Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Save Task",
+    "operationId": "save_task_api_calibration_assignments__aid__put",
+    "parameters": [
+     {
+      "name": "aid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Aid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EvidenceIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Save Task Api Calibration Assignments  Aid  Put"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/calibration/assignments/{aid}/submit": {
+   "post": {
+    "tags": [
+     "校准"
+    ],
+    "summary": "Submit Task",
+    "operationId": "submit_task_api_calibration_assignments__aid__submit_post",
+    "parameters": [
+     {
+      "name": "aid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Aid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Submit Task Api Calibration Assignments  Aid  Submit Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/dashboard/agreement": {
+   "get": {
+    "tags": [
+     "看板"
+    ],
+    "summary": "Agreement",
+    "description": "AI 与金标准（含月度抽样）的一致率；不指定金标准集时，按录像提交日期汇总所有金标准样本。",
+    "operationId": "agreement_api_dashboard_agreement_get",
+    "parameters": [
+     {
+      "name": "set_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Set Id"
+      }
+     },
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Agreement Api Dashboard Agreement Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/dashboard/efficiency": {
+   "get": {
+    "tags": [
+     "看板"
+    ],
+    "summary": "Efficiency",
+    "description": "处理时长（提交 → 出报告，分钟）、失败率、重试、临界比例、各条目低置信比例；按日统计提交量。",
+    "operationId": "efficiency_api_dashboard_efficiency_get",
+    "parameters": [
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Efficiency Api Dashboard Efficiency Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/audit-logs": {
    "get": {
     "tags": [
@@ -3012,6 +3718,68 @@
  },
  "components": {
   "schemas": {
+   "AddIn": {
+    "properties": {
+     "recording_ids": {
+      "items": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Recording Ids"
+     }
+    },
+    "type": "object",
+    "required": [
+     "recording_ids"
+    ],
+    "title": "AddIn"
+   },
+   "AdjudicateIn": {
+    "properties": {
+     "item_id": {
+      "type": "string",
+      "title": "Item Id"
+     },
+     "score": {
+      "type": "number",
+      "minimum": 0.0,
+      "title": "Score"
+     },
+     "note": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "item_id",
+     "score",
+     "note"
+    ],
+    "title": "AdjudicateIn"
+   },
+   "AssignIn": {
+    "properties": {
+     "calibrator_ids": {
+      "items": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "type": "array",
+      "maxItems": 3,
+      "minItems": 2,
+      "title": "Calibrator Ids"
+     }
+    },
+    "type": "object",
+    "required": [
+     "calibrator_ids"
+    ],
+    "title": "AssignIn"
+   },
    "AuditOut": {
     "properties": {
      "id": {
@@ -3548,6 +4316,34 @@
      "product_id"
     ],
     "title": "DrawRuleOut"
+   },
+   "EvidenceIn": {
+    "properties": {
+     "evidence": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Evidence"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "evidence"
+    ],
+    "title": "EvidenceIn"
    },
    "FileIn": {
     "properties": {
@@ -4678,6 +5474,27 @@
     ],
     "title": "RubricSummary"
    },
+   "SampleIn": {
+    "properties": {
+     "month": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}$",
+      "title": "Month"
+     },
+     "count": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 1.0,
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "month",
+     "count"
+    ],
+    "title": "SampleIn"
+   },
    "ScriptIn": {
     "properties": {
      "title": {
@@ -4776,6 +5593,44 @@
     ],
     "title": "SegmentsIn",
     "description": "时间都以毫秒计。知识题起点按题单顺序；异议时间相对主体段起点。"
+   },
+   "SetIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "purpose": {
+      "type": "string",
+      "pattern": "^(prelaunch|monthly_sample)$",
+      "title": "Purpose"
+     },
+     "rubric_version_id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Rubric Version Id"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "purpose",
+     "rubric_version_id"
+    ],
+    "title": "SetIn"
    },
    "SheetIn": {
     "properties": {

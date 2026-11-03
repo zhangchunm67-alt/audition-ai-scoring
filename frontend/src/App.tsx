@@ -3,7 +3,10 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { useAuth } from "./auth";
 import { ROLE_ZH } from "./components/hooks";
 import AuditLogs from "./pages/AuditLogs";
+import Calibration, { CalibrationSet } from "./pages/Calibration";
+import CalibrationTask, { MyTasks } from "./pages/CalibrationTask";
 import Candidates from "./pages/Candidates";
+import Dashboard from "./pages/Dashboard";
 import NewRecording from "./pages/NewRecording";
 import RecordingDetail from "./pages/RecordingDetail";
 import ReportDetail from "./pages/ReportDetail";
@@ -31,6 +34,9 @@ const NAV = [
   { key: "/recordings", label: "试镜录像", perm: "report.read_all" },
   { key: "/reports", label: "报告与排名", perm: "report.read_all" },
   { key: "/reports", label: "我的试镜记录", perm: "report.read_own" },
+  { key: "/calibration/sets", label: "金标准与校准", perm: "calibration.manage" },
+  { key: "/calibration/tasks", label: "我的校准任务", perm: "calibration.score" },
+  { key: "/dashboard", label: "看板", perm: "dashboard.read" },
   { key: "/users", label: "账号管理", perm: "users.manage" },
   { key: "/audit", label: "审计日志", perm: "audit.read" },
 ];
@@ -84,6 +90,11 @@ export default function App() {
             <Route path="/recordings/:id" element={<RecordingDetail />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/reports/:id" element={<ReportDetail />} />
+            <Route path="/calibration/sets" element={<Calibration />} />
+            <Route path="/calibration/sets/:id" element={<CalibrationSet />} />
+            <Route path="/calibration/tasks" element={<MyTasks />} />
+            <Route path="/calibration/tasks/:id" element={<CalibrationTask />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/users" element={<Users />} />
             <Route path="/audit" element={<AuditLogs />} />
             <Route path="*" element={<Typography.Text>页面不存在</Typography.Text>} />

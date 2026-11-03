@@ -23,6 +23,7 @@ psql "$DB_ADMIN_URL" -qc "DROP DATABASE IF EXISTS ${DB_NAME}" -c "CREATE DATABAS
 cd "$ROOT/backend"
 "$PY" -m app.cli seed-demo
 for r in admin compliance hr; do NEW_USER_PASSWORD="$E2E_PASSWORD" "$PY" -m app.cli create-user --username "e2e-$r" --role "$r" --display-name "E2E $r"; done
+for n in 1 2; do NEW_USER_PASSWORD="$E2E_PASSWORD" "$PY" -m app.cli create-user --username "e2e-cal$n" --role calibrator --display-name "校准员$n"; done
 "$PY" -m uvicorn app.main:app --port "$PORT" --log-level warning &
 PID=$!
 trap 'kill $PID 2>/dev/null; rm -rf "$TMP"; psql "$DB_ADMIN_URL" -qc "DROP DATABASE IF EXISTS ${DB_NAME}" >/dev/null 2>&1 || true' EXIT

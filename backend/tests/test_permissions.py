@@ -39,13 +39,19 @@ CASES = [
     ("post", f"/api/recordings/{X}/cancel", None, Perm.recording_upload),
     ("get", f"/api/uploads/{X}", None, Perm.recording_upload),
     ("post", f"/api/uploads/{X}/complete", None, Perm.recording_upload),
-    ("get", f"/api/media/{X}", None, (Perm.report_read_all, Perm.report_read_own)),  # 新主播可看本人录像（C31）
+    ("get", f"/api/media/{X}", None, (Perm.report_read_all, Perm.report_read_own, Perm.calibration_score)),  # 新主播可看本人录像（C31）
     ("get", "/api/reports", None, (Perm.report_read_all, Perm.report_read_own)),
     ("get", f"/api/reports/{X}", None, (Perm.report_read_all, Perm.report_read_own)),
     ("get", "/api/reports/export.xlsx", None, Perm.report_read_all),
     ("post", f"/api/reports/{X}/rescore", {"rubric_version_id": X}, Perm.config_write),
     ("put", f"/api/candidates/{X}/linked-user", {"user_id": None}, Perm.hiring_update),
     ("get", "/api/users/anchors", None, Perm.hiring_update),
+    ("get", "/api/calibration/sets", None, Perm.calibration_manage),
+    ("post", f"/api/calibration/samples/{X}/adjudicate", {"item_id": "P1", "score": 1, "note": "x"}, Perm.calibration_manage),
+    ("get", "/api/calibration/my-tasks", None, Perm.calibration_score),
+    ("post", f"/api/calibration/assignments/{X}/submit", None, Perm.calibration_score),
+    ("get", "/api/dashboard/agreement", None, Perm.dashboard_read),
+    ("get", "/api/dashboard/efficiency", None, Perm.dashboard_read),
 ]
 
 

@@ -476,6 +476,9 @@ class GoldSet(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(128))
     purpose: Mapped[str] = mapped_column(_enum("prelaunch", "monthly_sample", "regression", name="gold_purpose"))
+    rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")  # 校准员按这个版本打分；金标准与 AI 的对比也按它
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)
     created_at: Mapped[datetime] = created_at()
     samples: Mapped[list["GoldSample"]] = relationship(back_populates="gold_set")
 
@@ -485,6 +488,12 @@ class GoldSample(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     gold_set_id: Mapped[uuid.UUID] = fk_uuid("gold_sets.id")
     recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
+    # collecting：等校准员提交；needs_adjudication：有分歧条目待裁决；final：金标准已定稿
+    status: Mapped[str] = mapped_column(_enum("collecting", "needs_adjudication", "final", name="gold_sample_status"), default="collecting")
+    flagged_items: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 校准员分歧超过条目满分 20% 的条目
+    adjudication: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {条目: {score, note, by, at}}
+    gold: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # 定稿的金标准：条目分、维度、总档位、结论
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gold_set: Mapped[GoldSet] = relationship(back_populates="samples")
     __table_args__ = (UniqueConstraint("gold_set_id", "recording_id"),)
 
@@ -498,6 +507,8 @@ class CalibrationAssignment(Base):
     calibrator_id: Mapped[uuid.UUID] = fk_uuid("users.id")
     status: Mapped[str] = mapped_column(_enum("assigned", "submitted", name="assignment_status"), default="assigned")
     evidence: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 证据级人工标注（source=human）
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # 提交时用同一个计分引擎算出的条目分和维度
+    note: Mapped[str | None] = mapped_column(Text)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
     __table_args__ = (UniqueConstraint("sample_id", "calibrator_id"),)

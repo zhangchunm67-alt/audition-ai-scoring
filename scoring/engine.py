@@ -374,6 +374,28 @@ def _score_t6(item: T6Item, evs: list[Evidence], ctx: ScoringContext, res: ItemR
     return total
 
 
+# ───────────────────────── 维度汇总（流水线计分与金标准共用） ─────────────────────────
+
+
+def dimension_result(cfg: RubricConfig, dim_id: str, name: str, raw: Fraction, app_max: int, complete: bool) -> DimensionResult:
+    """按适用满分折算到 100 → 四舍五入 → 查档位。"""
+    if complete and app_max:
+        scaled = raw * 100 / app_max
+        score_int = round_half_up(scaled)
+        return DimensionResult(id=dim_id, name=name, status="scored", raw=_f(raw), applicable_max=app_max,
+                               scaled=_f(scaled), score=score_int, grade=cfg.grade_for(score_int))
+    return DimensionResult(id=dim_id, name=name, status="incomplete", raw=None, applicable_max=app_max, scaled=None, score=None, grade=None)
+
+
+def total_verdict(cfg: RubricConfig, dims: list[DimensionResult], threshold: int) -> tuple[int | None, bool | None, bool | None]:
+    """总档位、是否达标、是否临界。任一维度不完整则都为 None。"""
+    if not all(d.status == "scored" for d in dims):
+        return None, None, None
+    total = sum(d.grade for d in dims)  # type: ignore[misc]
+    band = cfg.critical.review_band
+    return total, total < threshold, threshold - band <= total <= threshold + band - 1
+
+
 # ───────────────────────── 一轮计分 ─────────────────────────
 
 
@@ -446,19 +468,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
                 if e.confidence < thr:
                     res.low_confidence_reasons.append(f"证据 {e.evidence_id} 置信度 {e.confidence:.2f} 低于 {thr:.2f}")
             res.low_confidence = bool(res.low_confidence_reasons)
-        if complete and app_max:
-            scaled = raw * 100 / app_max
-            score_int = round_half_up(scaled)
-            dims.append(
-                DimensionResult(
-                    id=dim.id, name=dim.name, status="scored", raw=_f(raw), applicable_max=app_max,
-                    scaled=_f(scaled), score=score_int, grade=cfg.grade_for(score_int),
-                )
-            )
-        else:
-            dims.append(
-                DimensionResult(id=dim.id, name=dim.name, status="incomplete", raw=None, applicable_max=app_max, scaled=None, score=None, grade=None)
-            )
+        dims.append(dimension_result(cfg, dim.id, dim.name, raw, app_max, complete))
 
     # 红线
     hits: list[RedlineHit] = []
@@ -483,12 +493,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
     all_dims = all(d.status == "scored" for d in dims)
     status = "complete" if all_dims and redlines_done else "incomplete"
     threshold = cfg.thresholds[ctx.audience]
-    total = sum(d.grade for d in dims) if all_dims else None  # type: ignore[misc]
-    grade_pass = critical = None
-    if total is not None:
-        grade_pass = total < threshold
-        band = cfg.critical.review_band
-        critical = threshold - band <= total <= threshold + band - 1
+    total, grade_pass, critical = total_verdict(cfg, dims, threshold)
     missing = [i.item_id for i in items if i.status == "missing_evidence"]
     if not redlines_done:
         missing.append("redlines")

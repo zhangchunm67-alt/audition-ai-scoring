@@ -16,15 +16,15 @@ from ..models.entities import AuditionSheet, DetectorConfigVersion, DetectorRun,
 from ..pipeline.runner import scoring_context
 
 
-def rescore(db: Session, rep: Report, rv: RubricVersion) -> Report:
-    if rv.status == "retired":
-        raise HTTPException(422, "该评分标准版本已停用")
+def round_results(db: Session, rec: Recording, rv: RubricVersion, *, save: bool) -> tuple[list[PipelineRun], list]:
+    """用已存证据按指定评分标准重算各轮（不重跑模型）。save=True 时把结果存进 score_results。"""
     cfg = parse_config(yaml.safe_load(rv.yaml_text))
-    rec = db.get(Recording, rep.recording_id)
     sheet = db.get(AuditionSheet, rec.sheet_id)
     card = db.get(ProductCard, sheet.product_card_id).content
     runs = db.scalars(select(PipelineRun).where(PipelineRun.recording_id == rec.id, PipelineRun.status == "completed")
                       .order_by(PipelineRun.round_no)).all()
+    if not runs:
+        raise HTTPException(422, "这条录像还没有完成的处理结果")
     results = []
     for run in runs:
         evs = [row_to_evidence(r) for r in db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id).order_by(EvidenceRow.id))]
@@ -32,15 +32,37 @@ def rescore(db: Session, rep: Report, rv: RubricVersion) -> Report:
         try:
             r = score_round(evs, cfg, scoring_context(rec, sheet, card, done, run.model_manifest))
         except EvidenceError as exc:
-            raise HTTPException(422, f"已有证据与新版本的条目不兼容，需重新处理：{exc}") from exc
+            raise HTTPException(422, f"已有证据与该版本的条目不兼容，需重新处理：{exc}") from exc
         if r.status != "complete":
-            raise HTTPException(422, f"按新版本缺少必需证据（{'、'.join(r.missing_items)}），需重新处理")
-        row = db.scalar(select(ScoreResultRow).where(ScoreResultRow.run_id == run.id, ScoreResultRow.rubric_version_id == rv.id))
-        if row is None:
-            db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=r.config_hash, result=r.model_dump(mode="json")))
-        else:
-            row.config_hash, row.result = r.config_hash, r.model_dump(mode="json")
+            raise HTTPException(422, f"按该版本缺少必需证据（{'、'.join(r.missing_items)}），需重新处理")
+        if save:
+            row = db.scalar(select(ScoreResultRow).where(ScoreResultRow.run_id == run.id, ScoreResultRow.rubric_version_id == rv.id))
+            if row is None:
+                db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=r.config_hash, result=r.model_dump(mode="json")))
+            else:
+                row.config_hash, row.result = r.config_hash, r.model_dump(mode="json")
         results.append(r)
+    return list(runs), results
+
+
+def ai_outcome(db: Session, rec: Recording, rv: RubricVersion):
+    """按指定版本得出 AI 的最终结论和展示轮结果（不保存、不生成报告）。轮次不够时返回 None。"""
+    cfg = parse_config(yaml.safe_load(rv.yaml_text))
+    _, results = round_results(db, rec, rv, save=False)
+    need = rounds_required(results[0], cfg)
+    if need > len(results):
+        return None
+    v = finalize(results[:need], cfg)
+    return v, results[v.display_round - 1]
+
+
+def rescore(db: Session, rep: Report, rv: RubricVersion) -> Report:
+    if rv.status == "retired":
+        raise HTTPException(422, "该评分标准版本已停用")
+    cfg = parse_config(yaml.safe_load(rv.yaml_text))
+    rec = db.get(Recording, rep.recording_id)
+    sheet = db.get(AuditionSheet, rec.sheet_id)
+    runs, results = round_results(db, rec, rv, save=True)
     need = rounds_required(results[0], cfg)
     if need > len(results):
         raise HTTPException(409, f"按新版本这是临界样本，需要 {need} 轮，现有 {len(results)} 轮；请重新处理该录像")

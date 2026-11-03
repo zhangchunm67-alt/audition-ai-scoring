@@ -25,6 +25,9 @@ class Perm(str, Enum):
     hiring_update = "hiring.update"  # 标记录用状态（决定未录用者的媒体到期删除）
     report_read_all = "report.read_all"  # 里程碑 5：全部报告与视频
     report_read_own = "report.read_own"  # 里程碑 5：本人记录
+    calibration_manage = "calibration.manage"  # 建金标准集、分配校准员、裁决分歧
+    calibration_score = "calibration.score"  # 给分到自己的样本背对背打分
+    dashboard_read = "dashboard.read"  # 一致率看板、效率看板
 
 
 R = Role
@@ -41,6 +44,9 @@ MATRIX: dict[Perm, frozenset[Role]] = {
     Perm.hiring_update: frozenset({R.admin, R.hr}),
     Perm.report_read_all: frozenset({R.admin, R.hr}),
     Perm.report_read_own: frozenset({R.anchor}),
+    Perm.calibration_manage: frozenset({R.admin}),
+    Perm.calibration_score: frozenset({R.calibrator}),
+    Perm.dashboard_read: frozenset({R.admin}),  # PRD 第 3 节：管理员看准确度看板
 }
 
 
