@@ -32,14 +32,15 @@ def test_hash_stable_and_sensitive(cfg):
 # ───────────── 发布检查：待确认规则不得静默进入正式配置 ─────────────
 
 
-EXPECTED_BLOCKERS = {"Q6", "Q8", "Q9", "Q10", "Q13", "Q14", "Q15", "Q16", "Q17", "Q18", "Q19", "P-B3", "P-B8", "P-P3-ACCENT"}
+EXPECTED_BLOCKERS = {"Q6", "Q8", "Q9", "Q10", "Q13", "Q14", "Q15", "Q16", "Q17", "Q18", "P-B3", "P-B8", "P-P3-ACCENT"}
 
 
 def test_draft_config_lists_all_blockers(cfg):
     text = "\n".join(publish_blockers(cfg))
     for q in EXPECTED_BLOCKERS:
         assert q in text, q
-    for where in ("low_confidence", "redlines", "P5", "O4.parts.rhythm", "O4.parts.enthusiasm"):
+    assert not any(b.startswith("redlines") for b in publish_blockers(cfg))  # C33：红线关闭，不再阻碍发布
+    for where in ("low_confidence", "P5", "O4.parts.rhythm", "O4.parts.enthusiasm"):
         assert any(where in b and "占位" in b for b in publish_blockers(cfg)), where
     with pytest.raises(ConfigError):
         ensure_publishable(cfg)

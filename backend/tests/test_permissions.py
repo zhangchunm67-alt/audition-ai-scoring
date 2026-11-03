@@ -27,6 +27,31 @@ CASES = [
     ("get", "/api/sheets", None, Perm.sheet_read),
     ("post", f"/api/sheets/{X}/void", None, Perm.sheet_write),
     ("get", "/api/audit-logs", None, Perm.audit_read),
+    ("get", "/api/recording-rules/rules-v1", None, Perm.sheet_read),
+    ("get", "/api/candidates", None, Perm.report_read_all),
+    ("post", "/api/candidates", {"name": "张三"}, Perm.recording_upload),
+    ("get", f"/api/candidates/{X}", None, Perm.report_read_all),
+    ("patch", f"/api/candidates/{X}/hiring", {"hiring_status": "hired"}, Perm.hiring_update),
+    ("get", "/api/recordings", None, Perm.report_read_all),
+    ("get", f"/api/recordings/{X}", None, Perm.report_read_all),
+    ("put", f"/api/recordings/{X}/segments", {"main_start_ms": 0, "question_starts_ms": [], "reading_start_ms": 1, "objection_offsets_ms": []}, Perm.recording_upload),
+    ("post", f"/api/recordings/{X}/submit", None, Perm.recording_upload),
+    ("post", f"/api/recordings/{X}/cancel", None, Perm.recording_upload),
+    ("get", f"/api/uploads/{X}", None, Perm.recording_upload),
+    ("post", f"/api/uploads/{X}/complete", None, Perm.recording_upload),
+    ("get", f"/api/media/{X}", None, (Perm.report_read_all, Perm.report_read_own, Perm.calibration_score)),  # 新主播可看本人录像（C31）
+    ("get", "/api/reports", None, (Perm.report_read_all, Perm.report_read_own)),
+    ("get", f"/api/reports/{X}", None, (Perm.report_read_all, Perm.report_read_own)),
+    ("get", "/api/reports/export.xlsx", None, Perm.report_read_all),
+    ("post", f"/api/reports/{X}/rescore", {"rubric_version_id": X}, Perm.config_write),
+    ("put", f"/api/candidates/{X}/linked-user", {"user_id": None}, Perm.hiring_update),
+    ("get", "/api/users/anchors", None, Perm.hiring_update),
+    ("get", "/api/calibration/sets", None, Perm.calibration_manage),
+    ("post", f"/api/calibration/samples/{X}/adjudicate", {"item_id": "P1", "score": 1, "note": "x"}, Perm.calibration_manage),
+    ("get", "/api/calibration/my-tasks", None, Perm.calibration_score),
+    ("post", f"/api/calibration/assignments/{X}/submit", None, Perm.calibration_score),
+    ("get", "/api/dashboard/agreement", None, Perm.dashboard_read),
+    ("get", "/api/dashboard/efficiency", None, Perm.dashboard_read),
 ]
 
 
@@ -36,7 +61,8 @@ def test_matrix(login, role):
     for method, path, body, perm in CASES:
         kw = {"json": body} if body is not None else {}
         status = getattr(api, method)(path, **kw).status_code
-        if Role(role) in MATRIX[perm]:
+        perms = perm if isinstance(perm, tuple) else (perm,)
+        if any(Role(role) in MATRIX[p] for p in perms):
             assert status not in (401, 403), (role, method, path, status)
         else:
             assert status == 403, (role, method, path, status)

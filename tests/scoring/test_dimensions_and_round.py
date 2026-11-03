@@ -7,7 +7,7 @@ from hypothesis import strategies as st
 
 from scoring import EvidenceError, ScoringInputError, config_hash, parse_config, round_half_up, score_round
 from scoring.types import Review
-from tests.scoring.helpers import ALL_ITEMS, context, dim, full_marks, item, item_raw, modified, raw_config
+from tests.scoring.helpers import ALL_ITEMS, context, dim, full_marks, item, item_raw, modified, raw_config, rl_raw
 
 
 # ───────────── 取整与档位 ─────────────
@@ -145,7 +145,8 @@ def _with_redline(cfg, judgment="count", confidence=0.85, segment="main", review
     return score_round(b.items, cfg, context())
 
 
-def test_redline_hit_at_threshold(cfg):
+def test_redline_hit_at_threshold(rl_cfg):
+    cfg = rl_cfg
     r = _with_redline(cfg, confidence=0.8)
     assert [h.redline_id for h in r.redline_hits] == ["R1"]
     assert r.redline_hits[0].quote == "这款稳赚不赔"
@@ -153,42 +154,48 @@ def test_redline_hit_at_threshold(cfg):
     assert r.total_grade == 4 and r.grade_pass is True  # 分数照常计算
 
 
-def test_redline_below_threshold_not_hit(cfg):
+def test_redline_below_threshold_not_hit(rl_cfg):
+    cfg = rl_cfg
     r = _with_redline(cfg, confidence=0.79)
     assert not r.redline_hits and [h.confidence for h in r.redline_below_threshold] == [0.79]
     assert r.conclusion_pass is True
 
 
-def test_redline_not_count_ignored(cfg):
+def test_redline_not_count_ignored(rl_cfg):
+    cfg = rl_cfg
     r = _with_redline(cfg, judgment="not_count", confidence=0.99)
     assert not r.redline_hits and not r.redline_below_threshold
 
 
-def test_redline_reading_segment_excluded(cfg):
+def test_redline_reading_segment_excluded(rl_cfg):
+    cfg = rl_cfg
     r = _with_redline(cfg, segment="reading", confidence=0.99)
     assert not r.redline_hits
 
 
-def test_redline_per_redline_threshold(cfg):
-    data = modified(raw_config(), lambda d: d["redlines"].update(per_redline_threshold={"R8": 0.95}))
+def test_redline_per_redline_threshold():
+    data = modified(rl_raw(), lambda d: d["redlines"].update(per_redline_threshold={"R8": 0.95}))
     c = parse_config(data)
     b = full_marks()
     b.add("R8", "redline", judgment="count", confidence=0.9, quote="加我微信单独聊")
     assert not score_round(b.items, c, context()).redline_hits
 
 
-def test_redline_rejected_and_overridden(cfg):
+def test_redline_rejected_and_overridden(rl_cfg):
+    cfg = rl_cfg
     assert not _with_redline(cfg, review=Review(status="rejected")).redline_hits
     r = _with_redline(cfg, confidence=0.3, review=Review(status="overridden", override="count", reviewer="cal-1"))
     assert r.redline_hits
 
 
-def test_unknown_redline_raises(cfg):
+def test_unknown_redline_raises(rl_cfg):
+    cfg = rl_cfg
     with pytest.raises(EvidenceError):
         _with_redline(cfg, rid="R9")
 
 
-def test_redline_detector_incomplete(cfg):
+def test_redline_detector_incomplete(rl_cfg):
+    cfg = rl_cfg
     r = score_round(full_marks().items, cfg, context(completed=ALL_ITEMS))
     assert r.status == "incomplete" and "redlines" in r.missing_items
     assert r.total_grade == 4  # 分数仍可算，但本轮不出结论
@@ -300,3 +307,23 @@ def test_engine_is_pure(cfg):
     r1 = score_round(b.items, cfg, context())
     r2 = score_round(b.items, cfg, context())
     assert r1 == r2 and b.items == snapshot
+
+
+# ───────────── C33：试镜关闭红线 ─────────────
+
+
+def test_audition_config_has_redlines_disabled(cfg):
+    assert cfg.redlines.enabled is False
+
+
+def test_redlines_disabled_ignores_redline_evidence(cfg):
+    b = full_marks()
+    b.add("R1", "redline", judgment="count", confidence=0.99, quote="这款稳赚不赔", segment="main")
+    r = score_round(b.items, cfg, context())
+    assert r.redline_hits == [] and r.redline_below_threshold == [] and r.redlines_enabled is False
+    assert r.conclusion_pass is True
+
+
+def test_redlines_disabled_needs_no_redline_detector(cfg):
+    r = score_round(full_marks().items, cfg, context(completed=ALL_ITEMS))
+    assert r.status == "complete" and "redlines" not in r.missing_items

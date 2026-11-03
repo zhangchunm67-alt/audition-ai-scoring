@@ -81,6 +81,215 @@ try {
     await hr.getByText("仅合规角色可以编辑红线词表").waitFor();
   });
 
+  // ───────────── 里程碑 3：登记候选人和授权、上传、标分段、提交、打印题单 ─────────────
+  const sheetUrl = page.url();
+  const sheetCode = (await page.getByText(/^题单 TS/).textContent()).replace("题单 ", "").trim();
+  const firstObjection = (await page.locator(".ant-list").first().locator(".ant-list-item").first().textContent()).replace(/^\d\d:\d\d/, "").trim();
+
+  await step("打印题单：工作人员联有异议，候选人联不含异议和分值", async () => {
+    const pr = await (await browser.newContext()).newPage();
+    await loginAs(pr, "e2e-admin");
+    await pr.goto(`${sheetUrl}/print?copy=staff`);
+    await pr.getByText("主体段异议（到时间点时提出）").waitFor();
+    await pr.getByText(firstObjection).waitFor();
+    await pr.goto(`${sheetUrl}/print?copy=candidate`);
+    await pr.getByText("录制时逐条给出，不提前提供").waitFor();
+    assert.equal(await pr.getByText(firstObjection).count(), 0);
+    assert.equal(await pr.getByText(/\d+\s*分(?!钟)/).count(), 0); // 不含任何分值（“15 分钟”这类时长除外）
+    await pr.getByText("必讲要点：").waitFor();
+  });
+
+  await step("HR 新建候选人，未登记授权时先登记，再选题单、达标线、有无道具并分片上传", async () => {
+    await hr.getByRole("menuitem", { name: "试镜录像" }).click();
+    await hr.getByRole("button", { name: "上传录像" }).click();
+    await hr.getByRole("button", { name: "新 建" }).click();
+    const dlg = hr.getByRole("dialog");
+    await dlg.getByLabel("姓名").fill("王小明");
+    await dlg.getByLabel("手机号（可选）").fill("13700001111");
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await hr.getByText("该候选人还没有登记书面同意，未登记不能上传").waitFor();
+    await hr.getByLabel("同意书版本").fill("consent-v1");
+    await hr.getByRole("button", { name: "登 记" }).click();
+    await hr.getByText("consent-v1，签署于").waitFor();
+    await hr.getByLabel("试镜题单").click();
+    await hr.getByTitle(new RegExp(sheetCode)).click();
+    await hr.getByText("新主播内部试播（总档位 < 15）").click();
+    await hr.getByText("有", { exact: true }).click();
+    await hr.locator('input[type="file"]').last().setInputFiles(process.env.E2E_VIDEO);
+    await hr.getByRole("button", { name: "开始上传" }).click();
+    await hr.getByText("保存分段").waitFor({ timeout: 30000 });
+  });
+
+  await step("边看边标分段和异议时间，提交后自动评分完成", async () => {
+    const setTime = (sec) => hr.locator('[data-testid="marker-video"]').evaluate((v, t) => { v.currentTime = t; }, sec);
+    const tables = hr.locator(".ant-table");
+    const segRows = tables.nth(0).locator("tbody tr");
+    const marks = [1, 9, 10, 11, 12, 13, 14, 16];
+    for (let i = 0; i < marks.length; i++) {
+      await setTime(marks[i]);
+      await segRows.nth(i).getByRole("button", { name: "设为当前时间" }).click();
+    }
+    const objRows = tables.nth(1).locator("tbody tr");
+    const objs = [3, 4.5, 6, 7];
+    for (let i = 0; i < objs.length; i++) {
+      await setTime(objs[i]);
+      await objRows.nth(i).getByRole("button", { name: "设为当前时间" }).click();
+    }
+    await hr.getByRole("button", { name: "保存分段" }).click();
+    await hr.getByText("分段已保存").waitFor();
+    await hr.getByRole("button", { name: "提交处理" }).click();
+    await hr.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await hr.getByText("已出报告").waitFor({ timeout: 90000 }); // inline 模式：提交后同步跑完 Mock 流水线
+    await hr.getByText("评分已完成").waitFor();
+  });
+
+  await step("刷新后视频经后端代理播放（Range 请求）", async () => {
+    const media = [];
+    hr.on("response", (r) => r.url().includes("/api/media/") && media.push(`${r.status()} ${r.request().headers()["range"] ?? ""}`));
+    await hr.reload();
+    await hr.locator("video").first().waitFor();
+    const ok = await hr.locator("video").first().evaluate((v) => new Promise((res) => {
+      if (v.readyState >= 1) return res(true);
+      v.addEventListener("loadedmetadata", () => res(true), { once: true });
+      v.addEventListener("error", () => res(false), { once: true });
+      setTimeout(() => res(false), 15000);
+    }));
+    const diag = await hr.locator("video").first().evaluate((v) => ({ rs: v.readyState, ns: v.networkState, err: v.error?.code, msg: v.error?.message }));
+    assert.equal(ok, true, `视频未能加载：${JSON.stringify(diag)}；媒体请求：${media.join(", ")}`);
+    assert.ok(media.some((m) => m.startsWith("206")), `应有 206 区间响应：${media.join(", ")}`);
+    assert.match(await hr.locator("video").first().getAttribute("src"), /^\/api\/media\//);
+  });
+
+  // ───────────── 里程碑 5：报告、逐句评分、导出、新主播只看本人 ─────────────
+  await step("从录像打开报告：结论标签、维度分、条目与证据", async () => {
+    await hr.getByRole("button", { name: "查看报告" }).click();
+    await hr.getByText("王小明 的试镜报告").waitFor();
+    assert.match(await hr.getByTestId("label").textContent(), /^(推荐|待定|不推荐)$/);
+    await hr.getByText("非正式报告").waitFor();
+    await hr.getByText("人设塑造").first().waitFor();
+    await hr.getByText("P2 语言干净").waitFor();
+  });
+
+  await step("逐句评分：点句子时间跳到视频对应位置，有问题的句子附 AI 示范说法", async () => {
+    await hr.getByRole("tab", { name: "逐句评分" }).click();
+    const rows = hr.getByTestId("sentence");
+    assert.ok((await rows.count()) > 5);
+    await hr.getByText(/示范说法（AI 生成）/).first().waitFor();
+    const v = hr.getByTestId("report-video");
+    await v.evaluate((el) => new Promise((res) => (el.readyState >= 1 ? res() : el.addEventListener("loadedmetadata", res, { once: true }))));
+    const target = rows.nth(3);
+    const label = await target.locator("a").first().textContent();
+    await target.locator("a").first().click();
+    await hr.waitForTimeout(500);
+    const t = await v.evaluate((el) => el.currentTime);
+    const [mm, ss] = label.split(":").map(Number);
+    assert.ok(Math.abs(t - (mm * 60 + ss)) < 2, `视频时间 ${t} 与句子时间 ${label} 对不上`);
+  });
+
+  await step("导出 PDF 与 Excel", async () => {
+    const reportUrl = hr.url();
+    const id = reportUrl.split("/reports/")[1];
+    const pdf = await hr.request.get(`${BASE}/api/reports/${id}/pdf`);
+    assert.equal(pdf.status(), 200);
+    assert.equal((await pdf.body()).subarray(0, 5).toString(), "%PDF-");
+    await hr.getByRole("menuitem", { name: "报告与排名" }).click();
+    await hr.getByText("王小明").waitFor();
+    const xlsx = await hr.request.get(`${BASE}/api/reports/export.xlsx`);
+    assert.equal(xlsx.status(), 200);
+    assert.match(xlsx.headers()["content-type"], /spreadsheetml/);
+  });
+
+  await step("管理员建新主播账号，HR 关联后新主播只看到本人记录", async () => {
+    await page.getByRole("menuitem", { name: "账号管理" }).click();
+    await page.getByRole("button", { name: "新建账号" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("用户名").fill("e2e-anchor");
+    await dlg.getByLabel("姓名").fill("王小明");
+    await dlg.getByLabel("角色").click();
+    await page.getByTitle("新主播").click();
+    await dlg.getByLabel("初始密码").fill(PW);
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await page.getByText("已创建").waitFor();
+    await hr.getByRole("menuitem", { name: "候选人" }).click();
+    await hr.getByRole("cell", { name: "王小明" }).click();
+    await hr.getByText("关联新主播账号").waitFor();
+    await hr.locator(".ant-drawer .ant-select", { hasText: "录用后关联本人" }).click();
+    await hr.getByTitle("王小明（e2e-anchor）").click();
+    await hr.getByText("已关联").waitFor();
+    const an = await (await browser.newContext()).newPage();
+    await loginAs(an, "e2e-anchor");
+    await an.getByRole("menuitem", { name: "我的试镜记录" }).click();
+    await an.getByRole("link", { name: "王小明" }).click();
+    await an.getByText("王小明 的试镜报告").waitFor();
+    assert.equal(await an.getByRole("menuitem", { name: "试镜录像" }).count(), 0);
+  });
+
+  // ───────────── 里程碑 6：金标准、背对背打分、对比、看板 ─────────────
+  await step("管理员建金标准集、加入样本、分配 2 位校准员", async () => {
+    await page.getByRole("menuitem", { name: "金标准与校准" }).click();
+    await page.getByRole("button", { name: "新建金标准集" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("名称").fill("上线前金标准（演示）");
+    await dlg.getByLabel("评分标准版本").click();
+    await page.getByTitle("rubric-v0.1").click();
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await page.getByRole("heading", { name: "上线前金标准（演示）" }).waitFor();
+    await page.locator(".ant-select", { hasText: "选择已出报告的录像加入" }).click();
+    await page.getByTitle(/王小明/).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "加入样本" }).click();
+    await page.getByRole("cell", { name: "王小明" }).waitFor();
+    await page.locator(".ant-select", { hasText: "选 2–3 位校准员" }).click();
+    await page.getByTitle("校准员1").click();
+    await page.getByTitle("校准员2").click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "分配给全部样本" }).click();
+    await page.getByText("已分配").waitFor();
+  });
+
+  async function scoreAsCalibrator(user) {
+    const c = await (await browser.newContext()).newPage();
+    await loginAs(c, user);
+    assert.equal(await c.getByRole("menuitem", { name: "报告与排名" }).count(), 0); // 校准员看不到 AI 报告
+    await c.getByRole("menuitem", { name: "我的校准任务" }).click();
+    await c.getByRole("link", { name: /^TS/ }).first().click();
+    await c.getByTestId("item-P1").waitFor();
+    await c.evaluate(() => {
+      const skip = new Set(["答错", "没回答", "钩子不实或诱导", "主体段口音明显"]);
+      for (const item of document.querySelectorAll('[data-testid^="item-"]')) {
+        for (const g of item.querySelectorAll(".ant-radio-group")) g.querySelector(".ant-radio-button-wrapper")?.click();
+        for (const cb of item.querySelectorAll(".ant-checkbox-wrapper")) if (!skip.has(cb.textContent.trim())) cb.click();
+      }
+    });
+    await c.getByTestId("item-P2").getByRole("button", { name: "+ 那么" }).click(); // 计次类：看到一次点一次
+    await c.getByRole("button", { name: "提 交" }).click();
+    await c.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await c.getByText("已提交。所有校准员提交后").waitFor();
+  }
+
+  await step("两位校准员背对背打分并提交（不看 AI 结果）", async () => {
+    await scoreAsCalibrator("e2e-cal1");
+    await scoreAsCalibrator("e2e-cal2");
+  });
+
+  await step("金标准定稿，显示与 AI 的逐项对比和一致率", async () => {
+    await page.reload();
+    await page.getByText("已定稿").first().waitFor();
+    await page.getByText(/维度档位相差 ≤ 1 档/).waitFor();
+    await page.getByRole("cell", { name: "王小明" }).click();
+    await page.getByText("金标准总档位").waitFor();
+    await page.getByText("AI 总档位").waitFor();
+  });
+
+  await step("看板：一致率与效率", async () => {
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "看板" }).click();
+    await page.getByText("上线前金标准（演示）").waitFor();
+    await page.getByRole("tab", { name: "效率" }).click();
+    await page.getByText("处理时长（分钟）中位数 / p95 / 最长").waitFor();
+    await page.getByText("各条目低置信比例").waitFor();
+  });
+
   console.log(`\n端到端测试通过：${steps.length} 步`);
 } finally {
   await browser.close();

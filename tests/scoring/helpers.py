@@ -40,6 +40,18 @@ def cfg():
     return parse_config(raw_config())
 
 
+def rl_raw() -> dict:
+    """打开红线的配置（C33 后试镜默认关闭；红线逻辑保留给以后的直播评分，照样要测）。"""
+    d = raw_config()
+    d["redlines"]["enabled"] = True
+    return d
+
+
+@pytest.fixture(scope="session")
+def rl_cfg():
+    return parse_config(rl_raw())
+
+
 def item_raw(data: dict, item_id: str) -> dict:
     for d in data["dimensions"]:
         for it in d["items"]:
@@ -164,11 +176,11 @@ def builder_for_total(total: int) -> EvidenceBuilder:
 
 @pytest.fixture
 def round_for_total(cfg):
-    def make(total: int, audience: str = "new_trial", redline: tuple[str, float] | None = None):
+    def make(total: int, audience: str = "new_trial", redline: tuple[str, float] | None = None, config=None):
         b = builder_for_total(total)
         if redline:
             b.add(redline[0], "redline", judgment="count", confidence=redline[1], quote="稳赚不赔", segment="main")
-        r = score_round(b.items, cfg, context(audience=audience))
+        r = score_round(b.items, config or cfg, context(audience=audience))
         assert r.total_grade == total, r.total_grade
         return r
 

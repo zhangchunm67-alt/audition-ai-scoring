@@ -22,11 +22,13 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -201,7 +203,7 @@ class AuditionSheet(Base):
     product_id: Mapped[uuid.UUID] = fk_uuid("products.id")
     product_card_id: Mapped[uuid.UUID] = fk_uuid("product_cards.id")
     rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")
-    redline_lexicon_version_id: Mapped[uuid.UUID] = fk_uuid("redline_lexicon_versions.id")
+    redline_lexicon_version_id: Mapped[uuid.UUID | None] = fk_uuid("redline_lexicon_versions.id", nullable=True)  # 评分标准关闭红线时为空（C33）
     draw_rule_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     objections: Mapped[list[Any]] = mapped_column(JSON)  # [{objection_id, text, at_ms}]
     questions: Mapped[list[Any]] = mapped_column(JSON)  # [{question_id, text}]
@@ -237,7 +239,9 @@ class ConsentRecord(Base):
     candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
     consent_text_version: Mapped[str] = mapped_column(String(64))
     signed_on: Mapped[date] = mapped_column(Date)
-    attachment_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # 扫描件（media_assets.kind=consent_scan）
+    attachment_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("media_assets.id", use_alter=True, name="fk_consent_records_attachment_asset_id_media_assets")
+    )  # 扫描件（media_assets.kind=consent_scan）
     registered_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     registered_at: Mapped[datetime] = created_at()
 
@@ -248,19 +252,28 @@ class Recording(Base):
     __tablename__ = "recordings"
     id: Mapped[uuid.UUID] = uuid_pk()
     candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
-    sheet_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("audition_sheets.id"), unique=True)
+    sheet_id: Mapped[uuid.UUID] = fk_uuid("audition_sheets.id")
     consent_record_id: Mapped[uuid.UUID] = fk_uuid("consent_records.id")
     audience: Mapped[str] = mapped_column(String(32))  # 必选适用达标线（C27）
     props_available: Mapped[bool] = mapped_column(Boolean)  # 画面里有无贴片 / KT 板（C26）
     status: Mapped[str] = mapped_column(
-        _enum("uploading", "uploaded", "processing", "done", "failed", name="recording_status"), default="uploading"
+        _enum("uploading", "uploaded", "submitted", "processing", "done", "failed", "cancelled", name="recording_status"),
+        default="uploading",
     )
-    segments: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{segment, start_ms, end_ms}]（C28）
-    objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{objection_id, at_ms}]，默认取题单（C29）
+    # 分段（C28），时间都相对整段视频：[{segment: main | question:<id> | reading, start_ms, end_ms}]
+    segments: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # 异议时间（C29）：[{objection_id, at_ms 相对主体段起点, video_ms 相对整段视频}]，默认取题单
+    objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)
     main_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    video_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 出报告或最终失败的时间
+    failure_reason: Mapped[str | None] = mapped_column(Text)
     uploaded_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
+    # 一张题单只对应一条有效录像；取消的不占用，题单可以重新使用
+    __table_args__ = (Index("uq_recordings_active_sheet", "sheet_id", unique=True, postgresql_where=text("status <> 'cancelled'")),)
 
 
 class MediaAsset(Base):
@@ -268,18 +281,23 @@ class MediaAsset(Base):
 
     __tablename__ = "media_assets"
     id: Mapped[uuid.UUID] = uuid_pk()
-    recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
+    recording_id: Mapped[uuid.UUID | None] = fk_uuid("recordings.id", nullable=True)
+    candidate_id: Mapped[uuid.UUID | None] = fk_uuid("candidates.id", nullable=True)  # 授权书扫描件挂在候选人上
     kind: Mapped[str] = mapped_column(
         _enum("raw_video", "normalized_video", "audio", "frame", "clip", "upload_part", "consent_scan", name="media_kind")
     )
-    segment: Mapped[str | None] = mapped_column(String(32))  # main / question:<id> / reading
+    segment: Mapped[str | None] = mapped_column(String(64))  # main / question:<id> / reading
     storage_key: Mapped[str] = mapped_column(String(512), unique=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     sha256: Mapped[str | None] = mapped_column(String(64))
-    encrypted: Mapped[bool] = mapped_column(Boolean, default=True)
+    content_type: Mapped[str | None] = mapped_column(String(128))
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    encrypted: Mapped[bool] = mapped_column(Boolean, default=True)  # 存储侧加密（S3 SSE）；本地开发存储为 false
     retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
+    __table_args__ = (CheckConstraint("recording_id IS NOT NULL OR candidate_id IS NOT NULL", name="has_owner"),)
 
 
 class UploadSession(Base):
@@ -288,12 +306,18 @@ class UploadSession(Base):
     __tablename__ = "upload_sessions"
     id: Mapped[uuid.UUID] = uuid_pk()
     recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
-    segment: Mapped[str] = mapped_column(String(32))
+    segment: Mapped[str] = mapped_column(String(64))
     storage_key: Mapped[str] = mapped_column(String(512))
     multipart_upload_id: Mapped[str | None] = mapped_column(String(256))
-    parts: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{part_no, etag, size}]
+    parts: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{part_no, etag, size, sha256}]
     status: Mapped[str] = mapped_column(_enum("open", "completed", "aborted", name="upload_status"), default="open")
+    part_size: Mapped[int] = mapped_column(Integer)
+    total_size: Mapped[int] = mapped_column(BigInteger)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(128))
+    created_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     created_at: Mapped[datetime] = created_at()
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # ───────────────────────── 处理（M3/M4） ─────────────────────────
@@ -311,6 +335,7 @@ class PipelineRun(Base):
     )
     stage: Mapped[str | None] = mapped_column(String(32))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    detector_config_version_id: Mapped[uuid.UUID | None] = fk_uuid("detector_config_versions.id", nullable=True)
     model_manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
     queued_at: Mapped[datetime] = created_at()
@@ -340,7 +365,7 @@ class Transcript(Base):
     __tablename__ = "transcripts"
     id: Mapped[uuid.UUID] = uuid_pk()
     run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id", ondelete="CASCADE")
-    segment: Mapped[str] = mapped_column(String(32))
+    segment: Mapped[str] = mapped_column(String(64))
     text: Mapped[str] = mapped_column(Text)
     words: Mapped[list[Any]] = mapped_column(JSON)  # [{w, start_ms, end_ms, conf}]
     provider: Mapped[str] = mapped_column(String(64))
@@ -354,7 +379,7 @@ class AcousticFeatures(Base):
     __tablename__ = "acoustic_features"
     id: Mapped[uuid.UUID] = uuid_pk()
     run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id", ondelete="CASCADE")
-    segment: Mapped[str] = mapped_column(String(32))
+    segment: Mapped[str] = mapped_column(String(64))
     features: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = created_at()
 
@@ -381,7 +406,7 @@ class EvidenceRow(Base):
     review: Mapped[dict[str, Any]] = mapped_column(JSON, default=lambda: {"status": "pending"})
     ref: Mapped[str | None] = mapped_column(String(128))
     value: Mapped[float | None] = mapped_column(Float)
-    segment: Mapped[str | None] = mapped_column(String(32))
+    segment: Mapped[str | None] = mapped_column(String(64))
     __table_args__ = (
         UniqueConstraint("run_id", "evidence_id"),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
@@ -421,6 +446,8 @@ class Report(Base):
     critical: Mapped[bool] = mapped_column(Boolean)
     redline_hit: Mapped[bool] = mapped_column(Boolean)
     display_run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id")
+    informal: Mapped[bool] = mapped_column(Boolean, default=False)
+    suggestions: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 逐句评分的示范说法（AI 生成）：[{segment, start_ms, end_ms, sentence, suggestion}]  # 用了草稿评分标准、红线词表或检测配置：报告标“非正式”
     created_at: Mapped[datetime] = created_at()
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint("recording_id", "revision"),)
@@ -449,6 +476,9 @@ class GoldSet(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(128))
     purpose: Mapped[str] = mapped_column(_enum("prelaunch", "monthly_sample", "regression", name="gold_purpose"))
+    rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")  # 校准员按这个版本打分；金标准与 AI 的对比也按它
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = fk_uuid("users.id", nullable=True)
     created_at: Mapped[datetime] = created_at()
     samples: Mapped[list["GoldSample"]] = relationship(back_populates="gold_set")
 
@@ -458,6 +488,12 @@ class GoldSample(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     gold_set_id: Mapped[uuid.UUID] = fk_uuid("gold_sets.id")
     recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
+    # collecting：等校准员提交；needs_adjudication：有分歧条目待裁决；final：金标准已定稿
+    status: Mapped[str] = mapped_column(_enum("collecting", "needs_adjudication", "final", name="gold_sample_status"), default="collecting")
+    flagged_items: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 校准员分歧超过条目满分 20% 的条目
+    adjudication: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # {条目: {score, note, by, at}}
+    gold: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # 定稿的金标准：条目分、维度、总档位、结论
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gold_set: Mapped[GoldSet] = relationship(back_populates="samples")
     __table_args__ = (UniqueConstraint("gold_set_id", "recording_id"),)
 
@@ -471,6 +507,8 @@ class CalibrationAssignment(Base):
     calibrator_id: Mapped[uuid.UUID] = fk_uuid("users.id")
     status: Mapped[str] = mapped_column(_enum("assigned", "submitted", name="assignment_status"), default="assigned")
     evidence: Mapped[list[Any]] = mapped_column(JSON, default=list)  # 证据级人工标注（source=human）
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # 提交时用同一个计分引擎算出的条目分和维度
+    note: Mapped[str | None] = mapped_column(Text)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
     __table_args__ = (UniqueConstraint("sample_id", "calibrator_id"),)

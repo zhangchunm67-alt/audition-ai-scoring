@@ -11,8 +11,8 @@ from app.cli import create_user, seed_demo
 from app.models import entities as m
 from app.models.convert import evidence_to_row, row_to_evidence
 from app.security.crypto import encrypt
-from scoring import config_hash, finalize, load_config, score_round
-from tests.scoring.helpers import CONFIG_PATH, context, full_marks
+from scoring import config_hash, finalize, parse_config, score_round
+from tests.scoring.helpers import context, full_marks, rl_raw
 
 
 def _recording(db):
@@ -50,7 +50,7 @@ def test_tables_exist(engine):
 
 def test_full_chain_and_evidence_round_trip(db):
     rec, sheet = _recording(db)
-    cfg = load_config(CONFIG_PATH)
+    cfg = parse_config(rl_raw())  # 打开红线的配置：验证红线证据也能完整落库、还原
     run = m.PipelineRun(recording_id=rec.id, round_no=1, status="completed")
     db.add(run)
     db.flush()
