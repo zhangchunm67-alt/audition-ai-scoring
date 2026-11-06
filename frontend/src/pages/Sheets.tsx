@@ -21,7 +21,7 @@ export default function Sheets() {
     <>
       <Typography.Title level={4}>试镜题单</Typography.Title>
       <Typography.Paragraph type="secondary">
-        题单按抽题规则抽好 4 条异议、6 道知识题和朗读稿；候选人按题单在系统外录制，上传录像时选择对应题单。
+        题单按抽题规则抽好 4 条异议和朗读稿（旧版评分标准另抽知识题）；候选人按题单在系统外录制，上传录像时选择对应题单。
       </Typography.Paragraph>
       {can("sheet.write") && (
         <Button type="primary" style={{ marginBottom: 16 }} onClick={() => setOpen(true)}>

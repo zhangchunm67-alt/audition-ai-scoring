@@ -34,7 +34,7 @@ export default function RubricDetail() {
             {data.config_hash}
           </Typography.Text>
         </Descriptions.Item>
-        <Descriptions.Item label="产品讲解要点满分">{data.checklist_max}</Descriptions.Item>
+        <Descriptions.Item label="产品讲解计分">{data.checklist_max == null ? "按固定话术完成准确度（0–50）" : `旧版：卖点卡要点满分 ${data.checklist_max} + 结构`}</Descriptions.Item>
         <Descriptions.Item label="达标线">
           {Object.entries(data.thresholds).map(([k, v]) => (
             <Tag key={k}>

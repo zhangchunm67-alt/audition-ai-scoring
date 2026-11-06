@@ -110,14 +110,14 @@ def test_first_round_incomplete_cannot_decide(cfg):
 
 
 def test_later_round_incomplete(cfg, round_for_total):
-    done = set(ALL_ITEMS) - {"O5"} | {"redlines"}
+    done = set(ALL_ITEMS) - {"O4"} | {"redlines"}
     bad = score_round(full_marks().items, cfg, context(completed=done))
     v = finalize([round_for_total(14), bad, round_for_total(14)], cfg)
     assert v.status == "incomplete" and v.label is None
 
 
 def test_rounds_must_share_config(cfg, round_for_total):
-    c2 = parse_config(modified(raw_config(), lambda d: d.update(version="rubric-v0.1-alt")))
+    c2 = parse_config(modified(raw_config(), lambda d: d.update(version="rubric-v0.2-alt")))
     b = full_marks()
     other = score_round(b.items, c2, context())
     with pytest.raises(VerdictError):

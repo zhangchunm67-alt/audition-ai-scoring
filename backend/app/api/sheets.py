@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from ..models.entities import AuditionSheet, DrawRule, Objection, Product, ProductCard, Question, ReadingScript, RedlineLexiconVersion, RubricVersion, User
 from ..security.rbac import Perm
 from ..services import audit
+from ..pipeline.detectors import unsupported_items
 from ..services.rubrics import checklist_max, load, question_counts
 from .deps import DB, require
 from .products import check_card_total
@@ -116,10 +117,14 @@ def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User 
     if rule is None:
         raise HTTPException(422, "该产品还没有抽题规则")
 
-    check_card_total(card.content, checklist_max(cfg))  # C25：按所选评分标准再校验一次
+    bad = unsupported_items(cfg)
+    if bad:
+        raise HTTPException(422, f"评分标准 {cfg.version} 与当前检测器不匹配，不能用于新的试镜：{'、'.join(bad)}")
+    check_card_total(card.content, checklist_max(cfg))  # C25：旧版评分标准按所选版本再校验一次
     counts = question_counts(cfg)
-    if counts.get("S3") != rule.objection_count or counts.get("O5") != rule.question_count:
-        raise HTTPException(422, f"抽题规则（异议 {rule.objection_count} 条、知识题 {rule.question_count} 道）与评分标准（S3 {counts.get('S3')} 条、O5 {counts.get('O5')} 道）不一致")
+    want_q = counts.get("O5", 0)  # 评分表 20261105 删除了 O5 保险知识，新版不抽知识题
+    if counts.get("S3") != rule.objection_count or want_q != rule.question_count:
+        raise HTTPException(422, f"抽题规则（异议 {rule.objection_count} 条、知识题 {rule.question_count} 道）与评分标准（S3 {counts.get('S3')} 条、知识题 {want_q} 道）不一致")
 
     objs = list(db.scalars(select(Objection).where(Objection.product_id == product.id, Objection.active)))
     qs = list(db.scalars(select(Question).where(Question.product_id == product.id, Question.active)))

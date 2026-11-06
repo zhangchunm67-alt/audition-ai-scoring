@@ -40,4 +40,5 @@ def resilient(p: Providers, *, limits: dict[str, int], redis_conn, backoff: tupl
         return _Wrap(obj, kind, method, limits.get(kind, 4), redis_conn, backoff)
 
     return Providers(w(p.asr, "asr", "transcribe"), w(p.speech_eval, "speech_eval", "assess"), w(p.llm, "llm", "complete_json"),
-                     w(p.vision, "vision", "analyze"), w(p.laugh, "laugh", "detect"))
+                     w(p.vision, "vision", "analyze"), w(p.laugh, "laugh", "detect"),
+                     w(p.voice, "voice", "rate"))

@@ -18,10 +18,10 @@ def test_generate_sheet_from_demo(login, seeded):
     assert s["code"].startswith("TS") and s["status"] == "issued"
     assert len(s["objections"]) == 4 and len({o["objection_id"] for o in s["objections"]}) == 4
     assert [o["at_ms"] for o in s["objections"]] == [240000, 330000, 420000, 480000]
-    assert len(s["questions"]) == 6 and len({q["question_id"] for q in s["questions"]}) == 6
+    assert s["questions"] == []  # 评分表 20261105 删除了 O5 保险知识，不再抽知识题
     assert s["reading_text"] and s["recording_rules_version"] == "rules-v1"
     assert s["uses_draft_config"] is True  # 评分标准和红线词表都是草稿，报告须标“非正式”
-    assert s["rubric_version"] == "rubric-v0.1" and s["product_card_version"] == 1
+    assert s["rubric_version"] == "rubric-v0.2" and s["product_card_version"] == 1
     hr = login("hr")
     assert hr.get(f"/api/sheets/{s['id']}").status_code == 200
     assert hr.post("/api/sheets", json={"product_id": pid, "rubric_version_id": rid}).status_code == 403
@@ -62,15 +62,26 @@ def test_draw_rule_must_match_rubric_counts(login, seeded):
     assert r.status_code == 422 and "不一致" in r.json()["detail"]
 
 
-def test_card_rechecked_against_chosen_rubric(login, seeded):
+def test_draw_rule_with_questions_rejected_for_current_rubric(login, seeded):
     pid, rid = _ids(seeded)
-    card = seeded.scalars(select(ProductCard)).first()
-    content = dict(card.content)
-    content["checklist"] = content["checklist"][:-1]  # 直接改库模拟历史数据：合计 27
-    card.content = content
+    api = login("admin")
+    api.put(f"/api/products/{pid}/draw-rule", json={"question_count": 6})
+    r = api.post("/api/sheets", json={"product_id": pid, "rubric_version_id": rid})
+    assert r.status_code == 422 and "知识题 0 道" in r.json()["detail"]
+
+
+def test_legacy_rubric_cannot_issue_new_sheets(login, seeded):
+    """旧版 rubric-v0.1 与现行检测器的证据协议对不上（卖点卡 + 结构、O5 等），不能再用于新的试镜。"""
+    from scoring import config_hash, parse_config
+    from tests.scoring.helpers import LEGACY_CONFIG_PATH, legacy_raw
+
+    pid, _ = _ids(seeded)
+    rv = RubricVersion(version="rubric-v0.1", status="draft", yaml_text=LEGACY_CONFIG_PATH.read_text("utf-8"),
+                       config_hash=config_hash(parse_config(legacy_raw())))
+    seeded.add(rv)
     seeded.commit()
-    r = login("admin").post("/api/sheets", json={"product_id": pid, "rubric_version_id": rid})
-    assert r.status_code == 422 and "27" in r.json()["detail"]
+    r = login("admin").post("/api/sheets", json={"product_id": pid, "rubric_version_id": str(rv.id)})
+    assert r.status_code == 422 and "不匹配" in r.json()["detail"] and "S2" in r.json()["detail"] and "O5" in r.json()["detail"]
 
 
 def test_void(login, seeded):

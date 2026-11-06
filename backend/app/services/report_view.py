@@ -14,7 +14,7 @@ from ..pipeline.text import SegmentText, sentences
 from ..providers.base import Word
 
 # 这些证据表示“这句话有问题”（扣分、未加分或答错），逐句评分里标红并给示范说法
-ISSUE_OCCURRENCE = {"P2", "P7", "P8", "P10", "L3", "S2", "L1"}
+ISSUE_OCCURRENCE = {"P1", "P2", "P3", "P7", "P8", "P10", "L3", "S2", "L1"}  # S2、L1、P7 的逐次证据只出现在旧版报告
 ISSUE_INSTANCE = {"S4", "L2", "L4", "L5", "O1", "O2", "O3"}
 
 

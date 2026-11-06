@@ -1,0 +1,278 @@
+# 主播评分标准 · 机器可执行版 v0.2 —— 计分配置
+#
+# 唯一规则来源：docs/source/主播评分表-20261105.xls（下称“评分表”）。每个条目的 note 先引评分表原文，再写机器口径。
+# rubric-v0.1（docs/rubric.md 的改写版）已停用，只在 git 历史和已存报告的配置快照里保留，用于追溯和重算旧报告。
+# 评分表没有写明、由实现补充的规则一律带 pending；评分表写“根据主观打分”的条目一律带 calibration_required。
+# 标记约定：
+#   pending: [Q6]               规则来自待确认项（docs/decisions.md 第 4 节、第 7 节），未拍板
+#   calibration_required: true  需要人工标注样本校准后才能作为正式规则
+# 带标记的配置只能用于开发和测试；scoring.publish_blockers() 会列出全部标记，清零前不能发布为正式配置。
+# 改动只影响计分（不需要重跑模型）。词表、抽帧率、提示词等检测配置单独管理，改了需要重跑。
+
+version: rubric-v0.2
+expected_item_count: 23                # 评分表：人设 10 条、销售循环 4 条、表达逻辑 5 条、其他 4 条
+removed_items: [O5]                    # 保险知识：评分表 20261105 已删除（旧表 20241025 有）
+
+grade_bands: [[96, 100, 1], [91, 95, 2], [81, 90, 3], [71, 80, 4], [61, 70, 5], [51, 60, 6], [41, 50, 7], [0, 40, 8]]
+thresholds: {veteran: 8, month_1: 10, new_trial: 15}   # 评分表“评定标准”：总档位须小于该值
+
+critical:
+  review_band: 2        # 离达标线 2 档以内：[达标线-2, 达标线+1]，新主播试播即 13–16（I1）
+
+low_confidence:
+  default_threshold: 0.6
+  calibration_required: true
+
+# C33：试镜评分不涉及合规红线（评分表无此项，候选人不是正式员工），关闭红线否决。
+# 结构保留给以后的直播评分：打开前须合规确认 R1–R8（Q19），并校准判定阈值（目前 0.8 只是测试值）。
+redlines:
+  enabled: false
+  list: [R1, R2, R3, R4, R5, R6, R7, R8]
+  hit_threshold: 0.8                # 判定命中：judgment=count 且置信度 ≥ 阈值（I3）
+  exclude_segments: [reading]       # C10：朗读段不做红线检测
+
+dimensions:
+  # ─────────────── 人设塑造 100：画面里没有贴片 / KT 板时 P9 不适用，适用满分 95（C26） ───────────────
+  - id: P
+    name: 人设塑造
+    items:
+      - id: P1
+        name: 形象
+        type: T1
+        max: 10
+        per: 10
+        free: 0
+        note: >-
+          评分表：职业形象：相貌、穿着、发型等（穿着、发型不符合要求直接扣10分）。
+          机器只判穿着、发型是否不符合要求（逐次证据 label=attire / hairstyle），出现即扣 10 分；
+          相貌不做自动评分，也不用于自动录用结论（Q5）。
+        pending: [Q5, P-P1-DRESS]
+
+      - id: P2
+        name: 语言干净
+        type: T1
+        max: 40
+        per: 1
+        free: 20
+        window: main_10min
+        note: 评分表：是……的、一个、……的情况下/的话、这边给你、那么、什么呀、懂了吗、对不对（10分钟，每处扣1分，免除20处）
+        pending: [Q6]
+        normalize: {enabled: true, per_minutes: 10, pending: [Q8, P-B8]}
+
+      - id: P3
+        name: 普通话标准
+        type: T1
+        max: 10
+        per: 1
+        free: 0
+        note: >-
+          评分表：发音准确、方言（方言一处扣1分）。机器按朗读段语音评测给出的方言处计次（label=dialect）；
+          发音不准但非方言的位置留作证据、不扣分，是否扣分及判定范围待确认。
+        pending: [P-P3-PRON]
+        calibration_required: true
+
+      - id: P4
+        name: 语速
+        type: T5
+        max: 5
+        metric: chars_per_min
+        limit: 400
+        note: 评分表：语速（一分钟不超过400字）。超限分钟数到分值的对应关系评分表未写
+        score_by_over: {"0": 5, "1": 3, "2+": 0}
+        pending: [Q10]
+
+      - id: P5
+        name: 语调
+        type: T4
+        max: 5
+        note: 评分表：语调（抑扬顿挫-根据主观打分）。由语音评价模型直接给 0–5 分，须用人工标注样本校准
+        pending: [CAL-SUBJECTIVE]
+        calibration_required: true
+        parts:
+          - {id: main, levels: [5, 4, 3, 2, 1, 0], source: evidence}
+
+      - id: P6
+        name: 音色
+        type: T4
+        max: 5
+        note: 评分表：音色-根据主观打分。由语音评价模型直接给 0–5 分，须用人工标注样本校准
+        pending: [CAL-SUBJECTIVE]
+        calibration_required: true
+        parts:
+          - {id: main, levels: [5, 4, 3, 2, 1, 0], source: evidence}
+
+      - id: P7
+        name: 节奏（停顿）
+        type: T4
+        max: 10
+        note: >-
+          评分表：节奏（是否有停顿）-根据主观打分。由语音评价模型直接给 0–10 分，测得的停顿、连讲、卡壳只作参考输入，
+          不再按次数分档；须用人工标注样本校准
+        pending: [CAL-SUBJECTIVE]
+        calibration_required: true
+        parts:
+          - {id: main, levels: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], source: evidence}
+
+      - id: P8
+        name: 小动作
+        type: T1
+        max: 5
+        per: 1
+        free: 0
+        note: 评分表：小动作-出现一次扣1分。低头看稿是否计次（Q11）属于检测配置
+
+      - id: P9
+        name: 道具使用
+        type: T2
+        max: 5
+        awards: {sticker: 2, kt_board: 1}
+        note: 评分表：对贴片正确使用1次得2分，对KT板正确使用一次得1分
+        applicable_if: props_available   # C26：上传时登记画面里有无贴片 / KT 板
+
+      - id: P10
+        name: 嘻嘻哈哈
+        type: T1
+        max: 5
+        per: 5
+        free: 0
+        note: 评分表：嘻嘻哈哈-出现一次扣5分
+
+  # ─────────────── 销售循环 100 ───────────────
+  - id: S
+    name: 销售循环
+    items:
+      - id: S1
+        name: 激发需求
+        type: T4
+        max: 10
+        note: 评分表：例如：商业保险的必要性（框架清晰-根据主观打分）。由大模型直接给 0–10 分，须用人工标注样本校准
+        pending: [CAL-SUBJECTIVE]
+        calibration_required: true
+        parts:
+          - {id: main, levels: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], source: evidence}
+
+      - id: S2
+        name: 产品讲解
+        type: T4
+        max: 50
+        note: >-
+          评分表：产品讲解是否清楚（框架清晰）——根据固定话术的完成准确程度打分。
+          不使用卖点卡 30 分加结构 20 分的历史拆分。每个产品的固定话术和 S2 校准记录随卖点卡按版本保存；
+          产品没有与当前固定话术版本对应的校准记录时，S2 检测器拒绝出分（本条缺证据，不出报告）。
+        pending: [CAL-S2-PRODUCT]
+        calibration_required: true
+        parts:
+          - id: fixed_script_accuracy
+            # 接受人工或经校准模型给出的 0–50 整数分
+            levels: [50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+            source: evidence
+
+      - id: S3
+        name: 解答异议
+        type: T6
+        max: 20
+        count: 4
+        elements: {direct_answer: 2, advantage: 2, altruistic_close: 1}
+        zero_labels: [wrong_answer, no_answer]
+        note: >-
+          评分表：综合运用激发、讲解、逼单（正面回答问题+强调优势+利他收尾，4个疑义问题处理，每个5分）。
+          C8：按回答内容归属异议，不按时间窗口切分
+        pending: [Q13]
+
+      - id: S4
+        name: 逼单
+        type: T2
+        max: 20
+        award: 5
+        labels: [herd, loss_aversion, authority, price_split, sunk_cost]
+        distinct_by_label: true
+        note: >-
+          评分表：运用至少三种逼单方法（每个5分）：从众、损失规避、权威认同、价格拆分、沉没成本……
+          同一种方法只算一次；施压、编造等不合规写法不计（C33 保留）。满分 20 需要 4 种，与“至少三种”的关系待确认
+        pending: [Q15]
+
+  # ─────────────── 表达逻辑 100 ───────────────
+  - id: L
+    name: 表达逻辑
+    items:
+      - id: L1
+        name: 电梯法则
+        type: T4
+        max: 20
+        note: 评分表：30秒留人话术（运用金字塔原理-只给利他话术-根据主观评分）。由大模型直接给 0–20 分，须用人工标注样本校准
+        pending: [CAL-SUBJECTIVE]
+        calibration_required: true
+        parts:
+          - {id: main, levels: [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], source: evidence}
+
+      - id: L2
+        name: 结构化表达
+        type: T2
+        max: 20
+        award: 10
+        note: 评分表：总分、总分总、结论先行【每正确使用1个得10分】
+
+      - id: L3
+        name: 推理运用
+        type: T1
+        max: 20
+        per: 10
+        free: 0
+        note: 评分表：推荐使用归纳法【演绎法使用错误一次扣10分】
+        pending: [Q16]
+
+      - id: L4
+        name: 归纳能力
+        type: T2
+        max: 20
+        award: 10
+        note: 评分表：论点：不遗漏、不重复（讲3-4点）【每正确使用1个得10分】。同一段话能否同时在 L2 和 L4 得分（Q17）
+        pending: [Q17]
+
+      - id: L5
+        name: 事实运用
+        type: T2
+        max: 20
+        award: 10
+        note: 评分表：能够掌握准确的事实、最好运用数字【每正确使用1个得10分】
+
+  # ─────────────── 其他 100 ───────────────
+  - id: O
+    name: 其他
+    items:
+      - id: O1
+        name: 语言包装
+        type: T2
+        max: 30
+        award: 10
+        distinct_by_label: true    # 同一术语只算一处，label 为术语（评分表未写，待确认）
+        note: 评分表：专业术语化为日常白话【3处、每处10分】
+        pending: [P-O-DISTINCT]
+
+      - id: O2
+        name: 针对性
+        type: T2
+        max: 30
+        award: 10
+        distinct_by_label: true    # 同一卖点重复说只算一处，label 为卖点（评分表未写，待确认）
+        note: 评分表：儿童保险-儿童医院可以用、门急不限次数雾化可用【3处、每处10分】
+        pending: [P-O-DISTINCT]
+
+      - id: O3
+        name: 场景化
+        type: T2
+        max: 20
+        award: 10
+        note: 评分表：不用盯着收费员看是否医保内外【2处、每处10分】
+
+      - id: O4
+        name: 节奏与气氛
+        type: T4
+        max: 20
+        note: >-
+          评分表：主播对直播间的掌控，包括节奏掌控（讲品还是回答问题）、是否有热情--根据主观打分。
+          由大模型参考回应时长、是否回到主线、冷场次数和声音起伏直接给 0–20 分，不再拆成节奏 + 热情两部分；须用人工标注样本校准
+        pending: [CAL-SUBJECTIVE]
+        calibration_required: true
+        parts:
+          - {id: main, levels: [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], source: evidence}

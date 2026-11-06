@@ -170,7 +170,7 @@ class DrawRule(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     product_id: Mapped[uuid.UUID] = fk_uuid("products.id")
     objection_count: Mapped[int] = mapped_column(Integer, default=4)
-    question_count: Mapped[int] = mapped_column(Integer, default=6)
+    question_count: Mapped[int] = mapped_column(Integer, default=0)
     objection_times_ms: Mapped[list[int]] = mapped_column(JSON)  # 默认 [240000, 330000, 420000, 480000]
     prep_seconds: Mapped[int] = mapped_column(Integer, default=900)
     question_seconds: Mapped[int] = mapped_column(Integer, default=60)

@@ -69,37 +69,37 @@ try {
 
   await step("评分标准草稿显示发布阻碍，发布按钮不可用", async () => {
     await navigate(page, "评分标准");
-    await page.getByRole("link", { name: "rubric-v0.1" }).click();
+    await page.getByRole("link", { name: "rubric-v0.2" }).click();
     await page.getByText(/项待确认规则或测试占位值，不能发布/).waitFor();
     assert.equal(await page.getByRole("button", { name: "发 布" }).isDisabled(), true);
   });
 
-  await step("卖点卡要点合计不等于 30 时不能保存，等于 30 时保存为新版本", async () => {
+  await step("卖点卡：固定话术带版本，改版本提示 S2 须重新校准；保存为新版本", async () => {
     await navigate(page, "产品与题库");
     await page.getByRole("link", { name: "少儿医疗险（演示）" }).click();
+    await page.getByText("S2 校准 demo-uncalibrated（草稿）").waitFor();
     await page.getByRole("button", { name: "基于最新版本修改" }).click();
-    const price = page.locator('input[id="checklist_7_points"]');
-    await price.fill("4");
-    await page.getByText("分值合计 31 / 30").waitFor();
-    assert.equal(await page.getByRole("button", { name: "保存为新版本（草稿）" }).isDisabled(), true);
-    await price.fill("3");
-    await page.getByText("分值合计 30 / 30").waitFor();
+    const ver = page.locator('input[id="fixed_script_version"]');
+    await ver.fill("demo-script-2");
+    await page.getByText(/话术版本已改，原 S2 校准记录（demo-uncalibrated）不再适用/).waitFor();
+    await ver.fill("demo-script-1");
+    assert.equal(await page.getByText(/话术版本已改/).count(), 0);
     await page.getByRole("button", { name: "保存为新版本（草稿）" }).click();
     await page.getByText("第 2 版").waitFor();
   });
 
-  await step("生成试镜题单：4 条异议按时间点、6 道知识题", async () => {
+  await step("生成试镜题单：4 条异议按时间点，不抽知识题（评分表 20261105 已删除 O5）", async () => {
     await navigate(page, "试镜题单");
     await page.getByRole("button", { name: "生成题单" }).click();
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("产品").click();
     await page.getByTitle("少儿医疗险（演示）").click();
     await dlg.getByLabel("评分标准版本").click();
-    await page.getByTitle("rubric-v0.1（草稿）").click();
+    await page.getByTitle("rubric-v0.2（草稿）").click();
     await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
     await page.getByText(/^题单 TS/).waitFor();
     for (const t of ["04:00", "05:30", "07:00", "08:00"]) await page.getByText(t, { exact: true }).waitFor();
-    assert.equal(await page.locator(".ant-list").nth(1).locator(".ant-list-item").count(), 6);
+    assert.equal(await page.locator(".ant-list").nth(1).locator(".ant-list-item").count(), 0);
     await page.getByText(/报告会标注“非正式”/).waitFor();
   });
 
@@ -140,7 +140,7 @@ try {
     await pr.getByText("录制时逐条给出，不提前提供").waitFor();
     assert.equal(await pr.getByText(firstObjection).count(), 0);
     assert.equal(await pr.getByText(/\d+\s*分(?!钟)/).count(), 0); // 不含任何分值（“15 分钟”这类时长除外）
-    await pr.getByText("必讲要点：").waitFor();
+    await pr.getByText("产品讲解固定话术：").waitFor();
   });
 
   await step("HR 新建候选人，未登记授权时先登记，再选题单、达标线、有无道具并分片上传", async () => {
@@ -168,7 +168,7 @@ try {
     const setTime = (sec) => hr.locator('[data-testid="marker-video"]').evaluate((v, t) => { v.currentTime = t; }, sec);
     const tables = hr.locator(".ant-table");
     const segRows = tables.nth(0).locator("tbody tr");
-    const marks = [1, 9, 10, 11, 12, 13, 14, 16];
+    const marks = [1, 16]; // 主体段、朗读段（新版题单没有知识题）
     for (let i = 0; i < marks.length; i++) {
       await setTime(marks[i]);
       await segRows.nth(i).getByRole("button", { name: "设为当前时间" }).click();
@@ -278,7 +278,7 @@ try {
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("名称").fill("上线前金标准（演示）");
     await dlg.getByLabel("评分标准版本").click();
-    await page.getByTitle("rubric-v0.1").click();
+    await page.getByTitle("rubric-v0.2").click();
     await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
     await page.getByRole("heading", { name: "上线前金标准（演示）" }).waitFor();
     await page.locator(".ant-select", { hasText: "选择已出报告的录像加入" }).click();
@@ -309,10 +309,14 @@ try {
         for (const cb of item.querySelectorAll(".ant-checkbox-wrapper")) if (!skip.has(cb.textContent.trim())) cb.click();
       }
     });
+    for (const [id, v] of [["S2", "40"], ["L1", "15"], ["O4", "14"]]) await c.getByTestId(`item-${id}`).locator("input").fill(v); // 0–满分直接打分
     await c.getByTestId("item-P2").getByRole("button", { name: "+ 那么" }).click(); // 计次类：看到一次点一次
     await c.getByRole("button", { name: "提 交" }).click();
     await c.getByRole("button", { name: /确\s*定|OK/ }).click();
-    await c.getByText("已提交。所有校准员提交后").waitFor();
+    const ok = c.getByText("已提交。所有校准员提交后");
+    const err = c.locator(".ant-message-error");
+    await Promise.race([ok.waitFor(), err.waitFor()]);
+    if (await err.count()) throw new Error(`校准提交被拒绝：${await err.first().textContent()}`);
   }
 
   await step("两位校准员背对背打分并提交（不看 AI 结果）", async () => {

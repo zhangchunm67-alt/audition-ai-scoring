@@ -9,7 +9,7 @@ from app.models.entities import (
     UploadSession,
 )
 from app.providers.base import Providers, ProviderError
-from app.providers.mock import Faults, MockASR, MockLaugh, MockLLM, MockSpeechEval, MockVision
+from app.providers.mock import Faults, MockASR, MockLaugh, MockLLM, MockSpeechEval, MockVision, MockVoice
 from app.providers.registry import set_providers
 from conftest import FULL_SEG
 from test_recordings_api import SEG, _uploaded
@@ -22,7 +22,7 @@ def _reset_providers():
 
 
 def _providers(**kw) -> Providers:
-    base = dict(asr=MockASR(), speech_eval=MockSpeechEval(), llm=MockLLM(), vision=MockVision(), laugh=MockLaugh())
+    base = dict(asr=MockASR(), speech_eval=MockSpeechEval(), llm=MockLLM(), vision=MockVision(), laugh=MockLaugh(), voice=MockVoice())
     base.update(kw)
     return Providers(**base)
 
@@ -86,13 +86,56 @@ def test_end_to_end_short_video(login, seeded, video_file, db):
     runs = _runs(db, rec)
     assert all(r.status == "completed" and r.retry_count == 0 for r in runs)
     dets = db.scalars(select(DetectorRun).where(DetectorRun.run_id == runs[0].id)).all()
-    assert {d.detector_id for d in dets} >= {"P1", "P2", "S2", "S3", "O5"} and all(d.status == "completed" for d in dets)
+    assert {d.detector_id for d in dets} == {"P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "S1", "S2", "S3", "S4",
+                                             "L1", "L2", "L3", "L4", "L5", "O1", "O2", "O3", "O4"}
+    assert all(d.status == "completed" for d in dets)
     assert "redlines" not in {d.detector_id for d in dets}  # C33：试镜不做红线检测
     rep = _report(db, rec)
     assert rep.informal is True  # 演示用的评分标准、红线词表、检测配置都是草稿
     assert rep.label in ("recommend", "pending", "not_recommend") and rep.verdict["reason"]
     assert rec.processing_started_at and rec.finished_at
     assert db.scalar(select(AuditLog).where(AuditLog.action == "report_create", AuditLog.target_id == str(rec.id)))
+
+
+def test_s2_traceable_to_fixed_script_and_calibration(login, seeded, video_file, db):
+    """S2 只出一条等级证据，记下所用固定话术和校准版本；校准记录是草稿时报告标“非正式”，模型清单里可追溯。"""
+    rec = _submit(login("hr"), seeded, video_file)
+    assert rec.status == "done", rec.failure_reason
+    run = _runs(db, rec)[0]
+    (s2,) = db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == "S2")).all()
+    assert s2.kind == "level" and s2.ref == "fixed_script_accuracy" and 0 <= s2.judgment <= 50
+    assert s2.label == "fixed_script=demo-script-1;calibration=demo-uncalibrated"
+    rep = _report(db, rec)
+    assert rep.model_manifest["s2_fixed_script"] == "demo-script-1" and rep.model_manifest["s2_calibration_status"] == "draft"
+    assert rep.informal is True
+
+
+@pytest.mark.parametrize("change,msg", [
+    (lambda c: c.pop("s2_calibration"), "校准记录"),
+    (lambda c: c.pop("fixed_script"), "固定话术"),
+    (lambda c: c["fixed_script"].update(version="demo-script-2"), "重新校准"),
+])
+def test_submit_refused_without_s2_calibration(login, seeded, video_file, db, change, msg):
+    """产品没有固定话术或对应的 S2 校准记录：拒绝提交处理（不跑流水线，不通知候选人重录）。"""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.models.entities import ProductCard
+
+    card = db.scalar(select(ProductCard))
+    content = dict(card.content)
+    content = {**content, "fixed_script": dict(content["fixed_script"])}
+    change(content)
+    card.content = content
+    flag_modified(card, "content")
+    db.commit()
+    hr = login("hr")
+    rec = _uploaded(hr, db, video_file)
+    assert hr.put(f"/api/recordings/{rec['id']}/segments", json=SEG).status_code == 200
+    r = hr.post(f"/api/recordings/{rec['id']}/submit")
+    assert r.status_code == 422 and msg in r.json()["detail"]
+    db.expire_all()
+    assert db.get(Recording, rec["id"]).status == "uploaded" and not _runs(db, db.get(Recording, rec["id"]))
+    assert db.scalars(select(Notification)).all() == []
 
 
 def test_full_length_critical_three_rounds_and_traceability(login, seeded, full_video, db):
@@ -109,7 +152,7 @@ def test_full_length_critical_three_rounds_and_traceability(login, seeded, full_
     # 可追溯
     m = rep.model_manifest
     assert m["asr"] == "mock-asr@1" and m["llm"] == "mock-llm@1" and m["temperature"] == "0" and m["asr_disfluency_removal"] == "false"
-    assert m["prompts"].startswith("prompts-v1:") and m["detector_config"] == "detectors-v1"
+    assert m["prompts"].startswith("prompts-v2:") and m["detector_config"] == "detectors-v1"
     assert rep.config_hash.startswith("sha256:") and rep.rubric_version_id and rep.detector_config_version_id
     # 口头禅保留：转写里有“那么”“一个”，P2 证据逐条记了原句和时间
     tr = db.scalar(select(Transcript).where(Transcript.run_id == runs[0].id, Transcript.segment == "main"))
@@ -130,8 +173,8 @@ def test_objection_times_align_with_evidence(login, seeded, full_video, db):
     assert {e.ref for e in s3} == set(at)
     for e in s3:
         assert e.start_ms is not None and at[e.ref] <= e.start_ms < main["end_ms"], (e.ref, e.start_ms, at[e.ref])
-    o4 = {e.label: e.value for e in db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == "O4"))}
-    assert 0 < o4["max_response_latency_s"] < 5  # Mock 在弹出后 1.5 秒开始回应
+    (o4,) = db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == "O4")).all()
+    assert o4.kind == "level" and "最长回应 1.5 秒" in o4.reason  # Mock 在弹出后 1.5 秒开始回应；测量值作为 O4 主观评分的参考
 
 
 def test_rounds_can_disagree_majority_decides(login, seeded, full_video, db):
@@ -258,10 +301,10 @@ def test_llm_called_with_temperature_zero():
             seen.append(temperature)
             return super().complete_json(task, system, user, schema, temperature=temperature, payload=payload)
 
-    out = llm.ask(Spy(), "o5_answer", {"question": "什么是等待期？", "full_points": ["合同生效后"], "answer": "合同生效后的一段时间"})
-    assert seen == [0.0] and out["level"] in ("full", "partial", "zero")
+    out = llm.ask(Spy(), "s1_need", {"transcript": "孩子感冒发烧去医院，医保报完还得自己掏。这款产品能报。"})
+    assert seen == [0.0] and 0 <= out["level"] <= 10
     with pytest.raises(ProviderError):
-        MockLLM().complete_json("o5_answer", "", "", {}, temperature=0.3, payload={})
+        MockLLM().complete_json("s1_need", "", "", {}, temperature=0.3, payload={})
 
 
 # ───────────── 到期删除（P0：到期视频自动删除，报告保留） ─────────────

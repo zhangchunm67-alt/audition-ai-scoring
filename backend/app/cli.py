@@ -1,7 +1,7 @@
 """命令行工具。
 
   python -m app.cli create-user --username admin --role admin --display-name 管理员   # 密码从环境变量 NEW_USER_PASSWORD 或交互输入
-  python -m app.cli seed-demo                                                          # 导入评分标准 v0.1、检测配置 v1 和一套演示数据
+  python -m app.cli seed-demo                                                          # 导入评分标准 v0.2、检测配置 v1 和一套演示数据
   python -m app.cli purge-expired                                                      # 删除到期媒体（每天由定时任务执行）
   python -m app.cli worker                                                             # 启动处理队列 worker（APP_QUEUE=rq）
 
@@ -27,13 +27,21 @@ from .security.passwords import hash_password
 from .security.rbac import Role
 
 ROOT = Path(__file__).resolve().parents[2]
-RUBRIC_PATH = ROOT / "config" / "rubric" / "rubric-v0.1.yaml"
+RUBRIC_PATH = ROOT / "config" / "rubric" / "rubric-v0.2.yaml"
 
 DEMO_CHECKLIST = [
     ("coverage", "保障范围", 5, False), ("deductible", "免赔额", 4, True), ("ratio", "报销比例", 3, False),
     ("waiting", "等待期", 4, True), ("health", "健康告知", 4, True), ("exclusion", "责任免除", 3, True),
     ("renewal", "续保条件", 4, False), ("price", "价格", 3, False),
 ]
+# 演示用固定话术（待培训提供正式话术）。正式话术按产品维护，改话术须换版本号并重新校准 S2。
+DEMO_FIXED_SCRIPT = (
+    "这款产品就三个好：保得全、报得多、价格低。先说保得全，保障范围包括门急诊和住院。"
+    "再说报得多，报销比例是百分之百。免赔额，就是先自己掏的那部分钱，超过的才给报，这款免赔额是零元。"
+    "最后说价格，一年三百六十五元，平均每天不到一块钱。等待期，就是合同生效后的一段观察期，这款等待期是三十天。"
+    "健康告知请如实填写。续保条件是每年审核续保。责任免除部分请大家仔细看条款。"
+    "理赔时在线提交材料就可以，进度随时能查。"
+)
 DEMO_OBJECTIONS = [
     ("孩子有医保了，还需要买吗？", ["医保有报销范围和比例限制，医保外的部分要自己付"], ["能报医保外的自费部分（以条款为准）"], "先看看家里现有的保障，缺这块再补"),
     ("之前得过肺炎，还能买吗？", ["以健康告知为准，如实告知；有疑问走人工核保"], [], "先对照一下健康告知，符合再给孩子安排"),
@@ -92,6 +100,11 @@ def seed_demo(db: Session) -> None:
     db.flush()
     db.add(ProductCard(product_id=p.id, version=1, status="published", content={
         "checklist": [{"id": i, "name": n, "points": pts, "compliance_required": c} for i, n, pts, c in DEMO_CHECKLIST],
+        "fixed_script": {"version": "demo-script-1", "text": DEMO_FIXED_SCRIPT},
+        # 演示用草稿校准记录：没有人工标注样本，只为跑通流程；据此出的报告标“非正式”
+        "s2_calibration": {"version": "demo-uncalibrated", "fixed_script_version": "demo-script-1", "status": "draft",
+                           "train_samples": 0, "holdout_samples": 0, "holdout_agreement": None, "anchors": [],
+                           "note": "演示数据，未经人工样本校准"},
         "targeted_points": ["儿童医院可以用", "门急诊不限次数", "雾化可以报"],
         "scenarios": ["带孩子去缴费，不用盯着收费员看哪些是医保内、哪些是医保外"],
         "glossary": [{"term": t, "plain": pl} for t, pl in [("免赔额", "先自己掏的那部分钱，超过的才给报"), ("等待期", "合同生效后的一段观察期")]],
@@ -108,7 +121,7 @@ def seed_demo(db: Session) -> None:
             k: {"name": n, "keywords": kw, "examples": kw, "not_redline": [], "correct": c} for k, (n, kw, c) in DEMO_REDLINES.items()
         }))
     db.commit()
-    print("已导入评分标准 v0.1（草稿）和演示产品、卖点卡、异议、知识题、抽题规则、朗读稿、红线词表（草稿）")
+    print("已导入评分标准 v0.2（草稿）和演示产品、卖点卡、异议、知识题、抽题规则、朗读稿、红线词表（草稿）")
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -3,9 +3,11 @@ import copy
 
 import yaml
 
-from tests.scoring.helpers import CONFIG_PATH, raw_config
+from tests.scoring.helpers import CONFIG_PATH, LEGACY_CONFIG_PATH, raw_config
 
 YAML = CONFIG_PATH.read_text("utf-8")
+LEGACY_YAML = LEGACY_CONFIG_PATH.read_text("utf-8")
+SCRIPT = {"version": "script-1", "text": "这款产品就三个好：保得全、报得多、价格低。"}
 CHECKLIST = [
     {"id": "coverage", "name": "保障范围", "points": 5}, {"id": "deductible", "name": "免赔额", "points": 4, "compliance_required": True},
     {"id": "ratio", "name": "报销比例", "points": 3}, {"id": "waiting", "name": "等待期", "points": 4, "compliance_required": True},
@@ -40,9 +42,9 @@ def test_import_draft_lists_blockers(login, db):
     r = api.post("/api/rubrics", json={"yaml_text": YAML})
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["status"] == "draft" and body["version"] == "rubric-v0.1" and body["config_hash"].startswith("sha256:")
-    assert body["blocker_count"] > 0 and any("Q6" in b for b in body["blockers"])
-    assert len(body["items"]) == 23 and body["checklist_max"] == 30
+    assert body["status"] == "draft" and body["version"] == "rubric-v0.2" and body["config_hash"].startswith("sha256:")
+    assert body["blocker_count"] > 0 and any("Q6" in b for b in body["blockers"]) and any("CAL-S2-PRODUCT" in b for b in body["blockers"])
+    assert len(body["items"]) == 23 and body["checklist_max"] is None  # S2 按固定话术打分，不再有卖点卡要点满分
     assert body["thresholds"] == {"veteran": 8, "month_1": 10, "new_trial": 15}
     assert api.get("/api/rubrics/reference").json()["id"] == body["id"]
     assert api.post("/api/rubrics", json={"yaml_text": YAML}).status_code == 409  # 同版本号不能重复导入
@@ -89,16 +91,19 @@ def _product(api):
     return r.json()["id"]
 
 
-def test_card_points_must_total_checklist_max(login):
-    """C25：必讲要点分值合计必须等于 30，否则不能保存。"""
+def test_card_points_must_total_checklist_max_only_for_legacy_rubric(login):
+    """C25 只适用于旧版 rubric-v0.1（卖点卡要点 30 + 结构 20）；新版 S2 按固定话术打分，要点不计分。"""
     api = login("admin")
-    api.post("/api/rubrics", json={"yaml_text": YAML})
+    api.post("/api/rubrics", json={"yaml_text": LEGACY_YAML})
     pid = _product(api)
     bad = copy.deepcopy(CHECKLIST)[:-1]  # 合计 27
     r = api.post(f"/api/products/{pid}/cards", json={"checklist": bad})
     assert r.status_code == 422 and "27" in r.json()["detail"] and "30" in r.json()["detail"]
     r = api.post(f"/api/products/{pid}/cards", json={"checklist": CHECKLIST, "glossary": [{"term": "免赔额", "plain": "先自己掏的那部分钱"}]})
     assert r.status_code == 201 and r.json()["points_total"] == 30 and r.json()["version"] == 1
+    api.post("/api/rubrics", json={"yaml_text": YAML})  # 参照最新草稿：新版
+    r = api.post(f"/api/products/{pid}/cards", json={"fixed_script": SCRIPT})
+    assert r.status_code == 201 and r.json()["content"]["checklist"] == [] and r.json()["content"]["fixed_script"] == SCRIPT
 
 
 def test_card_needs_rubric_and_unique_points(login):
@@ -111,9 +116,39 @@ def test_card_needs_rubric_and_unique_points(login):
     assert api.post(f"/api/products/{pid}/cards", json={"checklist": dup}).status_code == 422
 
 
-def test_card_versions_and_publish(login):
+def test_s2_calibration_tied_to_fixed_script_version(login, db):
+    """S2 校准记录必须对应本卡固定话术的版本；已验证须有足够样本和留出验证；发布后可以补登，写审计。"""
+    from sqlalchemy import select
+
+    from app.models.entities import AuditLog
+
     api = login("admin")
     api.post("/api/rubrics", json={"yaml_text": YAML})
+    pid = _product(api)
+    cal = {"version": "cal-1", "fixed_script_version": "script-1"}
+    assert api.post(f"/api/products/{pid}/cards", json={"s2_calibration": cal}).status_code == 422  # 没有话术
+    r = api.post(f"/api/products/{pid}/cards", json={"fixed_script": SCRIPT, "s2_calibration": {**cal, "fixed_script_version": "script-0"}})
+    assert r.status_code == 422 and "版本" in r.text
+    card = api.post(f"/api/products/{pid}/cards", json={"fixed_script": SCRIPT}).json()
+    assert api.post(f"/api/cards/{card['id']}/publish").status_code == 200
+    for bad in ({**cal, "status": "validated", "train_samples": 12, "holdout_samples": 5, "holdout_agreement": 0.9},  # 样本不足
+                {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 0},  # 没有留出验证
+                {**cal, "fixed_script_version": "script-0"},
+                {**cal, "anchors": [{"score": 51, "excerpt": "x"}]}):
+        assert api.put(f"/api/cards/{card['id']}/s2-calibration", json=bad).status_code == 422, bad
+    ok = {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 6, "holdout_agreement": 0.83,
+          "anchors": [{"score": 45, "excerpt": "按话术讲全了三个好"}]}
+    r = api.put(f"/api/cards/{card['id']}/s2-calibration", json=ok)
+    assert r.status_code == 200, r.text
+    got = r.json()["content"]["s2_calibration"]
+    assert got["status"] == "validated" and got["anchors"][0]["score"] == 45 and r.json()["status"] == "published"
+    log = db.scalar(select(AuditLog).where(AuditLog.action == "card_s2_calibration"))
+    assert log.detail["calibration"] == "cal-1" and log.detail["status"] == "validated"
+
+
+def test_card_versions_and_publish(login):
+    api = login("admin")
+    api.post("/api/rubrics", json={"yaml_text": LEGACY_YAML})
     pid = _product(api)
     c1 = api.post(f"/api/products/{pid}/cards", json={"checklist": CHECKLIST}).json()
     c2 = api.post(f"/api/products/{pid}/cards", json={"checklist": CHECKLIST, "scenarios": ["缴费场景"]}).json()

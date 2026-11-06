@@ -43,7 +43,14 @@ function Cards({ pid }: { pid: string }) {
           label: (
             <Space>
               第 {c.version} 版<Tag color={c.status === "published" ? "green" : c.status === "draft" ? "orange" : "default"}>{STATUS_ZH[c.status]}</Tag>
-              要点合计 {c.points_total} 分
+              {c.content.fixed_script ? `话术 ${c.content.fixed_script.version}` : <Tag color="red">没有固定话术</Tag>}
+              {c.content.s2_calibration ? (
+                <Tag color={c.content.s2_calibration.status === "validated" ? "green" : "orange"}>
+                  S2 校准 {c.content.s2_calibration.version}（{c.content.s2_calibration.status === "validated" ? "已验证" : "草稿"}）
+                </Tag>
+              ) : (
+                <Tag color="red">S2 未校准</Tag>
+              )}
             </Space>
           ),
           extra:
@@ -53,22 +60,68 @@ function Cards({ pid }: { pid: string }) {
               </Button>
             ) : null,
           children: (
-            <Table
-              size="small"
-              rowKey="id"
-              pagination={false}
-              dataSource={c.content.checklist}
-              columns={[
-                { title: "编号", dataIndex: "id" },
-                { title: "要点", dataIndex: "name" },
-                { title: "分值", dataIndex: "points" },
-                { title: "合规必讲", dataIndex: "compliance_required", render: (v) => (v ? "是" : "—") },
-              ]}
-            />
+            <>
+              <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>{c.content.fixed_script?.text ?? "（没有固定话术）"}</Typography.Paragraph>
+              {can("config.write") && c.status !== "retired" && c.content.fixed_script && <Calibration card={c} onSaved={reload} />}
+              <Table
+                size="small"
+                rowKey="id"
+                pagination={false}
+                dataSource={c.content.checklist ?? []}
+                columns={[
+                  { title: "编号", dataIndex: "id" },
+                  { title: "要点", dataIndex: "name" },
+                  { title: "分值（仅旧版评分标准）", dataIndex: "points" },
+                  { title: "合规必讲", dataIndex: "compliance_required", render: (v) => (v ? "是" : "—") },
+                ]}
+              />
+            </>
           ),
         }))}
       />
     </>
+  );
+}
+
+/** 登记 S2 校准记录（CAL-S2-PRODUCT）：用 20–30 份人工标注样本校准、留出样本验证后填写结论；原始标注另行保存。 */
+function Calibration({ card, onSaved }: { card: Card; onSaved: () => void }) {
+  const [form] = Form.useForm();
+  const act = useAction();
+  const cur = card.content.s2_calibration;
+  const script = card.content.fixed_script!;
+  return (
+    <Card size="small" title="S2 校准记录" style={{ marginBottom: 12 }}>
+      <Form
+        form={form}
+        layout="inline"
+        initialValues={cur ?? { status: "draft", train_samples: 0, holdout_samples: 0, anchors: [] }}
+        onFinish={async (v) => {
+          const body = { ...cur, ...v, fixed_script_version: script.version, anchors: cur?.anchors ?? [] };
+          if (await act(() => put(`/cards/${card.id}/s2-calibration`, body), "已登记")) onSaved();
+        }}
+      >
+        <Form.Item name="version" label="校准版本" rules={[{ required: true, pattern: /^[A-Za-z0-9_.-]{1,64}$/ }]}>
+          <Input style={{ width: 140 }} />
+        </Form.Item>
+        <Form.Item name="status" label="状态">
+          <Select style={{ width: 100 }} options={[{ value: "draft", label: "草稿" }, { value: "validated", label: "已验证" }]} />
+        </Form.Item>
+        <Form.Item name="train_samples" label="校准样本">
+          <InputNumber min={0} />
+        </Form.Item>
+        <Form.Item name="holdout_samples" label="验证样本">
+          <InputNumber min={0} />
+        </Form.Item>
+        <Form.Item name="holdout_agreement" label="验证一致率">
+          <InputNumber min={0} max={1} step={0.01} />
+        </Form.Item>
+        <Form.Item name="note" label="备注">
+          <Input style={{ width: 200 }} />
+        </Form.Item>
+        <Button htmlType="submit">保存</Button>
+      </Form>
+      <Typography.Text type="secondary">对应固定话术 {script.version}。标为“已验证”须至少 20 份校准样本并有留出验证结果；草稿状态出的报告标“非正式”。</Typography.Text>
+    </Card>
   );
 }
 
@@ -153,7 +206,7 @@ function DrawRule({ pid }: { pid: string }) {
   const act = useAction();
   const [form] = Form.useForm();
   if (data === undefined) return null;
-  const init = data ? { ...data, objection_times: (data.objection_times_ms ?? []).map(msToClock).join(", ") } : { objection_count: 4, question_count: 6, objection_times: "04:00, 05:30, 07:00, 08:00", prep_seconds: 900, question_seconds: 60, main_seconds: 600 };
+  const init = data ? { ...data, objection_times: (data.objection_times_ms ?? []).map(msToClock).join(", ") } : { objection_count: 4, question_count: 0, objection_times: "04:00, 05:30, 07:00, 08:00", prep_seconds: 900, question_seconds: 60, main_seconds: 600 };
   return (
     <Form
       form={form}
@@ -179,8 +232,8 @@ function DrawRule({ pid }: { pid: string }) {
         <Form.Item name="objection_count" label="异议条数">
           <InputNumber min={1} />
         </Form.Item>
-        <Form.Item name="question_count" label="知识题数">
-          <InputNumber min={1} />
+        <Form.Item name="question_count" label="知识题数" extra="评分表 20261105 已删除保险知识（O5），新版评分标准填 0">
+          <InputNumber min={0} />
         </Form.Item>
       </Space>
       <Form.Item name="objection_times" label="异议弹出时间点（分:秒，逗号分隔）" rules={[{ required: true }]}>

@@ -25,7 +25,7 @@ def get_providers() -> Providers:
         return _override
     kind = os.environ.get("APP_PROVIDERS", "mock")
     if kind == "mock":
-        from .mock import MockASR, MockLaugh, MockLLM, MockSpeechEval, MockVision
+        from .mock import MockASR, MockLaugh, MockLLM, MockSpeechEval, MockVision, MockVoice
 
         from .mock import Faults
 
@@ -36,7 +36,8 @@ def get_providers() -> Providers:
             return Faults(latency_s=float(os.environ.get(f"APP_MOCK_LATENCY_{kind}", "0")), fail_rate=rate, seed=seed)
 
         return Providers(MockASR(scenario, f("ASR", 1), rtf=float(os.environ.get("APP_MOCK_ASR_RTF", "0"))), MockSpeechEval(faults=f("EVAL", 2)),
-                         MockLLM(faults=f("LLM", 3)), MockVision(faults=f("VISION", 4)), MockLaugh(faults=f("LAUGH", 5)))
+                         MockLLM(faults=f("LLM", 3)), MockVision(faults=f("VISION", 4)), MockLaugh(faults=f("LAUGH", 5)),
+                         MockVoice(faults=f("VOICE", 6)))
     raise RuntimeError(f"未知的供应商配置 APP_PROVIDERS={kind}；接入真实供应商的方法见 README“更换真实 AI 供应商”")
 
 

@@ -299,7 +299,7 @@ def _score_t4(item: T4Item, evs: list[Evidence], res: ItemResult) -> Fraction:
     metric_labels = {p.metric for p in item.parts if p.metric} | {c.metric for p in item.parts for r in p.rules for c in r.all}
     for e in evs:  # 不让任何证据被静默忽略
         if e.kind == "level":
-            ref = e.ref if e.ref is not None else ("main" if single else None)
+            ref = e.ref if e.ref is not None else (item.parts[0].id if single else None)  # 单部分条目可省略 ref
             if ref not in level_parts:
                 raise EvidenceError(f"{e.evidence_id}: {item.id} 的子项 {e.ref!r} 不接受检测器直接给等级")
         elif e.kind == "occurrence" and e.label not in occ_labels:

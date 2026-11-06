@@ -64,7 +64,8 @@ export default function SheetPrint() {
       {card && (
         <>
           <h2>产品卖点卡（准备时阅读）</h2>
-          <p><b>必讲要点：</b>{card.content.checklist.map((p) => p.name + (p.compliance_required ? "（合规必讲）" : "")).join("、")}</p>
+          {card.content.fixed_script && <p style={{ whiteSpace: "pre-wrap" }}><b>产品讲解固定话术：</b>{card.content.fixed_script.text}</p>}
+          {!!card.content.checklist?.length && <p><b>必讲要点：</b>{card.content.checklist.map((p) => p.name + (p.compliance_required ? "（合规必讲）" : "")).join("、")}</p>}
           {!!card.content.targeted_points?.length && <p><b>针对性卖点：</b>{card.content.targeted_points.join("；")}</p>}
           {!!card.content.scenarios?.length && <p><b>使用场景：</b>{card.content.scenarios.join("；")}</p>}
           {!!card.content.glossary?.length && <p><b>术语白话：</b>{card.content.glossary.map((g) => `${g.term}——${g.plain}`).join("；")}</p>}

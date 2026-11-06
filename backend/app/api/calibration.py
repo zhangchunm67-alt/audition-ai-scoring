@@ -263,6 +263,7 @@ def task_detail(aid: uuid.UUID, request: Request, db: Session = DB, user: User =
                         "text": next(x["text"] for x in sheet.objections if x["objection_id"] == o["objection_id"])} for o in rec.objection_times],
         "questions": sheet.questions,
         "card": {"checklist": [{"id": p["id"], "name": p["name"]} for p in card.get("checklist", [])],
+                 "fixed_script": card.get("fixed_script"),
                  "glossary": [g["term"] for g in card.get("glossary", [])], "targeted_points": card.get("targeted_points", [])},
         "p2_categories": [c.label for c in dcfg.p2.categories],
         "dimensions": [{"id": d.id, "name": d.name, "items": [it.model_dump(mode="json") for it in d.items]} for d in ccfg.dimensions],

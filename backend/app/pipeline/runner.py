@@ -23,7 +23,7 @@ from ..providers.base import Providers, SegmentHint, Word
 from ..providers.resilient import resilient
 from ..services.storage import Storage
 from ..settings import get_settings
-from . import acoustic, prompts
+from . import acoustic, prompts, readiness
 from .detector_config import DetectorConfig, parse as parse_detector_cfg
 from .detectors import DETECTORS, NEEDS_PROPS
 from .detectors.common import Ctx
@@ -48,7 +48,8 @@ def detector_config(db: Session) -> tuple[DetectorConfigVersion, DetectorConfig]
 
 
 def scoring_context(rec: Recording, sheet: AuditionSheet, card: dict, completed: set[str], manifest: dict) -> ScoringContext:
-    """计分上下文。流水线每轮和“按新版重算”共用，保证同一份证据算出同样的结果。"""
+    """计分上下文。流水线每轮和“按新版重算”共用，保证同一份证据算出同样的结果。
+    卖点卡要点（checklist）和知识题（O5）只给旧版 rubric-v0.1 的报告重算用；新版配置不读取它们。"""
     return ScoringContext(
         props_available=rec.props_available, audience=rec.audience, completed_detectors=completed,
         checklist=[ChecklistPoint(**{k: p[k] for k in ("id", "name", "points", "compliance_required") if k in p}) for p in card.get("checklist", [])],
@@ -82,6 +83,9 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
     db.commit()
 
     card = db.get(ProductCard, sheet.product_card_id).content
+    problems = readiness.blockers(db, sheet)
+    if problems:
+        raise RoundIncomplete("暂不能处理：" + "；".join(problems))
     lexicon = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id).content if sheet.redline_lexicon_version_id else {}
     objs = {str(o.id): o for o in db.scalars(select(Objection).where(Objection.id.in_([uuid.UUID(x["objection_id"]) for x in sheet.objections])))}
     qs = {str(q.id): q for q in db.scalars(select(Question).where(Question.id.in_([uuid.UUID(x["question_id"]) for x in sheet.questions])))}
@@ -125,8 +129,9 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         ctx = Ctx(round_no=round_no, props_available=rec.props_available, segments=rec.segments, objections=objections, questions=questions,
                   reading_text=sheet.reading_text, card=card, lexicon=lexicon, cfg=dcfg, texts=texts, acoustic=feats, media=media,
                   providers=providers)
+        item_ids = {it.id for _, it in cfg.items()}
         todo = {k: fn for k, fn in DETECTORS.items()
-                if not (k in NEEDS_PROPS and not rec.props_available) and not (k == "redlines" and not cfg.redlines.enabled)}
+                if (k in item_ids or (k == "redlines" and cfg.redlines.enabled)) and not (k in NEEDS_PROPS and not rec.props_available)}
 
         def one(item: str):
             try:
@@ -147,7 +152,7 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
 
         run.stage = "scoring"
         sctx = scoring_context(rec, sheet, card, completed,
-                               {**manifest, "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
+                               {**manifest, **readiness.s2_manifest(card), "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
                                 "temperature": "0", "asr_disfluency_removal": "false"})
         result = score_round(evidence, cfg, sctx)
         db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=result.config_hash, result=result.model_dump(mode="json")))

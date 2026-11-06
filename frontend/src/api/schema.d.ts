@@ -269,6 +269,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cards/{cid}/s2-calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put S2 Calibration
+         * @description 登记或更新 S2 校准记录。固定话术不变时，校准可以在卖点卡发布之后补登（已生成的题单也能用上），每次修改写审计。
+         */
+        put: operations["put_s2_calibration_api_cards__cid__s2_calibration_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/products/{pid}/objections": {
         parameters: {
             query?: never;
@@ -1229,6 +1249,18 @@ export interface components {
             /** Attachment */
             attachment?: string | null;
         };
+        /**
+         * CalibrationAnchor
+         * @description 校准样例：人工标注的一段讲解及其 S2 分，供模型对齐给分尺度。
+         */
+        CalibrationAnchor: {
+            /** Score */
+            score: number;
+            /** Excerpt */
+            excerpt: string;
+            /** Note */
+            note?: string | null;
+        };
         /** CandidateDetail */
         CandidateDetail: {
             /**
@@ -1291,7 +1323,9 @@ export interface components {
         /** CardContent */
         CardContent: {
             /** Checklist */
-            checklist: components["schemas"]["CardPoint"][];
+            checklist?: components["schemas"]["CardPoint"][];
+            fixed_script?: components["schemas"]["FixedScript"] | null;
+            s2_calibration?: components["schemas"]["S2Calibration"] | null;
             /** Targeted Points */
             targeted_points?: string[];
             /** Scenarios */
@@ -1373,7 +1407,7 @@ export interface components {
             objection_count: number;
             /**
              * Question Count
-             * @default 6
+             * @default 0
              */
             question_count: number;
             /** Objection Times Ms */
@@ -1403,7 +1437,7 @@ export interface components {
             objection_count: number;
             /**
              * Question Count
-             * @default 6
+             * @default 0
              */
             question_count: number;
             /** Objection Times Ms */
@@ -1451,6 +1485,16 @@ export interface components {
             content_type: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /**
+         * FixedScript
+         * @description S2 固定话术（评分表：根据固定话术的完成准确程度打分）。改话术须换版本号，旧的校准记录随之失效。
+         */
+        FixedScript: {
+            /** Version */
+            version: string;
+            /** Text */
+            text: string;
         };
         /** GlossaryEntry */
         GlossaryEntry: {
@@ -1857,7 +1901,7 @@ export interface components {
             /** Items */
             items: components["schemas"]["ItemRow"][];
             /** Checklist Max */
-            checklist_max: number;
+            checklist_max: number | null;
             /** Thresholds */
             thresholds: {
                 [key: string]: number;
@@ -1890,6 +1934,39 @@ export interface components {
             published_at: string | null;
             /** Blocker Count */
             blocker_count: number;
+        };
+        /**
+         * S2Calibration
+         * @description 某产品、某版固定话术的 S2 校准记录（CAL-S2-PRODUCT）。原始人工标注另行保存，这里只记结论和样例。
+         *     status=draft：可用于试跑，报告标“非正式”；validated：须有训练样本和留出验证样本的一致性结果。
+         */
+        S2Calibration: {
+            /** Version */
+            version: string;
+            /** Fixed Script Version */
+            fixed_script_version: string;
+            /**
+             * Status
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "validated";
+            /**
+             * Train Samples
+             * @default 0
+             */
+            train_samples: number;
+            /**
+             * Holdout Samples
+             * @default 0
+             */
+            holdout_samples: number;
+            /** Holdout Agreement */
+            holdout_agreement?: number | null;
+            /** Anchors */
+            anchors?: components["schemas"]["CalibrationAnchor"][];
+            /** Note */
+            note?: string | null;
         };
         /** SampleIn */
         SampleIn: {
@@ -2639,6 +2716,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_s2_calibration_api_cards__cid__s2_calibration_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["S2Calibration"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

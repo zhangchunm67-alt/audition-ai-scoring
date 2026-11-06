@@ -38,6 +38,8 @@ def build_report(
         redline_hit=verdict.redline_hit,
         display_run_id=display_run_id,
         informal=(rubric.status != "published" or detector_config.status != "published"
-                  or (lexicon is not None and lexicon.status != "published")),
+                  or (lexicon is not None and lexicon.status != "published")
+                  # S2 校准记录未经验证（CAL-S2-PRODUCT）
+                  or display_result.model_manifest.get("s2_calibration_status", "validated") != "validated"),
         suggestions=suggestions,
     )
