@@ -31,11 +31,11 @@ export default function Products() {
           { title: "编码", dataIndex: "code" },
           { title: "已发布卖点卡", dataIndex: "published_card_version", render: (v) => (v ? <Tag color="green">第 {v} 版</Tag> : <Tag color="red">无</Tag>) },
           { title: "可用异议", dataIndex: "active_objections", render: (n: number) => <Tag color={n >= 20 ? "green" : "orange"}>{n} 条</Tag> },
-          { title: "可用知识题", dataIndex: "active_questions", render: (n: number) => <Tag color={n >= 30 ? "green" : "orange"}>{n} 道</Tag> },
+          { title: "可用知识题", dataIndex: "active_questions", render: (n: number) => <Tag color={n >= 30 ? "green" : "default"}>{n} 道</Tag> },
         ]}
       />
       <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-        PRD 建议规模：异议库 ≥ 20 条、知识题库 ≥ 30 题（每次抽 4 条、6 道）。
+        PRD 建议规模：异议库 ≥ 20 条（每次抽 4 条）。评分表 20261105 已删除保险知识，新版评分标准不再抽知识题。
       </Typography.Paragraph>
       <Modal
         title="新建产品"

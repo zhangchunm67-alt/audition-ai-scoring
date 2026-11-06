@@ -55,7 +55,10 @@ class ASR(Protocol):
 
 @dataclass
 class SpeechEvalResult:
-    score: float  # 0–100
+    """details["errors"]：逐处问题 [{text, start_ms, end_ms, type: dialect / mispronounce, confidence}]，时间相对音频起点。
+    P3 按 type=dialect 计次（评分表“方言一处扣1分”）；没有该字段视为评测不完整，P3 检测失败。"""
+
+    score: float  # 0–100，只作参考，不再分档计分
     details: dict[str, Any]
     provider: str
     model_version: str
@@ -115,12 +118,30 @@ class LaughDetector(Protocol):
 
 
 @dataclass
+class VoiceRating:
+    score: int  # 0–max_score 的整数
+    confidence: float
+    reason: str
+
+
+class VoiceRater(Protocol):
+    """声音的主观评价（评分表 P5 语调、P6 音色、P7 节奏“根据主观打分”）：须是能直接听音频的模型。
+    criterion 为评分表原文；context 为本地测得的参考特征。给分须用人工标注样本校准（CAL-SUBJECTIVE）。"""
+
+    name: str
+    model_version: str
+
+    def rate(self, audio_path: str, aspect: str, *, criterion: str, max_score: int, context: dict) -> VoiceRating: ...
+
+
+@dataclass
 class Providers:
     asr: ASR
     speech_eval: SpeechEval
     llm: LLM
     vision: Vision
     laugh: LaughDetector
+    voice: VoiceRater
 
     def manifest(self) -> dict[str, str]:
         return {
@@ -129,4 +150,5 @@ class Providers:
             "llm": f"{self.llm.name}@{self.llm.model_version}",
             "vision": f"{self.vision.name}@{self.vision.model_version}",
             "laugh": f"{self.laugh.name}@{self.laugh.model_version}",
+            "voice": f"{self.voice.name}@{self.voice.model_version}",
         }

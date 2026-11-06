@@ -23,18 +23,19 @@ def _human(task: dict, *, p2: int = 9, p3: int = 8, s1: int = 10, skip: str | No
         if item != skip:
             ev.append({"item_id": item, "kind": kind, **kw})
 
-    add("P1", "level", judgment=10)
+    add("P1", "occurrence", label="attire", judgment="not_count")
     for i in range(p2):
         add("P2", "occurrence", label="那么", judgment="count", start_ms=10_000 + i * 1000)
-    add("P3", "level", judgment=p3)
+    for i in range(10 - p3):
+        add("P3", "occurrence", label="dialect", judgment="count", start_ms=900_000 + i * 1000)
     add("P5", "level", judgment=3)
+    add("P6", "level", judgment=4)
     add("P7", "level", judgment=7)
     if task["props_available"]:
         add("P9", "instance", label="sticker", judgment="count")
     add("S1", "level", judgment=s1)
-    for p in task["card"]["checklist"]:
-        add("S2", "checklist_hit", ref=p["id"], label=p["name"], judgment="count")
-    add("S2", "level", ref="structure", judgment=14)
+    assert task["card"]["fixed_script"]["text"]  # 校准员对照固定话术打 S2
+    add("S2", "level", ref="fixed_script_accuracy", judgment=40)
     for o in task["objections"]:
         for el in ("direct_answer", "advantage", "altruistic_close"):
             add("S3", "question", ref=o["objection_id"], label=el, judgment="count")
@@ -48,10 +49,7 @@ def _human(task: dict, *, p2: int = 9, p3: int = 8, s1: int = 10, skip: str | No
     for t in task["card"]["targeted_points"][:2]:
         add("O2", "instance", label=t, judgment="count")
     add("O3", "instance", label="scene", judgment="count")
-    add("O4", "level", ref="rhythm", judgment=5)
-    add("O4", "level", ref="enthusiasm", judgment=4)
-    for q in task["questions"]:
-        add("O5", "question", ref=q["question_id"], judgment="partial")
+    add("O4", "level", judgment=12)
     return ev
 
 
@@ -93,7 +91,7 @@ def test_blind_scoring_to_gold_and_comparison(login, seeded, video_file, make_us
     assert not {"report", "label", "verdict", "ai", "comparison", "result"} & set(task)
     assert b.get(f"/api/calibration/assignments/{tasks[0]['id']}").status_code == 404  # 看不到别人的任务
     assert a.get(f"/api/media/{task['video_asset_id']}", headers={"Range": "bytes=0-9"}).status_code == 206
-    assert a.get(f"/api/reports").status_code == 403  # 校准员不看报告
+    assert a.get("/api/reports").status_code == 403  # 校准员不看报告
     # 漏打条目不能提交
     a.put(f"/api/calibration/assignments/{task['id']}", json={"evidence": _human(task, skip="S1")})
     r = a.post(f"/api/calibration/assignments/{task['id']}/submit")

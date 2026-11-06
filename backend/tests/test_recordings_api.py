@@ -15,12 +15,13 @@ from app.models.entities import (
 # ───────────── 工具 ─────────────
 
 
-def _sheet(_api, db) -> dict:
-    """直接在库里建一张题单（HR 无权生成题单；抽题逻辑在 test_sheets_api.py 里测）。"""
+def _sheet(_api, db, n_questions: int = 6) -> dict:
+    """直接在库里建一张题单（HR 无权生成题单；抽题逻辑在 test_sheets_api.py 里测）。
+    默认带 6 道知识题，覆盖旧版题单的分段标注；新版评分标准的题单没有知识题（n_questions=0）。"""
     import uuid
 
     objs = db.scalars(select(Objection).limit(4)).all()
-    qs = db.scalars(select(Question).limit(6)).all()
+    qs = db.scalars(select(Question).limit(n_questions)).all() if n_questions else []
     s = AuditionSheet(
         code=f"TS-TEST-{uuid.uuid4().hex[:6]}", product_id=db.scalar(select(Product.id)), product_card_id=db.scalar(select(ProductCard.id)),
         rubric_version_id=db.scalar(select(RubricVersion.id)), redline_lexicon_version_id=db.scalar(select(RedlineLexiconVersion.id)),
@@ -253,6 +254,18 @@ def test_segments_and_objection_alignment(login, seeded, video_file):
         assert o["objection_id"] == sheet_o["objection_id"] and o["at_ms"] == off and o["video_ms"] == 1000 + off
         assert o["sheet_at_ms"] == sheet_o["at_ms"]
     assert any("主体段时长" in w for w in out["warnings"])  # 测试视频远短于 10 分钟
+
+
+def test_segments_without_knowledge_questions(login, seeded, video_file):
+    """评分表 20261105 删除了 O5：新题单没有知识题，主体段直接接朗读段。"""
+    hr = login("hr")
+    rec = _uploaded(hr, seeded, video_file, sheet=_sheet(hr, seeded, n_questions=0))
+    seg = {"main_start_ms": 1000, "question_starts_ms": [], "reading_start_ms": 12000, "objection_offsets_ms": [2000, 3500, 5000, 6000]}
+    r = hr.put(f"/api/recordings/{rec['id']}/segments", json=seg)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert [s["segment"] for s in out["segments"]] == ["main", "reading"] and out["main_duration_ms"] == 11000
+    assert hr.put(f"/api/recordings/{rec['id']}/segments", json={**seg, "question_starts_ms": [9000]}).status_code == 422
 
 
 @pytest.mark.parametrize("patch,msg", [

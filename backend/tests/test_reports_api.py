@@ -35,7 +35,7 @@ def test_list_and_detail(login, seeded, video_file, db):
     d = hr.get(f"/api/reports/{rep.id}").json()
     assert d["candidate_name"] == "张三" and d["label"] == rep.label and d["verdict"]["reason"]
     assert len(d["result"]["items"]) == 23 and len(d["result"]["dimensions"]) == 4 and d["result"]["redlines_enabled"] is False
-    assert d["trace"]["rubric_version"] == "rubric-v0.1" and d["trace"]["detector_config_version"] == "detectors-v1"
+    assert d["trace"]["rubric_version"] == "rubric-v0.2" and d["trace"]["detector_config_version"] == "detectors-v1"
     assert d["trace"]["model_manifest"]["llm"] == "mock-llm@1" and d["media"]["video_asset_id"]
     assert _actions(db, "report_view") and _actions(db, "report_list")
 
@@ -125,8 +125,8 @@ def test_excel_export(login, seeded, video_file, db):
     ws = wb["排名"]
     assert ws["A2"].value == "排名" and ws["B3"].value == "张三" and ws["E3"].value in ("推荐", "待定", "不推荐")
     detail = wb["条目明细"]
-    assert [c.value for c in detail[1]][2:] == ["P1", "P2", "P3", "P4", "P5", "P7", "P8", "P9", "P10", "S1", "S2", "S3", "S4",
-                                                "L1", "L2", "L3", "L4", "L5", "O1", "O2", "O3", "O4", "O5"]
+    assert [c.value for c in detail[1]][2:] == ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "S1", "S2", "S3", "S4",
+                                                "L1", "L2", "L3", "L4", "L5", "O1", "O2", "O3", "O4"]
     assert _actions(db, "report_export_excel")[0].detail["count"] == 1
 
 
@@ -152,7 +152,7 @@ def test_report_html_contents(login, seeded, video_file, db):
     hr = login("hr")
     _, rep = _done(hr, seeded, video_file)
     h = report_html(detail(db, rep))
-    for text in ("主播试镜评分报告", "非正式报告", "人设塑造", "需要改进的句子", "示范说法由 AI 生成", "rubric-v0.1", "mock-llm@1"):
+    for text in ("主播试镜评分报告", "非正式报告", "人设塑造", "需要改进的句子", "示范说法由 AI 生成", "rubric-v0.2", "mock-llm@1"):
         assert text in h, text
 
 
@@ -162,14 +162,14 @@ def test_rescore_with_new_rubric_creates_revision(login, seeded, video_file, db)
     admin = login("admin")
     rec, rep = _done(hr, seeded, video_file)
     d = raw_config()
-    d["version"] = "rubric-v0.1-strict-p2"
+    d["version"] = "rubric-v0.2-strict-p2"
     d["dimensions"][0]["items"][1]["free"] = 0  # P2 不再免扣
     rid = admin.post("/api/rubrics", json={"yaml_text": yaml.safe_dump(d, allow_unicode=True)}).json()["id"]
     assert hr.post(f"/api/reports/{rep.id}/rescore", json={"rubric_version_id": rid}).status_code == 403
     r = admin.post(f"/api/reports/{rep.id}/rescore", json={"rubric_version_id": rid})
     assert r.status_code == 200, r.text
     new = r.json()
-    assert new["revision"] == 2 and new["trace"]["rubric_version"] == "rubric-v0.1-strict-p2"
+    assert new["revision"] == 2 and new["trace"]["rubric_version"] == "rubric-v0.2-strict-p2"
     p2_old = next(i for i in hr.get(f"/api/reports/{rep.id}").json()["result"]["items"] if i["item_id"] == "P2")
     p2_new = next(i for i in new["result"]["items"] if i["item_id"] == "P2")
     assert p2_new["score"] <= p2_old["score"]

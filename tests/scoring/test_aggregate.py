@@ -21,7 +21,7 @@ def test_aggregate_scales_without_props_and_median_halves(cfg):
     scores["P2"] = 37.5  # 两位校准员 35、40 的平均
     agg = aggregate_item_scores(cfg, scores, props_available=False, audience="new_trial")
     p = agg.dimensions[0]
-    assert p.applicable_max == 90 and p.raw == 87.5 and p.score == 97  # 87.5 ÷ 90 × 100 = 97.2 → 97
+    assert p.applicable_max == 95 and p.raw == 92.5 and p.score == 97  # 92.5 ÷ 95 × 100 = 97.4 → 97
 
 
 def test_aggregate_missing_and_invalid(cfg):
@@ -37,20 +37,23 @@ def test_aggregate_missing_and_invalid(cfg):
 def test_calibration_config_makes_levels_direct(cfg):
     c = calibration_config(cfg)
     parts = {it.id: [p.source for p in it.parts] for _, it in c.items() if isinstance(it, T4Item)}
-    assert parts == {"P1": ["evidence"], "P3": ["evidence"], "P5": ["evidence"], "P7": ["evidence"], "S1": ["evidence"],
-                     "L1": ["evidence"], "O4": ["evidence", "evidence"]}
+    assert parts == {"P5": ["evidence"], "P6": ["evidence"], "P7": ["evidence"], "S1": ["evidence"], "S2": ["evidence"],
+                     "L1": ["evidence"], "O4": ["evidence"]}
     assert c.version.endswith("+calibration")
-    # 其余计分规则不变：P2 免扣 20、S2 讲错从整项扣
-    assert next(it for _, it in c.items() if it.id == "P2").free == 20
+    assert next(it for _, it in c.items() if it.id == "P2").free == 20  # 其余计分规则不变
     b = full_marks()
-    for item in ("P3", "P5", "O4"):
-        b.remove(item)
-    b.remove("P7")
-    b.level("P3", 8, source="human")
-    b.level("P5", 3, source="human")
-    b.level("P7", 7, source="human")
-    b.level("O4", 5, ref="rhythm", source="human")
-    b.level("O4", 4, ref="enthusiasm", source="human")
+    for it, v in (("P5", 3), ("P6", 4), ("P7", 7), ("O4", 15)):
+        b.remove(it)
+        b.level(it, v, source="human")
+    b.remove("S2")
+    b.level("S2", 41, ref="fixed_script_accuracy", source="human")
     r = score_round(b.items, c, context())
     got = {i.item_id: i.score for i in r.items}
-    assert (got["P3"], got["P5"], got["P7"], got["O4"]) == (8, 3, 7, 9) and r.status == "complete"
+    assert (got["P5"], got["P6"], got["P7"], got["O4"], got["S2"]) == (3, 4, 7, 15, 41) and r.status == "complete"
+
+
+def test_legacy_calibration_config_makes_levels_direct(legacy_cfg):
+    c = calibration_config(legacy_cfg)
+    parts = {it.id: [p.source for p in it.parts] for _, it in c.items() if isinstance(it, T4Item)}
+    assert parts == {"P1": ["evidence"], "P3": ["evidence"], "P5": ["evidence"], "P7": ["evidence"], "S1": ["evidence"],
+                     "L1": ["evidence"], "O4": ["evidence", "evidence"]}

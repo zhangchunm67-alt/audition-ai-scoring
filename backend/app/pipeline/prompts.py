@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PROMPT_SET = "prompts-v1"
+PROMPT_SET = "prompts-v2"  # v2：按评分表 20261105 改写主观评分条目和 S2 固定话术
 
 
 class _Judged(BaseModel):
@@ -28,14 +28,7 @@ class IdJudgments(BaseModel):
 
 
 class Level(_Judged):
-    level: int
-    quote: str = ""
-
-
-class PointCheck(_Judged):
-    id: str
-    covered: bool
-    correct: bool = True
+    level: int = Field(ge=0)  # 0–满分的整数；上限由检测器按条目满分校验
     quote: str = ""
 
 
@@ -43,11 +36,11 @@ class ErrorClaim(_Judged):
     quote: str
 
 
-class ProductCheck(BaseModel):
-    points: list[PointCheck]
-    structure_level: int
-    structure_reason: str = ""
-    structure_confidence: float = Field(ge=0, le=1)
+class FixedScriptCheck(_Judged):
+    """S2：对照该产品固定话术给出 0–max_score 的完成准确度分；errors 为与固定话术或条款不符的说法。"""
+
+    score: int = Field(ge=0)
+    quote: str = ""
     errors: list[ErrorClaim] = Field(default_factory=list)
 
 
@@ -70,15 +63,6 @@ class Closings(BaseModel):
     items: list[Closing]
 
 
-class Opening(_Judged):
-    what: bool
-    who: bool
-    hook: bool
-    hook_invalid: bool = False
-    level: int
-    quote: str = ""
-
-
 class Found(_Judged):
     quote: str
     valid: bool
@@ -87,15 +71,6 @@ class Found(_Judged):
 
 class Founds(BaseModel):
     items: list[Found]
-
-
-class Mainline(BaseModel):
-    returned: list[bool]
-    confidence: float = Field(ge=0, le=1)
-
-
-class Answer(_Judged):
-    level: Literal["full", "partial", "zero"]
 
 
 class Rewrite(_Judged):
@@ -121,17 +96,18 @@ TASKS: dict[str, tuple[str, type[BaseModel]]] = {
                   "若该词承担实义（如真实数量“一个孩子”、条件“有医保的话”、推论“既然……那么”），count=false。", IdJudgments),
     "p10_laugh": ("以下是检测到笑声的片段及前后文。与内容无关的笑场、嘻笑、调侃产品或理赔记为 count=true；"
                   "自然微笑、讲轻松案例时的得体轻笑记为 count=false。", IdJudgments),
-    "s1_need": ("评估“激发需求”：10=框架清楚（风险 → 现有保障缺口 → 解决办法），有事实或场景支撑并自然引到产品；"
-                "6=讲了必要性但框架不完整或缺支撑；3=一句带过；0=没有。夸大风险、制造焦虑不得分。", Level),
-    "s2_product": ("对照卖点卡必讲要点逐项核对：讲到且讲对 covered=true、correct=true；讲到但与条款不符 correct=false。"
-                   "另给结构等级：20=有明确框架且过渡清楚；14=基本有序偶有跳跃；7=零散来回重复；0=混乱。"
-                   "列出所有与条款不符的说法（errors）。", ProductCheck),
+    "s1_need": ("评分表 S1 激发需求（满分 10，根据主观打分）：例如：商业保险的必要性（框架清晰）。"
+                "按评分表原文和校准样例（anchors，若有）直接给 0–10 的整数分 level，并引用最能说明给分的一句原文。", Level),
+    "s2_fixed_script": ("评分表 S2 产品讲解（满分 max_score）：产品讲解是否清楚（框架清晰）——根据固定话术的完成准确程度打分。"
+                   "逐段对照该产品的固定话术（fixed_script），看逐字稿是否按话术讲到、讲准；参照校准样例（anchors）的给分尺度，"
+                   "直接给 0–max_score 的整数分 score，并引用最能说明给分的一句原文（得 0 分且没讲时可为空）。"
+                   "列出所有与固定话术或条款不符的说法（errors）。不要自定要点分值或结构分。", FixedScriptCheck),
     "s3_objection": ("判断主播对这条观众异议的回答（按回答内容归属，不按时间窗口）：是否正面回答（且与条款一致）、"
                      "是否引回产品优势、是否站在观众角度利他收尾、是否答错。没有回应则 answered=false。", ObjectionCheck),
     "s4_closing": ("找出所有促成投保决定的语句并归类（从众、损失规避、权威认同、价格拆分、沉没成本）。"
                    "编造数字、制造焦虑、停售涨价施压、虚构背书、算错价格的记 compliant=false。", Closings),
-    "l1_opening": ("这是主体段开头 30 秒。判断是否讲到：讲什么（what）、对谁有用（who）、为什么现在听（hook）。"
-                   "20=三件都有且钩子具体；14=有两件；8=只有寒暄加简单介绍；0=没进主题。钩子不实或诱导 hook_invalid=true。", Opening),
+    "l1_opening": ("这是主体段开头 30 秒。评分表 L1 电梯法则（满分 20，根据主观评分）：30秒留人话术（运用金字塔原理-只给利他话术）。"
+                   "按评分表原文和校准样例（anchors，若有）直接给 0–20 的整数分 level，并引用最能说明给分的一句原文。", Level),
     "l2_structure": ("找出所有“总分 / 总分总 / 结论先行”的段落：先给结论或总述，分点展开且在总述范围内，"
                      "总分总要回到结论，至少 3 句。只有“第一”没有“第二”、总述与分点对不上的 valid=false。", Founds),
     "l3_deduction": ("找出所有推论句（所以、因此、一定、必须等），判断前提是否成立、能否推出结论。"
@@ -143,8 +119,9 @@ TASKS: dict[str, tuple[str, type[BaseModel]]] = {
     "o1_terms": ("对照术语表，找出讲到术语时紧跟白话解释且解释准确的地方，label 填术语；只说术语不解释或解释错误的 valid=false。", Founds),
     "o2_targeted": ("对照针对性卖点，找出针对目标人群具体痛点讲出本产品具体解决点的地方，label 填卖点；泛泛而谈的 valid=false。", Founds),
     "o3_scene": ("找出描绘具体使用场景的地方（有具体的人、地点或动作）；抽象说法 valid=false。", Founds),
-    "o4_mainline": ("对每条异议，判断主播回答完后是否自然回到讲品主线（returned，按异议顺序）。", Mainline),
-    "o5_answer": ("对照满分要点判断这道知识题的回答：full=答到全部要点；partial=方向对但漏了要点或表述不准；zero=答错或没答。", Answer),
+    "o4_control": ("评分表 O4 节奏与气氛（满分 20，根据主观打分）：主播对直播间的掌控，包括节奏掌控（讲品还是回答问题）、是否有热情。"
+                   "输入是每条异议之后的讲话和测得的参考指标（回应时长、未回应条数、冷场次数、音量和音高起伏）。"
+                   "按评分表原文和校准样例（anchors，若有）直接给 0–20 的整数分 level。", Level),
     "rewrite": ("这是主播试镜中有问题的一句话，以及评分时发现的问题。请给出一句示范说法：保留原意，改掉指出的问题"
                 "（去掉口头禅、讲准条款、补上白话解释、去掉施压或夸大等），不编造产品信息，不超过原句长度的 1.5 倍。", Rewrite),
     "redline_judge": ("以下是按合规红线词表召回的候选句。结合上下文判断是否真的触犯对应红线（hit）。"

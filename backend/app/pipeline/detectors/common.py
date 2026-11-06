@@ -70,6 +70,13 @@ class Ctx:
                        confidence=conf, source=source, segment=st.segment, **kw)
 
 
+def check_level(item: str, level, max_score: int) -> int:
+    """主观评分条目：模型给的分必须是 0–满分的整数，否则检测失败（不交给计分引擎当配置错误处理）。"""
+    if isinstance(level, bool) or not isinstance(level, int) or not 0 <= level <= max_score:
+        raise ValueError(f"{item}: 模型给分 {level!r} 不是 0–{max_score} 的整数")
+    return level
+
+
 def main_sentences(ctx: Ctx):
     return sentences(ctx.main)
 

@@ -43,8 +43,9 @@ def reference(db: Session) -> RubricVersion:
     return rv
 
 
-def checklist_max(cfg: RubricConfig) -> int:
-    return next(it.checklist_max for _, it in cfg.items() if isinstance(it, T3T4Item))
+def checklist_max(cfg: RubricConfig) -> int | None:
+    """旧版 S2（卖点卡要点 + 结构）的要点满分；新版按固定话术打分，返回 None。"""
+    return next((it.checklist_max for _, it in cfg.items() if isinstance(it, T3T4Item)), None)
 
 
 def question_counts(cfg: RubricConfig) -> dict[str, int]:

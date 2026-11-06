@@ -1,9 +1,9 @@
-"""T1–T6 六种计分类型。"""
+"""T1–T6 计分类型（现行配置 rubric-v0.2，按评分表 20261105）。旧版配置的机制见 test_legacy_v01.py。"""
 import pytest
 
-from scoring import EvidenceError, ScoringInputError, parse_config, score_round
+from scoring import EvidenceError, ScoringInputError, score_round
 from scoring.types import Review
-from tests.scoring.helpers import CHECKLIST, context, full_marks, item, item_raw, modified, raw_config
+from tests.scoring.helpers import context, full_marks, item
 
 
 def run(cfg, b, **ctx):
@@ -63,6 +63,25 @@ def test_t1_l3_and_p10(cfg):
     assert item(run(cfg, b), "L3").score == 0  # 最低 0
 
 
+@pytest.mark.parametrize("labels,expected", [((), 10), (("attire",), 0), (("hairstyle",), 0), (("attire", "hairstyle"), 0)])
+def test_t1_p1_attire_or_hairstyle_deducts_10(cfg, labels, expected):
+    """评分表：穿着、发型不符合要求直接扣 10 分。相貌不做自动评分。"""
+    b = full_marks()
+    for lab in labels:
+        b.occ("P1", lab, source="vision")
+    assert item(run(cfg, b), "P1").score == expected
+
+
+@pytest.mark.parametrize("n,expected", [(0, 10), (1, 9), (3, 7), (10, 0), (12, 0)])
+def test_t1_p3_dialect_one_point_each(cfg, n, expected):
+    """评分表：方言一处扣 1 分；发音不准（not_count）不扣。"""
+    b = full_marks()
+    for _ in range(n):
+        b.occ("P3", "dialect", source="audio", segment="reading")
+    b.occ("P3", "mispronounce", judgment="not_count", source="audio", segment="reading")
+    assert item(run(cfg, b), "P3").score == expected
+
+
 def test_t1_p8_per_one(cfg):
     b = full_marks()
     for _ in range(3):
@@ -104,29 +123,48 @@ def test_t2_p9_awards_and_cap(cfg):
     assert [c.delta for c in res.contributions] == [2, 1, 2, 0]
 
 
-def test_t2_s4_distinct_methods_and_unscored_label(cfg):
+def test_t2_s4_distinct_methods_sunk_cost_counts(cfg):
+    """评分表：从众、损失规避、权威认同、价格拆分、沉没成本，每个 5 分。"""
     b = full_marks()
     b.remove("S4")
     b.inst("S4", "herd")
     b.inst("S4", "herd")  # 同一方法重复不加分
-    b.inst("S4", "sunk_cost")  # 沉没成本暂不计分
+    b.inst("S4", "sunk_cost")  # 沉没成本计分
     b.inst("S4", "price_split", judgment="not_count")  # 算错的价格拆分
+    b.inst("S4", "scarcity")  # 评分表未列的方法不计分
     res = item(run(cfg, b), "S4")
-    assert res.score == 5
+    assert res.score == 10
     assert any("不计分" in c.note for c in res.contributions)
+    for m in ("loss_aversion", "authority", "price_split"):
+        b.inst("S4", m)
+    assert item(run(cfg, b), "S4").score == 20  # 封顶 20
 
 
-def test_t2_o1_distinct_terms_and_o3_cap(cfg):
+def test_t2_o1_o2_three_places_ten_each(cfg):
+    """评分表：O1、O2 各 3 处、每处 10 分，满分 30。"""
     b = full_marks()
     b.remove("O1")
     b.inst("O1", "免赔额")
-    b.inst("O1", "免赔额")
+    b.inst("O1", "免赔额")  # 同一术语只算一处（P-O-DISTINCT）
     b.inst("O1", "等待期")
-    for _ in range(5):
+    assert item(run(cfg, b), "O1").score == 20
+    for t in ("既往症", "续保"):
+        b.inst("O1", t)
+    assert item(run(cfg, b), "O1").score == 30
+    b.remove("O2")
+    b.inst("O2", "儿童医院可用")
+    assert item(run(cfg, b), "O2").score == 10
+
+
+def test_t2_o3_two_places_ten_each(cfg):
+    """评分表：O3 场景化 2 处、每处 10 分，满分 20。"""
+    b = full_marks()
+    b.remove("O3")
+    b.inst("O3")
+    assert item(run(cfg, b), "O3").score == 10
+    for _ in range(4):
         b.inst("O3")
-    r = run(cfg, b)
-    assert item(r, "O1").score == 10
-    assert item(r, "O3").score == 15
+    assert item(run(cfg, b), "O3").score == 20
 
 
 def test_t2_l2_ten_each(cfg):
@@ -138,84 +176,80 @@ def test_t2_l2_ten_each(cfg):
     assert item(run(cfg, b), "L2").score == 0  # 检测器已完成且没有实例：0 分是真实结果
 
 
-# ───────────── T3+T4 产品讲解 ─────────────
+# ───────────── T4：评分表“根据主观打分”与 S2 固定话术完成准确度 ─────────────
 
 
-def _s2(b, hits, structure, errors=0):
-    b.remove("S2")
-    for p in CHECKLIST:
-        b.add("S2", "checklist_hit", ref=p.id, label=p.name, judgment="count" if p.id in hits else "not_count")
-    b.level("S2", structure, ref="structure")
-    for _ in range(errors):
-        b.occ("S2", "error")
-
-
-def test_t3t4_rubric_example_points_plus_structure(cfg):
-    b = full_marks()
-    hits = {"coverage", "ratio", "health", "exclusion", "renewal", "price"}  # 漏了免赔额、等待期
-    _s2(b, hits, 14)
-    res = item(run(cfg, b), "S2")
-    assert res.score == 22 + 14
-    assert "合规必讲要点未讲：免赔额" in res.notes and "合规必讲要点未讲：等待期" in res.notes
-
-
-def test_t3t4_error_penalty_from_whole_item(cfg):
-    """C7：讲错从整个 S2 扣。要点 5 + 结构 20 = 25，讲错 2 处 → 15。
-    若只从要点部分扣，会是 max(0, 5-10) + 20 = 20。"""
-    b = full_marks()
-    _s2(b, {"coverage"}, 20, errors=2)
-    res = item(run(cfg, b), "S2")
-    assert res.score == 15
-    _s2(b, {"coverage"}, 20, errors=6)
-    assert item(run(cfg, b), "S2").score == 0  # 最低 0
-
-
-def test_t3t4_missing_point_check_is_missing_not_zero(cfg):
-    b = full_marks()
-    b.remove("S2", kind="checklist_hit")
-    b.add("S2", "checklist_hit", ref="coverage", label="保障范围", judgment="count")
-    r = run(cfg, b)
-    assert item(r, "S2").status == "missing_evidence"
-    assert item(r, "S2").score is None
-    assert r.status == "incomplete"
-
-
-def test_t3t4_missing_structure(cfg):
-    b = full_marks()
-    b.remove("S2", kind="level")
-    assert item(run(cfg, b), "S2").status == "missing_evidence"
-
-
-def test_t3t4_card_sum_mismatch_raises(cfg):
-    card = CHECKLIST[:-1]  # 合计 27
-    with pytest.raises(ScoringInputError):
+@pytest.mark.parametrize("item_id,max_", [("P5", 5), ("P6", 5), ("P7", 10), ("S1", 10), ("L1", 20), ("O4", 20), ("S2", 50)])
+def test_t4_subjective_items_accept_every_integer(cfg, item_id, max_):
+    """主观评分条目不再自定分档：0–满分的每个整数都是合法等级。"""
+    ref = "fixed_script_accuracy" if item_id == "S2" else None
+    for v in range(max_ + 1):
         b = full_marks()
-        b.remove("S2", kind="checklist_hit")
-        for p in card:
-            b.add("S2", "checklist_hit", ref=p.id, label=p.name, judgment="count")
-        score_round(b.items, cfg, context(checklist=card))
+        b.remove(item_id)
+        b.level(item_id, v, ref=ref)
+        assert item(run(cfg, b), item_id).score == v
 
 
-def test_t3t4_unknown_point_raises(cfg):
+@pytest.mark.parametrize("item_id,bad", [("P5", 6), ("P6", -1), ("S1", 11), ("L1", 21), ("O4", 25), ("S2", 51)])
+def test_t4_out_of_range_level_raises(cfg, item_id, bad):
     b = full_marks()
-    b.add("S2", "checklist_hit", ref="nonexistent", judgment="count")
+    b.remove(item_id)
+    b.level(item_id, bad, ref="fixed_script_accuracy" if item_id == "S2" else None)
     with pytest.raises(EvidenceError):
         run(cfg, b)
 
 
-# ───────────── T4 分级锚定 ─────────────
+@pytest.mark.parametrize("v", [0, 1, 25, 49, 50])
+def test_t4_s2_fixed_script_accuracy_bounds(cfg, v):
+    b = full_marks()
+    b.remove("S2")
+    b.level("S2", v, ref="fixed_script_accuracy")
+    res = item(run(cfg, b), "S2")
+    assert res.score == v and res.max == 50
+    assert [c.note for c in res.contributions] == ["等级（fixed_script_accuracy）"]
+
+
+def test_t4_single_part_level_may_omit_ref(cfg):
+    """单部分条目的等级证据可以不写 ref（校准员打分页就是这样提交的），S2 的部分名不是 main 也一样。"""
+    b = full_marks()
+    b.remove("S2")
+    b.level("S2", 33)
+    assert item(run(cfg, b), "S2").score == 33
+    b.level("S2", 30, ref="structure")  # 写了 ref 就必须对得上
+    with pytest.raises(EvidenceError):
+        run(cfg, b)
+
+
+def test_t4_s2_missing_level_is_missing_not_zero(cfg):
+    """S2 检测器拒绝出分（例如产品未校准）时没有证据：缺证据，不能当 0 分。"""
+    b = full_marks()
+    b.remove("S2")
+    r = run(cfg, b)
+    assert item(r, "S2").status == "missing_evidence" and item(r, "S2").score is None
+    assert r.status == "incomplete" and r.total_grade is None
+
+
+@pytest.mark.parametrize("add", [
+    lambda b: b.add("S2", "checklist_hit", ref="coverage", judgment="count"),  # 旧版卖点卡要点
+    lambda b: b.level("S2", 20, ref="structure"),  # 旧版结构分
+    lambda b: b.occ("S2", "error"),  # 旧版讲错扣分
+])
+def test_t4_s2_rejects_legacy_evidence(cfg, add):
+    b = full_marks()
+    add(b)
+    with pytest.raises(EvidenceError):
+        run(cfg, b)
 
 
 def test_t4_evidence_level(cfg):
     b = full_marks()
-    b.remove("P1")
-    b.level("P1", 7, source="vision")
-    assert item(run(cfg, b), "P1").score == 7
+    b.remove("P6")
+    b.level("P6", 3, source="audio")
+    assert item(run(cfg, b), "P6").score == 3
 
 
-def test_t4_invalid_level_raises(cfg):
+def test_t4_duplicate_level_raises(cfg):
     b = full_marks()
-    b.remove("S1")
     b.level("S1", 5)
     with pytest.raises(EvidenceError):
         run(cfg, b)
@@ -223,91 +257,23 @@ def test_t4_invalid_level_raises(cfg):
 
 def test_t4_missing_level_is_missing(cfg):
     b = full_marks()
-    b.remove("P1")
+    b.remove("P7")
     r = run(cfg, b)
-    assert item(r, "P1").status == "missing_evidence"
+    assert item(r, "P7").status == "missing_evidence"
     assert r.total_grade is None
 
 
-@pytest.mark.parametrize("v,level", [(100, 10), (90, 10), (89.9, 8), (80, 8), (79, 6), (70, 6), (69, 3), (60, 3), (59.9, 0), (0, 0)])
-def test_t4_metric_bands_p3(cfg, v, level):
+@pytest.mark.parametrize("add", [
+    lambda b: b.metric("P5", "pitch_range_st", 10),  # 旧版按音高阈值分档，现行配置不接受
+    lambda b: b.occ("P7", "stall"),  # 旧版按停顿次数分档
+    lambda b: b.occ("L1", "hook_invalid"),  # 旧版钩子封顶
+    lambda b: b.level("O4", 8, ref="rhythm"),  # 旧版节奏 + 热情两部分
+    lambda b: b.metric("P3", "reading_eval_score", 90),  # 旧版评测分分档
+    lambda b: b.add("O5", "question", ref="q1", judgment="full"),  # O5 已删除
+])
+def test_unused_evidence_rejected(cfg, add):
     b = full_marks()
-    b.remove("P3")
-    b.metric("P3", "reading_eval_score", v)
-    assert item(run(cfg, b), "P3").score == level
-
-
-@pytest.mark.parametrize("v,flag", [(92, True), (88, True), (85, False), (95, False)])
-def test_t4_metric_boundary_flag(cfg, v, flag):
-    b = full_marks()
-    b.remove("P3")
-    b.metric("P3", "reading_eval_score", v)
-    res = item(run(cfg, b), "P3")
-    assert res.low_confidence is flag
-    assert res.status == "scored"
-
-
-def test_t4_p3_missing_reading_eval_is_missing(cfg):
-    b = full_marks()
-    b.remove("P3")
-    res = item(run(cfg, b), "P3")
-    assert res.status == "missing_evidence" and res.score is None
-
-
-def test_t4_accent_downgrade_disabled_by_default(cfg):
-    b = full_marks()
-    b.occ("P3", "accent_downgrade")
-    assert item(run(cfg, b), "P3").score == 10
-    data = modified(raw_config(), lambda d: item_raw(d, "P3")["parts"][0]["modifiers"][0].update(enabled=True))
-    assert item(score_round(b.items, parse_config(data), context()), "P3").score == 8
-
-
-@pytest.mark.parametrize("level,expected", [(20, 14), (14, 14), (8, 8), (0, 0)])
-def test_t4_l1_hook_invalid_cap(cfg, level, expected):
-    b = full_marks()
-    b.remove("L1")
-    b.level("L1", level)
-    b.occ("L1", "hook_invalid")
-    assert item(run(cfg, b), "L1").score == expected
-
-
-@pytest.mark.parametrize("n,level,flag", [(0, 10, False), (1, 7, False), (2, 7, True), (3, 4, True), (4, 4, False), (5, 4, True), (6, 0, True), (9, 0, False)])
-def test_t4_count_bands_p7(cfg, n, level, flag):
-    b = full_marks()
-    for i in range(n):
-        b.occ("P7", "run_on" if i % 2 else "stall", source="audio")
-    res = item(run(cfg, b), "P7")
-    assert res.score == level
-    assert res.low_confidence is flag
-
-
-@pytest.mark.parametrize("pitch,loud,level", [(25, 12, 3), (10, 12, 5), (10, 5, 3), (5, 20, 3), (2, 20, 1)])
-def test_t4_rules_p5(cfg, pitch, loud, level):
-    b = full_marks()
-    b.remove("P5")
-    b.metric("P5", "pitch_range_st", pitch)
-    b.metric("P5", "loudness_range_db", loud)
-    assert item(run(cfg, b), "P5").score == level
-
-
-def test_t4_rules_missing_metric(cfg):
-    b = full_marks()
-    b.remove("P5", label="loudness_range_db")
-    assert item(run(cfg, b), "P5").status == "missing_evidence"
-
-
-def test_t4_parts_o4(cfg):
-    b = full_marks()
-    b.remove("O4")
-    for k, v in {"max_response_latency_s": 12, "returned_to_mainline_ratio": 0.5, "dead_air_count": 0,
-                 "unanswered_objections": 0, "loudness_range_db": 6, "pitch_range_st": 3}.items():
-        b.metric("O4", k, v)
-    assert item(run(cfg, b), "O4").score == 5 + 4
-
-
-def test_t4_duplicate_metric_raises(cfg):
-    b = full_marks()
-    b.metric("P3", "reading_eval_score", 80)
+    add(b)
     with pytest.raises(EvidenceError):
         run(cfg, b)
 
@@ -328,34 +294,6 @@ def test_t5_missing(cfg):
     b = full_marks()
     b.remove("P4")
     assert item(run(cfg, b), "P4").status == "missing_evidence"
-
-
-# ───────────── T6 逐题 ─────────────
-
-
-def test_t6_o5_levels(cfg):
-    b = full_marks()
-    b.remove("O5")
-    for q, lv in zip(["q-waiting", "q-med-vs-ci", "q3", "q4", "q5", "q6"], ["full", "partial", "zero", "full", "partial", "full"]):
-        b.add("O5", "question", ref=q, judgment=lv)
-    assert item(run(cfg, b), "O5").score == 5 + 3 + 0 + 5 + 3 + 5
-
-
-def test_t6_o5_unanswered_question_without_evidence_is_missing(cfg):
-    b = full_marks()
-    b.items = [e for e in b.items if not (e.item_id == "O5" and e.ref == "q6")]
-    assert item(run(cfg, b), "O5").status == "missing_evidence"
-
-
-def test_t6_o5_duplicate_or_unknown(cfg):
-    b = full_marks()
-    b.add("O5", "question", ref="q3", judgment="zero")
-    with pytest.raises(EvidenceError):
-        run(cfg, b)
-    b = full_marks()
-    b.add("O5", "question", ref="q-other", judgment="zero")
-    with pytest.raises(EvidenceError):
-        run(cfg, b)
 
 
 def test_t6_s3_elements_and_zero(cfg):
@@ -387,23 +325,12 @@ def test_t6_s3_late_answer_attributed_by_content(cfg):
 
 def test_t6_wrong_question_count(cfg):
     with pytest.raises(ScoringInputError):
-        run(cfg, full_marks(), expected_questions={"S3": ["a", "b", "c"], "O5": ["q1"] * 6})
+        run(cfg, full_marks(), expected_questions={"S3": ["a", "b", "c"]})
 
 
 def test_t6_missing_question_list(cfg):
     r = run(cfg, full_marks(), expected_questions={})
-    assert item(r, "S3").status == "missing_evidence" and item(r, "O5").status == "missing_evidence"
+    assert item(r, "S3").status == "missing_evidence"
 
 
 
-@pytest.mark.parametrize("add", [
-    lambda b: b.level("P3", 10),  # P3 的等级来自评测分，不接受直接给等级
-    lambda b: b.occ("P7", "unknown_label"),
-    lambda b: b.metric("P5", "unused_metric", 1),
-    lambda b: b.level("O4", 8, ref="tempo"),
-])
-def test_t4_unused_evidence_rejected(cfg, add):
-    b = full_marks()
-    add(b)
-    with pytest.raises(EvidenceError):
-        run(cfg, b)

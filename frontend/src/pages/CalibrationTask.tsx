@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Checkbox, Col, Input, Popconfirm, Radio, Row, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Checkbox, Col, Input, InputNumber, Popconfirm, Radio, Row, Space, Table, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -16,7 +16,7 @@ type ItemDef = {
 type Task = {
   id: string; status: string; evidence: Ev[]; note: string | null; set_name: string; video_asset_id: string | null; props_available: boolean;
   segments: { segment: string; start_ms: number; end_ms: number }[]; objections: { objection_id: string; video_ms: number; text: string }[];
-  questions: { question_id: string; text: string }[]; card: { checklist: { id: string; name: string }[]; glossary: string[]; targeted_points: string[] };
+  questions: { question_id: string; text: string }[]; card: { checklist: { id: string; name: string }[]; fixed_script?: { version: string; text: string } | null; glossary: string[]; targeted_points: string[] };
   p2_categories: string[]; dimensions: { id: string; name: string; items: ItemDef[] }[];
 };
 
@@ -24,7 +24,9 @@ const LABELS: Record<string, string> = {
   sticker: "贴片", kt_board: "KT 板", herd: "从众", loss_aversion: "损失规避", authority: "权威认同", price_split: "价格拆分",
   direct_answer: "正面回答", advantage: "强调优势", altruistic_close: "利他收尾", wrong_answer: "答错", no_answer: "没回答",
   full: "全对", partial: "部分", zero: "错或没答", hook_invalid: "钩子不实或诱导", accent_downgrade: "主体段口音明显",
+  sunk_cost: "沉没成本", attire: "穿着不符合要求", hairstyle: "发型不符合要求", dialect: "方言一处",
 };
+const OCC_LABELS: Record<string, string[]> = { P1: ["attire", "hairstyle"], P3: ["dialect"] };
 const OCC_LABEL: Record<string, string> = { P8: "小动作", P10: "笑场", L3: "演绎错误" };
 
 export function MyTasks() {
@@ -83,10 +85,17 @@ export default function CalibrationTask() {
     return (
       <div key={part.id}>
         {!single && <Typography.Text type="secondary">{part.id === "rhythm" ? "节奏掌控" : part.id === "enthusiasm" ? "热情" : part.id}：</Typography.Text>}
-        <Radio.Group disabled={done} value={cur?.judgment} onChange={(e) => replace((x) => x.item_id === it.id && x.kind === "level" && (x.ref ?? null) === ref,
-          { item_id: it.id, kind: "level", judgment: e.target.value, ref })}>
-          {part.levels.map((l) => <Radio.Button key={l} value={l}>{l}</Radio.Button>)}
-        </Radio.Group>
+        {part.levels.length > 11 ? (
+          <InputNumber disabled={done} min={part.levels[part.levels.length - 1]} max={part.levels[0]} precision={0} addonAfter={`/ ${part.levels[0]} 分`}
+            value={typeof cur?.judgment === "number" ? cur.judgment : null}
+            onChange={(v) => replace((x) => x.item_id === it.id && x.kind === "level" && (x.ref ?? null) === ref,
+              v == null ? null : { item_id: it.id, kind: "level", judgment: v, ref })} />
+        ) : (
+          <Radio.Group disabled={done} value={cur?.judgment} onChange={(e) => replace((x) => x.item_id === it.id && x.kind === "level" && (x.ref ?? null) === ref,
+            { item_id: it.id, kind: "level", judgment: e.target.value, ref })}>
+            {part.levels.map((l) => <Radio.Button key={l} value={l}>{l}</Radio.Button>)}
+          </Radio.Group>
+        )}
         {part.modifiers.filter((m) => m.enabled).map((m) => (
           <Checkbox key={m.label} disabled={done} style={{ marginLeft: 12 }} checked={!!find((x) => x.item_id === it.id && x.label === m.label)}
             onChange={(e) => replace((x) => x.item_id === it.id && x.label === m.label, e.target.checked ? { item_id: it.id, kind: "occurrence", label: m.label, judgment: "count" } : null)}>
@@ -99,7 +108,17 @@ export default function CalibrationTask() {
 
   const body = (it: ItemDef) => {
     if (it.type === "T5") return <Typography.Text type="secondary">按转写时间戳自动计算每分钟字数，无需打分。</Typography.Text>;
+    if (it.type === "T4" && it.id === "S2")
+      return (
+        <>
+          <Typography.Paragraph type="secondary" style={{ whiteSpace: "pre-wrap" }}>
+            按固定话术的完成准确程度打分。固定话术{task.card.fixed_script ? `（${task.card.fixed_script.version}）：${task.card.fixed_script.text}` : "：该卖点卡没有固定话术"}
+          </Typography.Paragraph>
+          {it.parts!.map((p) => levelPicker(it, p, it.parts!.length === 1))}
+        </>
+      );
     if (it.type === "T4") return it.parts!.map((p) => levelPicker(it, p, it.parts!.length === 1));
+    if (it.type === "T1" && OCC_LABELS[it.id]) return OCC_LABELS[it.id].map((l) => counter(it, l));
     if (it.type === "T1") return it.id === "P2" ? task.p2_categories.map((c) => counter(it, c)) : counter(it, OCC_LABEL[it.id] ?? "x", OCC_LABEL[it.id] ?? "记一次");
     if (it.type === "T2") {
       if (it.awards) return Object.keys(it.awards).map((l) => counter(it, l));

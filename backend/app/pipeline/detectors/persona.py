@@ -1,21 +1,23 @@
-"""人设塑造 P1–P10（rubric 第 4 节；P6 音色已删除）。"""
+"""人设塑造 P1–P10（评分表 20261105“人设塑造”）。"""
 from __future__ import annotations
 
 import math
 import re
 
 from ..text import char_count, sentences
-from .common import Ctx, binary, main_sentences
+from .common import Ctx, binary, check_level, main_sentences
 
 TEN_MIN = 600_000
 
 
 def p1(ctx: Ctx):
-    """形象：每 30 秒 1 帧，多模态模型给建议等级（不判相貌本身）。"""
-    found = ctx.providers.vision.analyze("appearance", ctx.media.appearance_frames, {})
+    """形象：每 30 秒 1 帧，多模态模型只判穿着、发型是否不符合要求（评分表：不符合直接扣 10 分）。不判相貌（Q5）。"""
+    found = ctx.providers.vision.analyze("attire", ctx.media.appearance_frames, {})
     out = []
-    for f in found[:1]:
-        out.append(ctx.ev("P1", "level", judgment=int(f.judgment), confidence=f.confidence, source="vision",
+    for f in found:
+        if f.label not in ("attire", "hairstyle"):
+            raise ValueError(f"P1: 视觉结果的类别 {f.label!r} 不是穿着或发型")
+        out.append(ctx.ev("P1", "occurrence", label=f.label, judgment=f.judgment, confidence=f.confidence, source="vision",
                           start=f.at_ms, end=f.end_ms, reason=f.reason))
     return out
 
@@ -47,11 +49,21 @@ def p2(ctx: Ctx):
 
 
 def p3(ctx: Ctx):
-    """普通话：朗读段带参考文本的语音评测（C15）。"""
+    """普通话：朗读段带参考文本的语音评测（C15）。评分表“方言一处扣1分”：方言处记一次；发音不准留作证据、不扣分（P-P3-PRON）。"""
     seg = ctx.seg("reading")
     r = ctx.providers.speech_eval.assess(ctx.media.audio["reading"], ctx.reading_text)
-    return [ctx.ev("P3", "metric", label="reading_eval_score", value=float(r.score), confidence=0.9, source="audio",
-                   start=seg["start_ms"], end=seg["end_ms"], segment="reading", reason="朗读段语音评测分")]
+    errors = r.details.get("errors")
+    if errors is None:
+        raise ValueError("P3: 语音评测没有返回逐处问题，无法按方言计次")
+    out = []
+    for e in errors:
+        if e["type"] not in ("dialect", "mispronounce"):
+            raise ValueError(f"P3: 未知的评测问题类型 {e['type']!r}")
+        a, b = seg["start_ms"] + e["start_ms"], seg["start_ms"] + e["end_ms"]
+        out.append(ctx.ev("P3", "occurrence", label=e["type"], judgment=binary(e["type"] == "dialect"), start=a, end=b,
+                          quote=e.get("text"), confidence=e.get("confidence", 0.8), source="audio", segment="reading",
+                          reason="方言" if e["type"] == "dialect" else "发音不准（不扣分，待确认 P-P3-PRON）"))
+    return out
 
 
 def p4(ctx: Ctx):
@@ -69,38 +81,59 @@ def p4(ctx: Ctx):
     return out
 
 
+def _voice(ctx: Ctx, item: str, aspect: str, criterion: str, max_score: int, context: dict, reason_extra: str = ""):
+    """评分表“根据主观打分”的声音条目：声音评价模型直接给 0–满分的整数分（须校准，CAL-SUBJECTIVE）。"""
+    seg = ctx.seg("main")
+    r = ctx.providers.voice.rate(ctx.media.audio["main"], aspect, criterion=criterion, max_score=max_score, context=context)
+    level = check_level(item, r.score, max_score)
+    return [ctx.ev(item, "level", judgment=level, confidence=r.confidence, source="audio", start=seg["start_ms"], end=seg["end_ms"],
+                   reason=r.reason + reason_extra)]
+
+
 def p5(ctx: Ctx):
     f = ctx.acoustic["main"]
-    seg = ctx.seg("main")
-    return [ctx.ev("P5", "metric", label=k, value=float(f[k]), confidence=0.8, source="audio", start=seg["start_ms"], end=seg["end_ms"])
-            for k in ("pitch_range_st", "loudness_range_db")]
+    return _voice(ctx, "P5", "intonation", "语调（抑扬顿挫-根据主观打分）", 5,
+                  {"pitch_range_st": f["pitch_range_st"], "loudness_range_db": f["loudness_range_db"]})
 
 
-def p7(ctx: Ctx):
-    """节奏：停顿 = 静音 ≥ 0.3 秒；连讲 = 连续 30 秒没有停顿；卡壳 = 句中静音 ≥ 3 秒（弹幕弹出后 5 秒内不算），或重复、自我纠正。"""
+def p6(ctx: Ctx):
+    f = ctx.acoustic["main"]
+    return _voice(ctx, "P6", "timbre", "音色-根据主观打分", 5,
+                  {"pitch_range_st": f["pitch_range_st"], "loudness_range_db": f["loudness_range_db"]})
+
+
+def pause_events(ctx: Ctx) -> dict[str, list[tuple[int, int, str]]]:
+    """停顿相关的参考测量：停顿 = 静音 ≥ 0.3 秒；连讲 = 连续 30 秒没有停顿；卡壳 = 句中静音 ≥ 3 秒（弹幕弹出后 5 秒内不算），或重复、自我纠正。"""
     c = ctx.cfg.p7
     words = [w for w in ctx.main.words if w.text.strip()]
     pops = [o["video_ms"] for o in ctx.objections]
-    out = []
+    ev = {"pause": [], "run_on": [], "stall": []}
     run_start = words[0].start_ms if words else 0
     for prev, cur in zip(words, words[1:]):
         gap = cur.start_ms - prev.end_ms
         if gap >= c.pause_ms:
+            ev["pause"].append((prev.end_ms, cur.start_ms, "停顿"))
             run_start = cur.start_ms
         elif cur.end_ms - run_start >= c.run_on_ms:
-            out.append(ctx.ev("P7", "occurrence", label="run_on", judgment="count", start=run_start, end=cur.end_ms,
-                              confidence=0.85, source="rule", reason="连续 30 秒没有停顿"))
+            ev["run_on"].append((run_start, cur.end_ms, "连续 30 秒没有停顿"))
             run_start = cur.end_ms
         if gap >= c.stall_gap_ms and prev.text not in "。！？；" and not any(p <= prev.end_ms <= p + c.objection_grace_ms for p in pops):
-            out.append(ctx.ev("P7", "occurrence", label="stall", judgment="count", start=prev.end_ms, end=cur.start_ms,
-                              confidence=0.8, source="rule", reason=f"句中静音 {gap / 1000:.1f} 秒"))
+            ev["stall"].append((prev.end_ms, cur.start_ms, f"句中静音 {gap / 1000:.1f} 秒"))
     for s in main_sentences(ctx):
         for pat in c.repetition_patterns:
             for m in re.finditer(pat, s.text):
                 a, b = ctx.main.span(s.char_start + m.start(), s.char_start + m.end())
-                out.append(ctx.ev("P7", "occurrence", label="stall", judgment="count", start=a, end=b, quote=s.text,
-                                  confidence=0.75, source="rule", reason=f"重复或自我纠正：{m.group(0)}"))
-    return out
+                ev["stall"].append((a, b, f"重复或自我纠正：{m.group(0)}"))
+    return ev
+
+
+def p7(ctx: Ctx):
+    """节奏（是否有停顿）：评分表“根据主观打分”。测得的停顿、连讲、卡壳次数作为参考输入交给声音评价模型，不再按次数分档。"""
+    ev = pause_events(ctx)
+    n = {k: len(v) for k, v in ev.items()}
+    return _voice(ctx, "P7", "rhythm", "节奏（是否有停顿）-根据主观打分", 10,
+                  {"pause_count": n["pause"], "run_on_count": n["run_on"], "stall_count": n["stall"]},
+                  f"（参考：停顿 {n['pause']} 次、连讲 {n['run_on']} 次、卡壳 {n['stall']} 次）")
 
 
 def p8(ctx: Ctx):

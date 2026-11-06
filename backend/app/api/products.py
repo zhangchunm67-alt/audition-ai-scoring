@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Literal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -94,8 +95,51 @@ class KeyNumber(BaseModel):
     value: str = Field(min_length=1)
 
 
+class FixedScript(BaseModel):
+    """S2 固定话术（评分表：根据固定话术的完成准确程度打分）。改话术须换版本号，旧的校准记录随之失效。"""
+
+    version: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,64}$")
+    text: str = Field(min_length=1)
+
+
+class CalibrationAnchor(BaseModel):
+    """校准样例：人工标注的一段讲解及其 S2 分，供模型对齐给分尺度。"""
+
+    score: int = Field(ge=0, le=50)
+    excerpt: str = Field(min_length=1)
+    note: str | None = None
+
+
+S2_MIN_TRAIN_SAMPLES = 20  # 交接口径：每个产品 20–30 份人工标注样本
+
+
+class S2Calibration(BaseModel):
+    """某产品、某版固定话术的 S2 校准记录（CAL-S2-PRODUCT）。原始人工标注另行保存，这里只记结论和样例。
+    status=draft：可用于试跑，报告标“非正式”；validated：须有训练样本和留出验证样本的一致性结果。"""
+
+    version: str = Field(pattern=r"^[A-Za-z0-9_.-]{1,64}$")
+    fixed_script_version: str
+    status: Literal["draft", "validated"] = "draft"
+    train_samples: int = Field(default=0, ge=0)
+    holdout_samples: int = Field(default=0, ge=0)
+    holdout_agreement: float | None = Field(default=None, ge=0, le=1)  # 留出样本上 AI 与人工 S2 一致的比例
+    anchors: list[CalibrationAnchor] = Field(default_factory=list)
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _validated(self) -> "S2Calibration":
+        if self.status == "validated":
+            if self.train_samples < S2_MIN_TRAIN_SAMPLES:
+                raise ValueError(f"校准样本至少 {S2_MIN_TRAIN_SAMPLES} 份才能标为已验证")
+            if self.holdout_samples < 1 or self.holdout_agreement is None:
+                raise ValueError("标为已验证须有留出验证样本及一致率")
+        return self
+
+
 class CardContent(BaseModel):
-    checklist: list[CardPoint] = Field(min_length=1)  # 必讲要点
+    checklist: list[CardPoint] = Field(default_factory=list)  # 必讲要点：仅旧版 rubric-v0.1 的 S2 用，新版只作讲解提示
+    fixed_script: FixedScript | None = None  # S2 固定话术
+    s2_calibration: S2Calibration | None = None  # S2 校准记录
     targeted_points: list[str] = Field(default_factory=list)  # 针对性卖点
     scenarios: list[str] = Field(default_factory=list)  # 使用场景
     glossary: list[GlossaryEntry] = Field(default_factory=list)  # 术语白话对照
@@ -110,6 +154,15 @@ class CardContent(BaseModel):
             raise ValueError("要点编号重复")
         return v
 
+    @model_validator(mode="after")
+    def _calibration_matches_script(self) -> "CardContent":
+        if self.s2_calibration is not None:
+            if self.fixed_script is None:
+                raise ValueError("没有固定话术，不能登记 S2 校准记录")
+            if self.s2_calibration.fixed_script_version != self.fixed_script.version:
+                raise ValueError("S2 校准记录对应的固定话术版本与本卡固定话术版本不一致")
+        return self
+
 
 class CardOut(BaseModel):
     id: uuid.UUID
@@ -121,9 +174,11 @@ class CardOut(BaseModel):
     created_at: datetime
 
 
-def check_card_total(content: dict | CardContent, required: int) -> None:
-    """C25：必讲要点分值合计必须等于 S2 的要点满分。"""
-    pts = content.checklist if isinstance(content, CardContent) else [CardPoint(**p) for p in content["checklist"]]
+def check_card_total(content: dict | CardContent, required: int | None) -> None:
+    """C25（只适用于旧版带卖点卡要点分的评分标准）：必讲要点分值合计必须等于 S2 的要点满分。新版 S2 按固定话术打分，required 为 None。"""
+    if required is None:
+        return
+    pts = content.checklist if isinstance(content, CardContent) else [CardPoint(**p) for p in content.get("checklist", [])]
     total = sum(p.points for p in pts)
     if total != required:
         raise HTTPException(422, f"必讲要点分值合计为 {total}，必须等于产品讲解的要点满分 {required}")
@@ -146,7 +201,7 @@ def create_card(pid: uuid.UUID, body: CardContent, request: Request, db: Session
     _product(db, pid)
     check_card_total(body, checklist_max(load(reference(db))))
     last = db.scalar(select(func.max(ProductCard.version)).where(ProductCard.product_id == pid)) or 0
-    c = ProductCard(product_id=pid, version=last + 1, status="draft", content=body.model_dump())
+    c = ProductCard(product_id=pid, version=last + 1, status="draft", content=body.model_dump(mode="json"))
     db.add(c)
     db.flush()
     _log(db, request, actor, "card_create", "product_card", c.id, version=c.version)
@@ -166,6 +221,26 @@ def publish_card(cid: uuid.UUID, request: Request, db: Session = DB, actor: User
         old.status = "retired"
     c.status = "published"
     _log(db, request, actor, "card_publish", "product_card", c.id, version=c.version)
+    db.commit()
+    return _card_out(c)
+
+
+@router.put("/cards/{cid}/s2-calibration", response_model=CardOut)
+def put_s2_calibration(cid: uuid.UUID, body: S2Calibration, request: Request, db: Session = DB, actor: User = Write) -> CardOut:
+    """登记或更新 S2 校准记录。固定话术不变时，校准可以在卖点卡发布之后补登（已生成的题单也能用上），每次修改写审计。"""
+    c = db.get(ProductCard, cid)
+    if c is None:
+        raise HTTPException(404, "卖点卡不存在")
+    if c.status == "retired":
+        raise HTTPException(409, "已停用的卖点卡不能再登记校准")
+    try:
+        content = CardContent(**{**c.content, "s2_calibration": body.model_dump(mode="json")})
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    old = (c.content or {}).get("s2_calibration")
+    c.content = content.model_dump(mode="json")
+    _log(db, request, actor, "card_s2_calibration", "product_card", c.id, version=c.version, calibration=body.version,
+         status=body.status, previous=(old or {}).get("version"))
     db.commit()
     return _card_out(c)
 
@@ -241,7 +316,7 @@ _crud("questions", Question, QuestionIn, QuestionOut, "question")
 
 class DrawRuleIn(BaseModel):
     objection_count: int = Field(default=4, ge=1)
-    question_count: int = Field(default=6, ge=1)
+    question_count: int = Field(default=0, ge=0)  # 知识题：评分表 20261105 已删除 O5，新版评分标准为 0
     objection_times_ms: list[int] = Field(default_factory=lambda: [240_000, 330_000, 420_000, 480_000])  # Q3 默认
     prep_seconds: int = Field(default=900, ge=0)
     question_seconds: int = Field(default=60, ge=1)

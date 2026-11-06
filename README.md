@@ -3,15 +3,16 @@
 候选人按试镜题单和录制规则，在系统外录好约 17 分钟的试镜视频，员工上传到系统，系统按《主播评分标准 · 机器可执行版》自动打分、出报告，供 HR 做录用参考。
 
 - 需求：[`docs/prd.md`](docs/prd.md)
-- 评分标准：[`docs/rubric.md`](docs/rubric.md)
-- 原始评分表：[`docs/source/主播评分标准-20241025.xls`](docs/source/)
+- 评分规则唯一来源：[`docs/source/主播评分表-20261105.xls`](docs/source/)（现行配置 `config/rubric/rubric-v0.2.yaml` 逐条引用原文）
+- 历史资料：[`docs/rubric.md`](docs/rubric.md)（v0.1 改写版，已停用，仅供追溯）、`docs/source/主播评分标准-20241025.xls`（旧表）
+- 与评分表 20261105 的对齐记录：[`docs/decisions.md`](docs/decisions.md) 第 7 节
 - 冲突、决定、待确认项：[`docs/decisions.md`](docs/decisions.md)
 
 ## 当前进度
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| 1 | 计分引擎、23 条计分配置、配置校验与发布检查、数据模型与迁移 | 已完成 |
+| 1 | 计分引擎、23 条计分配置（2026-11-06 按评分表 20261105 改为 rubric-v0.2）、配置校验与发布检查、数据模型与迁移 | 已完成 |
 | 2 | 平台底座（登录、权限、审计、字段加密）和配置后台：评分标准版本、卖点卡、异议库、知识题库、朗读稿、抽题规则、红线词表、试镜题单、账号 | 已完成 |
 | 3 | 视频上传与录制规则：候选人与书面同意登记、可打印题单（工作人员联 / 候选人联）、分片上传与断点续传、边看边标分段和异议时间、媒体读取审计（取代原候选人录制端，见 decisions.md C18） | 已完成 |
 | 4 | AI 处理流水线 M3 和自动判定 M4：四类能力接口与 Mock、媒体准备、声学特征、23 条检测器与红线检测、临界三轮、两级重试、失败通知与告警、到期删除、压测 | 已完成（全部用 Mock） |
@@ -105,7 +106,7 @@ Dockerfile、docker-compose.yml  单机部署（见“用 Docker 部署”，未
    cd backend && ../.venv/bin/python -m app.cli create-user --username admin --role admin --display-name 管理员
    ```
 
-   演示数据取自 `docs/rubric.md` 的示例（少儿医疗险卖点卡、4 条异议、6 道题、红线词表草稿），正式使用前须由培训和合规替换。
+   演示数据：少儿医疗险卖点卡（含演示固定话术和一份**未经人工样本校准**的草稿 S2 校准记录）、4 条异议、红线词表草稿，正式使用前须由培训和合规替换。演示的 S2 校准记录是草稿，据此出的报告都标“非正式”。
 
 4. 构建前端并启动：
 
@@ -186,7 +187,7 @@ cd frontend && npm run typecheck
 1. 管理员在“试镜题单”生成题单，打印**工作人员联**给录制时提问的人，**候选人联**（录制规则、流程、卖点卡，不含题目和分值）给候选人。
 2. 候选人签署书面同意书，按题单在系统外连续录成一个视频文件。
 3. HR 在“试镜录像 → 上传录像”：选候选人（没有就新建），登记书面同意（未登记不能上传），选题单、适用达标线、画面里有无贴片或 KT 板，选文件上传。上传中断后，打开这条录像重新选择同一文件即可续传。
-4. 上传完成后边看视频边标出主体段、每道知识题、朗读段的起点，异议时间默认取题单，可按视频修正。保存后点“提交处理”。
+4. 上传完成后边看视频边标出主体段、朗读段的起点（旧版题单另有知识题），异议时间默认取题单，可按视频修正。保存后点“提交处理”。产品卖点卡没有固定话术或对应的 S2 校准记录时，提交会被拒绝（见下文“产品讲解 S2 的固定话术与校准”）。
 5. 系统自动评分：
    - 媒体准备：抽各段音频和画面帧，只做一次；
    - 每一轮：语音识别（关闭顺滑）→ 声学特征 → 23 个检测器并行出证据（试镜不做红线检测，C33） → 计分引擎算分；
@@ -216,7 +217,7 @@ cd frontend && npm run typecheck
    - 把全部样本分配给 2–3 位校准员。
 2. **校准员背对背打分**（“我的校准任务”）：边看视频边打到证据级，提交前看不到 AI 结果和别人的打分。
    - 计次类条目每看到一次点一次，系统记下视频时间；
-   - 等级类直接选等级；要点、异议、知识题逐项勾选；
+   - 等级类直接选等级（主观评分条目和 S2 填 0–满分的整数，S2 对照页面上的固定话术打分）；计次类逐次记录；异议逐项勾选；
    - P4 语速自动沿用机器按时间戳统计的结果。
 3. **自动汇总金标准**：全部提交后用同一个计分引擎算分。
    - 条目分取中位数（2 人时平均）；
@@ -289,9 +290,9 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
 
 ## 修改评分配置
 
-评分规则全部在 `config/rubric/rubric-v0.1.yaml`。改分值、免扣次数、封顶、档位表、达标线、临界范围、阈值，都只改配置，不改代码，也不用重跑模型。
+评分规则全部在 `config/rubric/rubric-v0.2.yaml`（规则来源：评分表 20261105，每个条目的 `note` 先引原文）。改分值、免扣次数、封顶、档位表、达标线、临界范围、阈值，都只改配置，不改代码，也不用重跑模型。
 
-1. 复制成新版本文件（例如 `rubric-v0.2.yaml`），修改 `version`。
+1. 复制成新版本文件（例如 `rubric-v0.3.yaml`），修改 `version`。
 2. 跑测试：`.venv/bin/python -m pytest tests`。配置不合法（档位表不连续、分值相加不等于满分、题数不对等）会在加载时报错，并说明原因。
 3. 在管理后台“评分标准”页导入 YAML。页面会列出全部发布阻碍：带 `pending`（待确认）或 `calibration_required: true`（测试占位值）的节点。也可以在命令行查看：
 
@@ -301,18 +302,27 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
 
    某项拍板后，修改对应规则、删除标记，并更新 `docs/decisions.md`。阻碍清空后才能发布；标为 published 但仍带标记的配置，导入时会被拒绝。草稿版本可以用来生成题单试用，报告会标注“非正式”。
 
-卖点卡的必讲要点分值合计必须等于配置里产品讲解的要点满分（目前为 30），否则不能保存。
+### 产品讲解 S2 的固定话术与校准
+
+评分表：S2 “根据固定话术的完成准确程度打分”，满分 50。每个产品话术不同，所以：
+
+1. 卖点卡里填 **固定话术**（带版本号）。改话术必须换版本号，原来的校准记录随之失效。
+2. 用该产品 20–30 份人工标注样本（产品标识、录像或逐字稿、人工 S2 分及其他条目分、评分依据）校准，另留验证样本检查 AI 与人工的一致性；原始标注另行保存，不覆盖。
+3. 在产品页的卖点卡下登记 **S2 校准记录**（`PUT /api/cards/{id}/s2-calibration`）：校准版本、对应的话术版本、样本数、留出验证一致率、给模型参考的校准样例。已发布的卡也能补登（话术不变），每次修改写审计。
+4. 没有话术、没有校准记录或版本对不上时，录像不能提交处理，S2 检测器也会拒绝出分（条目缺证据，不当 0 分）。校准记录为草稿时可以试跑，报告标“非正式”；标为“已验证”须至少 20 份校准样本并有留出验证结果。
+
+卖点卡的必讲要点只在旧版评分标准（rubric-v0.1，卖点卡要点 30 + 结构 20）下计分，旧版要求要点分值合计等于 30；新版不再按要点计分。
 
 各计分类型的配置写法：
 
 | 类型 | 用于 | 关键参数 |
 |---|---|---|
-| T1 逐次扣分 | P2、P8、P10、L3 | `per` 单次扣分，`free` 免扣次数，`normalize` 时长换算 |
+| T1 逐次扣分 | P1、P2、P3、P8、P10、L3 | `per` 单次扣分，`free` 免扣次数，`normalize` 时长换算 |
 | T2 逐次加分 | P9、S4、L2、L4、L5、O1、O2、O3 | `award` 或按类别的 `awards`，`cap` 封顶，`labels` 计分类别，`distinct_by_label` 同类只算一次 |
-| T3+T4 | S2 | `checklist_max` 要点满分（分值取自卖点卡），`structure_levels` 结构等级，`error_penalty` 讲错扣分 |
-| T4 分级锚定 | P1、P3、P5、P7、S1、L1、O4 | `parts[].levels` 等级；等级来源 `source`：`evidence` 检测器直接给、`metric` 指标分段、`count` 计次分段、`rules` 多指标规则；`modifiers` 封顶或降级；`boundary_flag` 边界标低置信 |
+| T3+T4 | 仅旧版 S2 | `checklist_max` 要点满分（分值取自卖点卡），`structure_levels` 结构等级，`error_penalty` 讲错扣分 |
+| T4 分级锚定 | P5、P6、P7、S1、S2、L1、O4（评分表“根据主观打分”及 S2，等级为 0–满分的每个整数） | `parts[].levels` 等级；等级来源 `source`：`evidence` 检测器直接给、`metric` 指标分段、`count` 计次分段、`rules` 多指标规则；`modifiers` 封顶或降级；`boundary_flag` 边界标低置信 |
 | T5 阈值 | P4 | `metric`、`limit`、`score_by_over` 超限段数 → 分数 |
-| T6 逐题 | S3、O5 | `count` 题数；`levels` 按等级给分，或 `elements` 按要素给分加 `zero_labels` |
+| T6 逐题 | S3（旧版另有 O5） | `count` 题数；`levels` 按等级给分，或 `elements` 按要素给分加 `zero_labels` |
 
 检测配置在 `config/detectors/detectors-v1.yaml`（P2 词表、停顿和卡壳阈值、抽帧频率、道具引导语等），与计分配置分开管理，改了需要重跑模型。提示词在 `backend/app/pipeline/prompts.py`，改动须升版本号。
 
@@ -322,7 +332,7 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
 |---|---|
 | PRD 功能 M1–M6 | P0 全部实现；M2 录制端按 C18 改为“系统外录制 + 上传”；M5-3 候选人反馈版（P1）未做（新主播已能看本人完整报告） |
 | AI 能力 | 四类能力（加笑声检测）都已定义接口，目前全部是 Mock，分数不代表真实准确度；真实供应商须境内服务，接入方法见上文 |
-| 评分配置 | rubric v0.1 完整写入配置；待确认项和测试占位值显式标记，发布检查拦截，目前出的报告都标“非正式” |
+| 评分配置 | rubric-v0.2 按评分表 20261105 写入配置；评分表未写明的口径和主观评分条目都显式标记（待确认、需校准），发布检查拦截，目前出的报告都标“非正式” |
 | 上线前提 | 接入真实供应商 → 定稿评分标准和检测配置的待确认项 → 金标准集达到上线门槛（维度 ≥ 85%、结论 ≥ 95%）→ 影子试用（PRD 第 6 节） |
 | 测试 | Python 测试（计分引擎、流水线工具、后端接口与数据模型）、管理后台端到端测试（Playwright）、压测脚本；数量见最近一次提交说明 |
 | 未决事项 | 见 `docs/decisions.md` 第 4 节（录制现场谁提问、录制规则审定、同意书正文与扫描件保存期限、保存期限正式值、样本量标准等） |
@@ -336,7 +346,7 @@ PRD 第 6 节的 8 条用例。其中两条以系统内录制为前提，已按�
 | 不同意授权时无法进入录制 → 改为：未登记候选人书面同意，不能上传和处理（C30） | `backend/tests/test_recordings_api.py::test_no_consent_no_upload`；端到端测试“未登记授权时先登记” | 已完成 |
 | 4 条异议按配置时间点弹出 → 改为：题单的异议时间点（可按视频修正）与证据时间戳对得上（C29） | `test_segments_and_objection_alignment`（视频时间 = 主体段起点 + 相对时间）；`backend/tests/test_pipeline.py::test_objection_times_align_with_evidence`（S3 证据都在对应异议弹出之后、主体段之内） | 已完成 |
 | 口头禅在转写中保留，未被顺滑删掉 | `test_full_length_critical_three_rounds_and_traceability`（转写里有“那么”“一个”，P2 逐条出证据）；`test_asr_must_keep_disfluencies`（供应商开了顺滑即拒绝）；数据库约束 `transcripts.disfluency_removal` 必须为 false；接真实供应商后按上文第 5 步手动验证 | 自动化已完成，真实供应商待手动验证 |
-| 人设塑造按 95 分满分正确折算 | `tests/scoring/test_dimensions_and_round.py::test_persona_scaled_from_95_with_props`、`::test_persona_no_props_p9_not_applicable_scaled_from_90` | 已完成 |
+| 人设塑造按适用满分正确折算（评分表 20261105：满分 100；画面里没有道具时 P9 不适用，按 95 折算） | `tests/scoring/test_dimensions_and_round.py::test_persona_with_props_max_100`、`::test_persona_no_props_p9_not_applicable_scaled_from_95` | 已完成 |
 | 红线命中时结论为"不达标"，报告附原句 | 试镜不适用（C33：不做红线）；`test_redlines_off_for_audition` 验证红线话术不影响结论。红线逻辑保留给以后的直播评分，在打开红线的配置下仍有测试：`test_redline_*`、`test_redline_path_when_enabled` | 试镜不适用 |
 | 临界样本自动重跑 3 次，报告标"临界"（共 3 轮，首轮参与投票） | 汇总规则：`tests/scoring/test_verdict.py`；流水线：`test_full_length_critical_three_rounds_and_traceability`、`test_rounds_can_disagree_majority_decides`；报告页显示临界和各轮结果（端到端测试、`test_report_html_contents`） | 已完成 |
 | 报告里的标准版本、模型版本完整 | `test_traceability_fields`、`test_full_length_critical_three_rounds_and_traceability`；报告接口与 PDF：`test_list_and_detail`、`test_report_html_contents` | 已完成 |

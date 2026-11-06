@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, PipelineRun, Product, Recording, Report, RubricVersion, UploadSession, User
-from ..pipeline import orchestrator
+from ..pipeline import orchestrator, readiness
 from ..security.rbac import Perm
 from ..services import audit
 from ..services.media import ProbeError, probe
@@ -259,7 +259,7 @@ def set_segments(rid: uuid.UUID, body: SegmentsIn, request: Request, db: Session
         raise HTTPException(422, "起点须按 主体段 → 知识题 1–N → 朗读 的顺序严格递增")
     if body.reading_start_ms >= (rec.video_duration_ms or 0):
         raise HTTPException(422, "朗读段起点超出视频时长")
-    main_len = body.question_starts_ms[0] - body.main_start_ms
+    main_len = points[1] - body.main_start_ms  # 主体段到下一段（第一道知识题，没有知识题时为朗读段）起点
     offs = body.objection_offsets_ms
     if any(b <= a for a, b in zip(offs, offs[1:])) or offs[0] <= 0 or offs[-1] >= main_len:
         raise HTTPException(422, "异议时间须落在主体段内并严格递增")
@@ -276,6 +276,12 @@ def set_segments(rid: uuid.UUID, body: SegmentsIn, request: Request, db: Session
     return _out(db, rec)
 
 
+def _ready(db: Session, rec: Recording) -> None:
+    problems = readiness.blockers(db, db.get(AuditionSheet, rec.sheet_id))
+    if problems:
+        raise HTTPException(422, "暂不能处理：" + "；".join(problems))
+
+
 @router.post("/recordings/{rid}/submit", response_model=RecordingOut)
 def submit(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Write) -> RecordingOut:
     rec = _get(db, rid)
@@ -286,6 +292,7 @@ def submit(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
     if db.get(ConsentRecord, rec.consent_record_id) is None:
         raise HTTPException(422, "缺少书面同意登记，不能处理（C30）")
     get_candidate(db, rec.candidate_id)  # 候选人已申请删除的不能再处理
+    _ready(db, rec)
     rec.status, rec.submitted_at = "submitted", _now()
     _log(db, request, actor, "recording_submit", "recording", rec.id)
     db.commit()
@@ -300,6 +307,7 @@ def reprocess(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = 
     rec = _get(db, rid)
     if rec.status != "failed":
         raise HTTPException(409, "只有处理失败的录像可以重新处理")
+    _ready(db, rec)
     for run in db.scalars(select(PipelineRun).where(PipelineRun.recording_id == rec.id)):
         db.delete(run)
     rec.status, rec.failure_reason, rec.finished_at, rec.processing_started_at = "submitted", None, None, None

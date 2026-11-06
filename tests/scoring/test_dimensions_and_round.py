@@ -31,7 +31,7 @@ def test_grade_bands(cfg, score, grade):
     assert cfg.grade_for(score) == grade
 
 
-# ───────────── 人设塑造折算（P0 验收：按 95 满分正确折算） ─────────────
+# ───────────── 人设塑造折算：评分表满分 100；画面里没有道具时 P9 不适用，按 95 折算 ─────────────
 
 
 def _p_with_deductions(n_p2: int, props: bool = True):
@@ -42,6 +42,15 @@ def _p_with_deductions(n_p2: int, props: bool = True):
 
 
 @pytest.mark.parametrize("deduct,raw,scaled_int,grade", [
+    (0, 100, 100, 1), (4, 96, 96, 1), (5, 95, 95, 2), (10, 90, 90, 3), (19, 81, 81, 3), (40, 60, 60, 6),
+])
+def test_persona_with_props_max_100(cfg, deduct, raw, scaled_int, grade):
+    r = score_round(_p_with_deductions(deduct).items, cfg, context())
+    p = dim(r, "P")
+    assert (p.applicable_max, p.raw, p.score, p.grade) == (100, raw, scaled_int, grade)
+
+
+@pytest.mark.parametrize("deduct,raw,scaled_int,grade", [
     (0, 95, 100, 1),
     (4, 91, 96, 1),   # 91 ÷ 95 × 100 = 95.79 → 96 → 1 档
     (5, 90, 95, 2),   # 94.74 → 95 → 2 档
@@ -49,47 +58,33 @@ def _p_with_deductions(n_p2: int, props: bool = True):
     (19, 76, 80, 4),  # 80.00
     (40, 55, 58, 6),  # 57.89 → 58
 ])
-def test_persona_scaled_from_95_with_props(cfg, deduct, raw, scaled_int, grade):
-    r = score_round(_p_with_deductions(deduct).items, cfg, context())
+def test_persona_no_props_p9_not_applicable_scaled_from_95(cfg, deduct, raw, scaled_int, grade):
+    r = score_round(_p_with_deductions(deduct, props=False).items, cfg, context(props=False))
+    assert item(r, "P9").status == "not_applicable"
     p = dim(r, "P")
     assert p.applicable_max == 95
     assert p.raw == raw
     assert p.scaled == pytest.approx(raw * 100 / 95)
-    assert p.score == scaled_int
-    assert p.grade == grade
-
-
-@pytest.mark.parametrize("deduct,raw,scaled_int,grade", [
-    (0, 90, 100, 1),
-    (4, 86, 96, 1),   # 86 ÷ 90 × 100 = 95.56 → 96
-    (5, 85, 94, 2),   # 94.44 → 94
-    (9, 81, 90, 3),
-    (10, 80, 89, 3),  # 88.89 → 89
-])
-def test_persona_no_props_p9_not_applicable_scaled_from_90(cfg, deduct, raw, scaled_int, grade):
-    r = score_round(_p_with_deductions(deduct, props=False).items, cfg, context(props=False))
-    assert item(r, "P9").status == "not_applicable"
-    p = dim(r, "P")
-    assert (p.applicable_max, p.raw, p.score, p.grade) == (90, raw, scaled_int, grade)
+    assert (p.score, p.grade) == (scaled_int, grade)
 
 
 def test_no_props_ignores_p9_evidence(cfg):
     b = full_marks(props=True)  # 带了 P9 证据
     r = score_round(b.items, cfg, context(props=False))
     assert item(r, "P9").status == "not_applicable" and item(r, "P9").score is None
-    assert dim(r, "P").raw == 90 and dim(r, "P").score == 100
+    assert dim(r, "P").raw == 95 and dim(r, "P").score == 100
 
 
 def test_props_available_but_unused_scores_zero_for_p9(cfg):
     b = full_marks(props=False)  # 有道具但没有正确使用的证据
     r = score_round(b.items, cfg, context(props=True))
     assert item(r, "P9").score == 0
-    assert dim(r, "P").score == round_half_up(Fraction(90 * 100, 95))  # 94.74 → 95
+    assert dim(r, "P").score == 95  # 95 ÷ 100
 
 
 def test_other_dimensions_max_100(cfg):
     r = score_round(full_marks().items, cfg, context())
-    assert [(d.id, d.applicable_max) for d in r.dimensions] == [("P", 95), ("S", 100), ("L", 100), ("O", 100)]
+    assert [(d.id, d.applicable_max) for d in r.dimensions] == [("P", 100), ("S", 100), ("L", 100), ("O", 100)]
 
 
 # ───────────── 总档位、达标线、临界 ─────────────
@@ -207,11 +202,11 @@ def test_redline_detector_incomplete(rl_cfg):
 
 def test_low_confidence_flagged_score_unchanged(cfg):
     b = full_marks()
-    b.remove("P1")
-    b.level("P1", 7, confidence=0.4, source="vision")
+    b.remove("P6")
+    b.level("P6", 3, confidence=0.4, source="audio")
     r = score_round(b.items, cfg, context())
-    res = item(r, "P1")
-    assert res.score == 7 and res.low_confidence and "P1" in r.low_confidence_items
+    res = item(r, "P6")
+    assert res.score == 3 and res.low_confidence and "P6" in r.low_confidence_items
     assert r.status == "complete"
 
 
@@ -248,9 +243,9 @@ def test_not_applicable_item_needs_no_detector(cfg):
 # ───────────── 证据校验 ─────────────
 
 
-def test_evidence_for_removed_item_p6_rejected(cfg):
+def test_evidence_for_removed_item_o5_rejected(cfg):
     b = full_marks()
-    b.level("P6", 5)
+    b.add("O5", "question", ref="q1", judgment="full")
     with pytest.raises(EvidenceError):
         score_round(b.items, cfg, context())
 
@@ -281,7 +276,7 @@ def test_duplicate_evidence_id_rejected(cfg):
 
 def test_traceability_fields(cfg):
     r = score_round(full_marks().items, cfg, context())
-    assert r.rubric_version == "rubric-v0.1"
+    assert r.rubric_version == "rubric-v0.2"
     assert r.config_hash == config_hash(cfg) and r.config_hash.startswith("sha256:")
     assert r.model_manifest == {"asr": "mock-asr@1", "llm": "mock-llm@1", "prompt": "p-v1"}
     for i in r.items:

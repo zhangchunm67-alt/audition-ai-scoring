@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..pipeline import prompts
-from .base import Frame, LaughCandidate, ProviderError, SegmentHint, SpeechEvalResult, TranscriptResult, VisionFinding, Word
+from .base import Frame, LaughCandidate, ProviderError, SegmentHint, SpeechEvalResult, TranscriptResult, VisionFinding, VoiceRating, Word
 
 OPENING = "家里有孩子的家长先别走，今天讲清楚一件事：孩子看病，医保报完剩下的钱怎么报。"
 PITCH = (
@@ -121,36 +121,74 @@ class MockASR:
 
 
 class MockSpeechEval:
+    """朗读段评测：按参考文本均匀标出 dialect 处方言、mispronounce 处发音不准（时间按朗读稿铺满音频估算）。"""
+
     name, model_version = "mock-speech-eval", "1"
 
-    def __init__(self, score: float = 86.0, faults: Faults | None = None):
-        self.score, self.faults = score, faults or Faults()
+    def __init__(self, score: float = 86.0, dialect: int = 1, mispronounce: int = 1, faults: Faults | None = None):
+        self.score, self.dialect, self.mispronounce, self.faults = score, dialect, mispronounce, faults or Faults()
 
     def assess(self, audio_path: str, reference_text: str) -> SpeechEvalResult:
         if not reference_text:
             raise ProviderError("普通话评测需要参考文本")
         self.faults.hit("语音评测")
-        return SpeechEvalResult(self.score, {"reference_chars": len(reference_text)}, self.name, self.model_version)
+        dur = _duration_ms(audio_path)
+        n = self.dialect + self.mispronounce
+        step = len(reference_text) / (n + 1)
+        per_char = max(1, (dur - 600) / max(1, len(reference_text)))
+        errors = []
+        for i in range(n):
+            pos = int(step * (i + 1))
+            a = int(300 + pos * per_char)
+            errors.append({"text": reference_text[pos], "start_ms": a, "end_ms": a + int(per_char), "confidence": 0.8,
+                           "type": "dialect" if i < self.dialect else "mispronounce"})
+        return SpeechEvalResult(self.score, {"reference_chars": len(reference_text), "errors": errors}, self.name, self.model_version)
 
 
 class MockVision:
     name, model_version = "mock-vision", "1"
 
-    def __init__(self, appearance_level: int = 10, fidgets: int = 0, faults: Faults | None = None):
-        self.appearance_level, self.fidgets, self.faults = appearance_level, fidgets, faults or Faults()
+    def __init__(self, attire_issues: tuple[str, ...] = (), fidgets: int = 0, faults: Faults | None = None):
+        """attire_issues：模拟不符合要求的项（"attire" 穿着、"hairstyle" 发型）。"""
+        self.attire_issues, self.fidgets, self.faults = attire_issues, fidgets, faults or Faults()
 
     def analyze(self, task: str, frames: list[Frame], context: dict) -> list[VisionFinding]:
         self.faults.hit("视觉")
         if not frames:
             return []
-        if task == "appearance":
-            return [VisionFinding(frames[0].at_ms, frames[-1].at_ms, "appearance", self.appearance_level, 0.8, "着装、发型整洁（模拟）")]
+        if task == "attire":
+            a, b = frames[0].at_ms, frames[-1].at_ms
+            out = [VisionFinding(a, b, lab, "count", 0.8, f"{'穿着' if lab == 'attire' else '发型'}不符合要求（模拟）")
+                   for lab in self.attire_issues]
+            for lab in ("attire", "hairstyle"):
+                if lab not in self.attire_issues:
+                    out.append(VisionFinding(a, b, lab, "not_count", 0.8, f"{'穿着' if lab == 'attire' else '发型'}符合要求（模拟）"))
+            return out
         if task == "fidget":
             step = max(1, len(frames) // (self.fidgets + 1))
             return [VisionFinding(f.at_ms, f.at_ms + 1000, "touch_face", "count", 0.75, "手接近面部（模拟）") for f in frames[step::step][: self.fidgets]]
         if task == "prop_pointing":
             return [VisionFinding(at, at + 1000, "sticker", "count", 0.7, "手指向贴片（模拟）") for at in context.get("guide_ms", [])]
         return []
+
+
+class MockVoice:
+    """声音主观评价的 Mock：按本地声学特征给一个确定的分，只用来跑通流程，不代表真实评价。"""
+
+    name, model_version = "mock-voice", "1"
+
+    def __init__(self, scores: dict[str, int] | None = None, faults: Faults | None = None):
+        self.scores, self.faults = scores or {}, faults or Faults()
+
+    def rate(self, audio_path: str, aspect: str, *, criterion: str, max_score: int, context: dict) -> VoiceRating:
+        self.faults.hit("声音评价")
+        if aspect in self.scores:
+            score = self.scores[aspect]
+        elif aspect == "rhythm":
+            score = max(0, max_score - 2 * int(context.get("stall_count", 0)) - int(context.get("run_on_count", 0)))
+        else:
+            score = max_score - 1 if context.get("pitch_range_st", 0) >= 4 else max_score // 2
+        return VoiceRating(score=min(max_score, max(0, score)), confidence=0.7, reason=f"{criterion}（模拟评价）")
 
 
 class MockLaugh:
@@ -211,21 +249,21 @@ class MockLLM:
     def _s1_need(self, p):
         t = p["transcript"]
         risk, gap, link = _has(t, "感冒发烧", "风险", "看病"), _has(t, "自己掏", "自费", "缺口"), _has(t, "这款")
-        level = 10 if risk and gap and link else 6 if (risk or gap) else 0
+        level = 9 if risk and gap and link else 5 if (risk or gap) else 0
         quote = next((s for s in _sents(t) if "自己掏" in s or "感冒发烧" in s), "")
         return {"level": level, "quote": quote, "reason": "风险→缺口→产品", "confidence": 0.82}
 
-    def _s2_product(self, p):
+    def _s2_fixed_script(self, p):
+        """按固定话术逐句看逐字稿里有没有讲到（取句子前 6 个字匹配），按完成比例给分；“没有等待期”记为讲错。"""
         t = p["transcript"]
-        pts = []
-        for c in p["checklist"]:
-            q = next((s for s in _sents(t) if c["name"] in s), "")
-            pts.append({"id": c["id"], "covered": bool(q), "correct": True, "quote": q, "reason": "讲到" if q else "未讲到", "confidence": 0.85})
-        order = ["保障范围", "报销比例", "免赔额", "价格"]
-        found = sum(1 for k in order if k in t)
-        level = 20 if found == 4 else 14 if found >= 2 else 7 if found else 0
-        errors = [{"quote": s, "reason": "与条款不符", "confidence": 0.8} for s in _sents(t) if "没有等待期" in s]
-        return {"points": pts, "structure_level": level, "structure_reason": f"框架要点 {found}/4", "structure_confidence": 0.8, "errors": errors}
+        script = [x for x in _sents(p["fixed_script"]) if x.strip()]
+        done = [x for x in script if x[:6] in t]
+        errors = [{"quote": s, "reason": "与固定话术、条款不符", "confidence": 0.8} for s in _sents(t) if "没有等待期" in s]
+        score = round(p["max_score"] * len(done) / len(script)) if script else 0
+        score = max(0, score - 5 * len(errors))
+        quote = next((s for s in _sents(t) if any(x[:6] in s for x in done)), "")
+        return {"score": score, "quote": quote if score else "", "reason": f"固定话术 {len(done)}/{len(script)} 句讲到",
+                "confidence": 0.8, "errors": errors}
 
     def _s3_objection(self, p):
         t = p["transcript_after"]
@@ -255,10 +293,9 @@ class MockLLM:
     def _l1_opening(self, p):
         t = p["opening"]
         what, who, hook = _has(t, "今天讲", "讲清楚"), _has(t, "家长", "有孩子"), _has(t, "先别走", "讲清楚")
-        invalid = _has(t, "0元领", "零元领", "最后10单", "最后十单")
         n = sum([what, who, hook])
-        level = 20 if n == 3 else 14 if n == 2 else 8 if t.strip() else 0
-        return {"what": what, "who": who, "hook": hook, "hook_invalid": invalid, "level": level, "quote": _sents(t)[0] if t else "", "reason": f"{n}/3", "confidence": 0.85}
+        level = [0, 8, 13, 18][n] if t.strip() else 0
+        return {"level": level, "quote": _sents(t)[0] if t else "", "reason": f"讲什么、对谁、为什么现在听 {n}/3", "confidence": 0.85}
 
     def _founds(self, t, pred, label=lambda s: ""):
         return {"items": [{"quote": s, "valid": True, "label": label(s), "reason": "符合", "confidence": 0.8} for s in _sents(t) if pred(s)]}
@@ -298,14 +335,14 @@ class MockLLM:
     def _o3_scene(self, p):
         return self._founds(p["transcript"], lambda s: _has(s, "带孩子去", "收费员"))
 
-    def _o4_mainline(self, p):
-        return {"returned": [bool(x["text"].strip()) for x in p["segments_after_objection"]], "confidence": 0.75}
-
-    def _o5_answer(self, p):
-        a = p["answer"]
-        hits = sum(1 for fp in p["full_points"] if fp[:4] in a)
-        level = "full" if hits == len(p["full_points"]) and hits else "partial" if a.strip() else "zero"
-        return {"level": level, "reason": f"要点 {hits}/{len(p['full_points'])}", "confidence": 0.8}
+    def _o4_control(self, p):
+        m = p["measured"]
+        returned = sum(1 for x in p["segments_after_objection"] if x["text"].strip())
+        level = 20 - 3 * int(m["unanswered_objections"]) - 2 * int(m["dead_air_count"]) - (len(p["segments_after_objection"]) - returned)
+        if m["loudness_range_db"] < 5:
+            level -= 3
+        return {"level": max(0, min(20, level)), "quote": "", "reason": f"回到主线 {returned}/{len(p['segments_after_objection'])}",
+                "confidence": 0.75}
 
     def _rewrite(self, p):
         s = p["sentence"]

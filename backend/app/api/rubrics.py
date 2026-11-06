@@ -47,7 +47,7 @@ class RubricDetail(RubricSummary):
     yaml_text: str
     blockers: list[str]
     items: list[ItemRow]
-    checklist_max: int  # 产品讲解的要点满分，卖点卡要点分值须合计等于它（C25）
+    checklist_max: int | None  # 旧版 S2 的要点满分（C25）；新版按固定话术打分，为空
     thresholds: dict[str, int]
 
 

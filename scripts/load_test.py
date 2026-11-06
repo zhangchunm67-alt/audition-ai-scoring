@@ -90,7 +90,7 @@ admin, hr = TestClient(app, headers=H), TestClient(app, headers=H)
 admin.post("/api/auth/login", json={"username": "load-admin", "password": "load-password-1"})
 hr.post("/api/auth/login", json={"username": "load-hr", "password": "load-password-1"})
 data = video.read_bytes()
-SEG = {"main_start_ms": 5000, "question_starts_ms": [605000 + i * 60000 for i in range(6)], "reading_start_ms": 965000,
+SEG = {"main_start_ms": 5000, "question_starts_ms": [], "reading_start_ms": 605000,  # 新版题单没有知识题
        "objection_offsets_ms": [240000, 330000, 420000, 480000]}
 recs = []
 for i in range(args.recordings):
