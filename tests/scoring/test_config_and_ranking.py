@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import pytest
 import yaml
 
-from scoring import ConfigError, RankEntry, config_hash, ensure_publishable, load_config, parse_config, publish_blockers, rank
-from tests.scoring.helpers import CONFIG_PATH, item_raw, modified, raw_config
+from scoring import ConfigError, RankEntry, config_hash, ensure_publishable, load_config, parse_config, publish_blockers, rank, score_round
+from tests.scoring.helpers import CONFIG_PATH, context, full_marks, item_raw, modified, raw_config
 
 
 def test_default_config_shape(cfg):
@@ -27,6 +27,78 @@ def test_load_from_file():
 def test_hash_stable_and_sensitive(cfg):
     assert config_hash(parse_config(raw_config())) == config_hash(cfg)
     assert config_hash(parse_config(modified(raw_config(), lambda d: item_raw(d, "L3").update(per=5)))) != config_hash(cfg)
+
+
+def _legacy_config():
+    data = raw_config()
+    data.update(status="draft", rounding="half_up")
+    data["critical"]["total_rounds"] = 3
+    for dimension in data["dimensions"]:
+        for item in dimension["items"]:
+            if item["type"] == "T2":
+                item["cap"] = item["max"]
+            elif item["type"] == "T3+T4":
+                item["penalty_scope"] = "item"
+    return data
+
+
+def test_simplified_template_preserves_legacy_scores_hash_and_blockers():
+    data = raw_config()
+    assert "status" not in data and "rounding" not in data
+    assert "total_rounds" not in data["critical"]
+    for dimension in data["dimensions"]:
+        for item in dimension["items"]:
+            assert "cap" not in item and "penalty_scope" not in item
+    current, legacy = parse_config(data), parse_config(_legacy_config())
+    expected_hash = "sha256:8b3a1a38b3c700edded00bfbf6912be6951e9671cc55a53a770414aab6c70899"
+    assert config_hash(current) == config_hash(legacy) == expected_hash
+    assert publish_blockers(current) == publish_blockers(legacy)
+    evidence = full_marks()
+    for _ in range(5):
+        evidence.inst("O3")
+    assert score_round(evidence.items, current, context()) == score_round(evidence.items, legacy, context())
+    assert current.model_dump() == legacy.model_dump()
+    assert config_hash(parse_config(legacy.model_dump())) == expected_hash
+
+
+@pytest.mark.parametrize("status,rounds,expected_hash", [
+    ("published", 3, "sha256:786d90bfac17ea67328fb343540893bba9ab878968f0abd064371c5800a576ef"),
+    ("draft", 5, "sha256:02a139a8d78e9613ced28f01bfff764ed9de25068dc299ca06ee87148396d2c1"),
+])
+def test_legacy_published_and_odd_rounds_keep_hash_through_roundtrip(status, rounds, expected_hash):
+    data = _legacy_config()
+    if status == "published":
+        _strip(data)
+    data["status"] = status
+    data["critical"]["total_rounds"] = rounds
+    cfg = parse_config(data)
+    assert config_hash(cfg) == expected_hash
+    assert config_hash(parse_config(cfg.model_dump(mode="json"))) == expected_hash
+    assert parse_config(cfg.model_dump()).critical.total_rounds == rounds
+
+
+def test_legacy_hash_with_changed_max_and_new_implicit_cap():
+    data = _legacy_config()
+    item_raw(data, "O3").update(max=20, cap=20)
+    expected_hash = "sha256:ed99e6a7a6d99b011ae4c4e5904aa38e0fb15ab5e2769f4379164e4cf3447e56"
+    assert config_hash(parse_config(data)) == expected_hash
+    item_raw(data, "O3").pop("cap")
+    assert config_hash(parse_config(data)) == expected_hash
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: d.update(status="retired"),
+    lambda d: d.update(rounding="bankers"),
+    lambda d: d.update(rounding=None),
+    lambda d: item_raw(d, "S2").update(penalty_scope="checklist"),
+    lambda d: item_raw(d, "S2").update(penalty_scope=None),
+    lambda d: item_raw(d, "O3").update(cap=None),
+    lambda d: item_raw(d, "O3").update(cap=15.5),
+    lambda d: item_raw(d, "O3").update(cap=0),
+])
+def test_invalid_legacy_fields_are_still_rejected(mutate):
+    with pytest.raises(ConfigError):
+        parse_config(modified(_legacy_config(), mutate))
 
 
 # ───────────── 发布检查：待确认规则不得静默进入正式配置 ─────────────

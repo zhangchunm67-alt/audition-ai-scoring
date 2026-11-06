@@ -77,6 +77,12 @@ def _norm(s: str) -> str:
 
 def locate(st: SegmentText, quote: str, *, after_ms: int | None = None) -> tuple[int, int] | None:
     """把模型引用的原句定位回逐字稿的时间。忽略标点差异；after_ms 用于从某时刻之后找。"""
+    span = locate_chars(st, quote, after_ms=after_ms)
+    return st.span(*span) if span is not None else None
+
+
+def locate_chars(st: SegmentText, quote: str, *, after_ms: int | None = None) -> tuple[int, int] | None:
+    """返回实际匹配的原文字符区间 [i, j)，供时间与置信度共用。"""
     if not quote:
         return None
     text = st.text
@@ -87,9 +93,10 @@ def locate(st: SegmentText, quote: str, *, after_ms: int | None = None) -> tuple
         return None
     pos = plain.find(q)
     while pos != -1:
-        a, b = st.span(idx_map[pos], idx_map[pos + len(q) - 1] + 1)
+        i, j = idx_map[pos], idx_map[pos + len(q) - 1] + 1
+        a, _ = st.span(i, j)
         if after_ms is None or a >= after_ms:
-            return a, b
+            return i, j
         pos = plain.find(q, pos + 1)
     return None
 

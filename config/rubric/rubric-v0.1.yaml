@@ -8,8 +8,6 @@
 # 改动只影响计分（不需要重跑模型）。词表、抽帧率、提示词等检测配置单独管理，改了需要重跑。
 
 version: rubric-v0.1
-status: draft
-rounding: half_up                      # C3：四舍五入到整数（不是银行家舍入）
 expected_item_count: 23                # C1：音色 P6 删除后共 23 条
 removed_items: [P6]
 
@@ -18,7 +16,6 @@ thresholds: {veteran: 8, month_1: 10, new_trial: 15}   # 总档位须小于该�
 
 critical:
   review_band: 2        # 离达标线 2 档以内：[达标线-2, 达标线+1]，新主播试播即 13–16（I1）
-  total_rounds: 3       # C5：临界样本总共 3 轮，首轮参与投票，只追加 2 轮
 
 low_confidence:
   default_threshold: 0.6
@@ -130,7 +127,6 @@ dimensions:
         type: T2
         max: 5
         awards: {sticker: 2, kt_board: 1}
-        cap: 5
         applicable_if: props_available   # C26：上传时登记画面里有无贴片 / KT 板
 
       - id: P10
@@ -159,7 +155,6 @@ dimensions:
         structure_levels: [20, 14, 7, 0]
         error_penalty: 5           # C7：讲错每处 -5，从整个 S2 扣，最低 0
         error_label: error
-        penalty_scope: item
 
       - id: S3
         name: 解答异议
@@ -176,7 +171,6 @@ dimensions:
         type: T2
         max: 20
         award: 5
-        cap: 20
         labels: [herd, loss_aversion, authority, price_split]    # 沉没成本暂不计分
         distinct_by_label: true
         pending: [Q14, Q15]
@@ -201,7 +195,6 @@ dimensions:
         type: T2
         max: 20
         award: 10
-        cap: 20
 
       - id: L3
         name: 推理运用
@@ -216,7 +209,6 @@ dimensions:
         type: T2
         max: 20
         award: 10
-        cap: 20
         note: 同一段话能否同时在 L2 和 L4 得分（Q17）
         pending: [Q17]
 
@@ -225,7 +217,6 @@ dimensions:
         type: T2
         max: 20
         award: 10
-        cap: 20
 
   # ─────────────── 其他 100 ───────────────
   - id: O
@@ -236,7 +227,6 @@ dimensions:
         type: T2
         max: 20
         award: 5
-        cap: 20
         distinct_by_label: true    # 同一术语只算一次，label 为术语
 
       - id: O2
@@ -244,7 +234,6 @@ dimensions:
         type: T2
         max: 20
         award: 5
-        cap: 20
         distinct_by_label: true    # 同一卖点重复说不加分，label 为卖点
 
       - id: O3
@@ -252,7 +241,6 @@ dimensions:
         type: T2
         max: 15
         award: 5
-        cap: 15
 
       - id: O4
         name: 节奏与气氛

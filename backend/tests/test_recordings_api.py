@@ -1,7 +1,7 @@
 """候选人、授权登记、录像上传（分片与断点续传）、分段标注、提交、媒体读取与审计（里程碑 3）。"""
 import hashlib
 import math
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -41,7 +41,7 @@ def _candidate(api, name="张三", phone="13800001234") -> dict:
 
 
 def _consent(api, cid, **kw) -> dict:
-    data = {"consent_text_version": "consent-v1", "signed_on": date.today().isoformat(), **kw}
+    data = {"consent_text_version": "consent-v1", "signed_on": datetime.now(timezone.utc).date().isoformat(), **kw}
     r = api.post(f"/api/candidates/{cid}/consents", data=data)
     assert r.status_code == 201, r.text
     return r.json()
@@ -97,17 +97,18 @@ def test_candidate_pii_encrypted_at_rest(login, db):
 def test_consent_registration_and_scan(login, db):
     api = login("hr")
     c = _candidate(api)
-    r = api.post(f"/api/candidates/{c['id']}/consents", data={"consent_text_version": "consent-v1", "signed_on": date.today().isoformat()},
+    today = datetime.now(timezone.utc).date()  # 与签署日期接口使用同一日期基准。
+    r = api.post(f"/api/candidates/{c['id']}/consents", data={"consent_text_version": "consent-v1", "signed_on": today.isoformat()},
                  files={"attachment": ("同意书.pdf", b"%PDF-1.4 fake", "application/pdf")})
     assert r.status_code == 201 and r.json()["attachment_asset_id"]
     asset = db.get(MediaAsset, r.json()["attachment_asset_id"])
     assert asset.kind == "consent_scan" and asset.candidate_id is not None and asset.recording_id is None
     got = api.get(f"/api/media/{asset.id}")
     assert got.status_code == 200 and got.content == b"%PDF-1.4 fake"
-    bad = api.post(f"/api/candidates/{c['id']}/consents", data={"consent_text_version": "v", "signed_on": date.today().isoformat()},
+    bad = api.post(f"/api/candidates/{c['id']}/consents", data={"consent_text_version": "v", "signed_on": today.isoformat()},
                    files={"attachment": ("a.exe", b"MZ", "application/octet-stream")})
     assert bad.status_code == 422
-    future = (date.today() + timedelta(days=1)).isoformat()
+    future = (today + timedelta(days=1)).isoformat()
     assert api.post(f"/api/candidates/{c['id']}/consents", data={"consent_text_version": "v", "signed_on": future}).status_code == 422
 
 

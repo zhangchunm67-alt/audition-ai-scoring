@@ -135,7 +135,7 @@ def _score_t2(item: T2Item, evs: list[Evidence], res: ItemResult) -> Fraction:
                 res.contributions.append(Contribution(evidence_id=e.evidence_id, delta=0, note="同一类别已计分"))
                 continue
             seen.add(label)
-        add = min(pts, item.cap - total)
+        add = min(pts, item.max - total)
         total += add
         res.contributions.append(
             Contribution(evidence_id=e.evidence_id, delta=add, note="已封顶" if add < pts else f"加 {pts} 分")

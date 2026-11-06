@@ -57,7 +57,7 @@ def _frames_tar(src: str, start_ms: int, end_ms: int, fps: float, out_dir: Path)
     out_dir.mkdir(parents=True, exist_ok=True)
     if fps < 1:  # 稀疏抽帧：第一帧必取，之后每隔 1/fps 秒取一帧
         vf = f"select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,{1 / fps:g})',scale=640:-2"
-        extra = ["-vsync", "vfr"]
+        extra = ["-fps_mode", "vfr"]
     else:
         vf, extra = f"fps={fps},scale=640:-2", []
     _ffmpeg("-ss", f"{start_ms / 1000:.3f}", "-to", f"{end_ms / 1000:.3f}", "-i", src, "-vf", vf, *extra, "-q:v", "4", str(out_dir / "%06d.jpg"))

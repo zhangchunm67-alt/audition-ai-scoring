@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Union
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
 class ConfigError(ValueError):
@@ -166,8 +166,16 @@ class T2Item(_Item):
     award: int | None = Field(default=None, gt=0)  # 统一加分
     awards: dict[str, int] | None = None  # 按标签加分
     labels: list[str] | None = None  # 计分的标签；不在其中的实例不加分
-    cap: int = Field(gt=0)
+    # 仅兼容旧 YAML 的重复 cap。运行时和新配置统一使用 max。
+    legacy_cap: int | None = Field(default=None, validation_alias="cap", exclude=True, gt=0)
     distinct_by_label: bool = False  # 同一标签只算一次
+
+    @field_validator("legacy_cap", mode="before")
+    @classmethod
+    def _legacy_cap_present(cls, value):
+        if value is None:
+            raise ValueError("cap 不允许为空；省略时使用 max")
+        return value
 
     @model_validator(mode="after")
     def _check(self) -> "T2Item":
@@ -175,8 +183,8 @@ class T2Item(_Item):
             raise ValueError(f"{self.id}: award 和 awards 必须且只能设置一个")
         if self.awards is not None and self.labels is not None:
             raise ValueError(f"{self.id}: 用 awards 时不要再设 labels")
-        if self.cap != self.max:
-            raise ValueError(f"{self.id}: cap ({self.cap}) 应等于满分 ({self.max})")
+        if self.legacy_cap is not None and self.legacy_cap != self.max:
+            raise ValueError(f"{self.id}: cap ({self.legacy_cap}) 应等于满分 ({self.max})")
         return self
 
 
@@ -188,7 +196,7 @@ class T3T4Item(_Item):
     structure_levels: list[int]
     error_penalty: int = Field(gt=0)
     error_label: str = "error"
-    penalty_scope: Literal["item"] = "item"
+    legacy_penalty_scope: Literal["item"] = Field(default="item", validation_alias="penalty_scope", exclude=True)
 
     @model_validator(mode="after")
     def _check(self) -> "T3T4Item":
@@ -298,7 +306,7 @@ class Redlines(_Node):
 
 class Critical(_Node):
     review_band: int = Field(ge=0)
-    total_rounds: int = Field(ge=1)
+    total_rounds: int = Field(default=3, ge=1)
 
     @model_validator(mode="after")
     def _odd(self) -> "Critical":
@@ -309,8 +317,9 @@ class Critical(_Node):
 
 class RubricConfig(_Node):
     version: str
-    status: Literal["draft", "published"] = "draft"
-    rounding: Literal["half_up"] = "half_up"
+    # 生命周期由数据库管理。旧 status 只用于校验导入及保持历史配置哈希。
+    legacy_status: Literal["draft", "published"] = Field(default="draft", validation_alias="status", exclude=True)
+    legacy_rounding: Literal["half_up"] = Field(default="half_up", validation_alias="rounding", exclude=True)
     grade_bands: list[tuple[int, int, int]]  # [下限, 上限, 档位]
     thresholds: dict[str, int]  # 总档位须小于该值
     critical: Critical
@@ -350,6 +359,14 @@ class RubricConfig(_Node):
             raise ValueError("thresholds 不能为空")
         return self
 
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler):
+        data = handler(self)
+        # 旧发布配置往返序列化时仍须触发发布校验，并保留原哈希。
+        if self.legacy_status == "published":
+            data["status"] = "published"
+        return data
+
     # —— 便捷方法 ——
     def items(self):
         for d in self.dimensions:
@@ -376,7 +393,7 @@ def parse_config(data: dict[str, Any]) -> RubricConfig:
         cfg = RubricConfig.model_validate(data)
     except Exception as exc:  # pydantic.ValidationError
         raise ConfigError(str(exc)) from exc
-    if cfg.status == "published":
+    if cfg.legacy_status == "published":
         ensure_publishable(cfg)  # 标为 published 的配置不能带待确认或占位标记
     return cfg
 
@@ -388,7 +405,16 @@ def load_config(path: str | Path) -> RubricConfig:
 
 
 def config_hash(cfg: RubricConfig) -> str:
-    canonical = json.dumps(cfg.model_dump(mode="json"), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    # 补回旧格式的固定字段，确保已有报告和配置快照的身份不变。
+    data = cfg.model_dump(mode="json")
+    data.update(status=cfg.legacy_status, rounding="half_up")
+    for dimension in data["dimensions"]:
+        for item in dimension["items"]:
+            if item["type"] == "T2":
+                item["cap"] = item["max"]
+            elif item["type"] == "T3+T4":
+                item["penalty_scope"] = "item"
+    canonical = json.dumps(data, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

@@ -24,6 +24,7 @@ from ..models.entities import AuditionSheet, PipelineRun, RedlineLexiconVersion,
 from ..providers.registry import get_providers
 from ..services import audit
 from ..services.notify import notify
+from ..services.report_creation import build_report
 from ..services.storage import get_storage
 from ..settings import get_settings
 from .media import prepare
@@ -159,7 +160,6 @@ def _make_report(db: Session, rec: Recording, sheet: AuditionSheet, rv: RubricVe
     display = runs[v.display_round]
     dv, _ = detector_config(db)
     lex = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id) if sheet.redline_lexicon_version_id else None
-    informal = rv.status != "published" or (lex is not None and lex.status != "published") or dv.status != "published"
     try:
         from ..providers.resilient import resilient
         from .suggest import generate
@@ -170,14 +170,14 @@ def _make_report(db: Session, rec: Recording, sheet: AuditionSheet, rv: RubricVe
     except Exception as exc:  # noqa: BLE001  示范说法只用于辅导，失败不影响出报告
         log.warning("录像 %s 示范说法生成失败：%s", rec.id, str(exc)[:200])
         suggestions = []
-    db.add(Report(
-        recording_id=rec.id, revision=1, rubric_version_id=rv.id, config_hash=results[0].config_hash, detector_config_version_id=dv.id,
-        model_manifest=results[v.display_round - 1].model_manifest, verdict=v.model_dump(mode="json"), label=v.label, conclusion=v.conclusion,
-        critical=v.critical, redline_hit=v.redline_hit, display_run_id=display.id, informal=informal, suggestions=suggestions,
-    ))
+    report = build_report(
+        recording_id=rec.id, revision=1, rubric=rv, detector_config=dv, lexicon=lex,
+        verdict=v, results=results, display_run_id=display.id, suggestions=suggestions,
+    )
+    db.add(report)
     rec.status, rec.finished_at = "done", _now()
     audit.record(db, None, actor_type="system", actor_id=None, action="report_create", target_type="recording", target_id=str(rec.id),
-                 label=v.label, critical=v.critical, rounds=len(results), informal=informal)
+                 label=v.label, critical=v.critical, rounds=len(results), informal=report.informal)
 
 
 def _fail(recording_id: str, round_no: int, reason: str) -> None:

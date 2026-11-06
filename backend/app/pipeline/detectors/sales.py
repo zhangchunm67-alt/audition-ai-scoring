@@ -28,6 +28,11 @@ def s2(ctx: Ctx):
     out = []
     errors = {e["quote"]: e for e in r["errors"]}
     for p in r["points"]:
+        # 明确未讲到且没有引用是核对结果，不是引用证据；仍保留零分要点。
+        if not p["covered"] and not p["quote"].strip():
+            out.append(ctx.ev("S2", "checklist_hit", ref=p["id"], label=names[p["id"]],
+                              judgment="not_count", reason=p["reason"], confidence=p["confidence"], source="llm"))
+            continue
         out.append(ctx.quote_ev("S2", "checklist_hit", p["quote"], ref=p["id"], label=names[p["id"]],
                                 judgment=binary(p["covered"] and p["correct"]), reason=p["reason"], model_conf=p["confidence"]))
         if p["covered"] and not p["correct"] and p["quote"] not in errors:

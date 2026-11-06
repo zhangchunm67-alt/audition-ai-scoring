@@ -51,6 +51,35 @@ def _result(db, run) -> dict:
 # ───────────── 端到端 ─────────────
 
 
+@pytest.mark.parametrize("task,item_id,response", [
+    ("s4_closing", "S4", {"items": [{"method": "herd", "compliant": True, "quote": "这是一段原文不存在的虚构证据",
+                                      "reason": "虚构", "confidence": 0.99}]}),
+    ("s1_need", "S1", {"level": 10, "quote": "这是一段原文不存在的虚构证据", "reason": "虚构", "confidence": 0.99}),
+    ("l3_deduction", "L3", {"items": [{"valid": False, "quote": "这是一段原文不存在的虚构证据",
+                                         "reason": "虚构", "confidence": 0.99}]}),
+])
+def test_fabricated_quote_cannot_produce_report(login, seeded, video_file, db, task, item_id, response):
+    class FabricatingLLM(MockLLM):
+        def complete_json(self, requested_task, *args, **kwargs):
+            if requested_task == task:
+                return response
+            return super().complete_json(requested_task, *args, **kwargs)
+
+    set_providers(_providers(llm=FabricatingLLM()))
+    rec = _submit(login("hr"), seeded, video_file)
+    assert rec.status == "failed"
+    assert _report(db, rec) is None
+    for run in _runs(db, rec):
+        detector = db.scalar(select(DetectorRun).where(DetectorRun.run_id == run.id, DetectorRun.detector_id == item_id))
+        assert detector.status == "failed" and "引用无法" in detector.error
+        result = _result(db, run)
+        scored_item = next(i for i in result["items"] if i["item_id"] == item_id)
+        assert result["status"] == "incomplete"
+        assert scored_item["status"] == "missing_evidence" and scored_item["score"] is None
+        assert scored_item["contributions"] == []
+        assert not db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == item_id)).all()
+
+
 def test_end_to_end_short_video(login, seeded, video_file, db):
     rec = _submit(login("hr"), seeded, video_file)
     assert rec.status == "done", rec.failure_reason
@@ -107,7 +136,9 @@ def test_objection_times_align_with_evidence(login, seeded, full_video, db):
 
 def test_rounds_can_disagree_majority_decides(login, seeded, full_video, db):
     """第 2 轮大模型给出不同判断（模拟识别或判断的随机误差）：三轮取多数，展示中位数所在轮。"""
-    llm = MockLLM(round_overrides={(2, "s1_need"): {"level": 0, "quote": "", "reason": "（模拟）未识别到激发需求", "confidence": 0.6}})
+    llm = MockLLM(round_overrides={(2, "s1_need"): lambda p: {
+        "level": 0, "quote": p["transcript"][:30], "reason": "（模拟）同一原文被判为未激发需求", "confidence": 0.6,
+    }})
     set_providers(_providers(llm=llm))
     rec = _submit(login("hr"), seeded, full_video, seg=FULL_SEG)
     rep = _report(db, rec)

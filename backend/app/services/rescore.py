@@ -14,6 +14,7 @@ from scoring import EvidenceError, finalize, parse_config, rounds_required, scor
 from ..models.convert import row_to_evidence
 from ..models.entities import AuditionSheet, DetectorConfigVersion, DetectorRun, EvidenceRow, PipelineRun, ProductCard, Recording, RedlineLexiconVersion, Report, RubricVersion, ScoreResultRow
 from ..pipeline.runner import scoring_context
+from .report_creation import build_report
 
 
 def round_results(db: Session, rec: Recording, rv: RubricVersion, *, save: bool) -> tuple[list[PipelineRun], list]:
@@ -74,11 +75,9 @@ def rescore(db: Session, rep: Report, rv: RubricVersion) -> Report:
     dv = db.get(DetectorConfigVersion, rep.detector_config_version_id)
     lex = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id) if (cfg.redlines.enabled and sheet.redline_lexicon_version_id) else None
     nxt = (db.scalar(select(func.max(Report.revision)).where(Report.recording_id == rec.id)) or 0) + 1
-    new = Report(
-        recording_id=rec.id, revision=nxt, rubric_version_id=rv.id, config_hash=results[0].config_hash, detector_config_version_id=dv.id,
-        model_manifest=results[v.display_round - 1].model_manifest, verdict=v.model_dump(mode="json"), label=v.label, conclusion=v.conclusion,
-        critical=v.critical, redline_hit=v.redline_hit, display_run_id=display.id,
-        informal=rv.status != "published" or dv.status != "published" or (lex is not None and lex.status != "published"),
+    new = build_report(
+        recording_id=rec.id, revision=nxt, rubric=rv, detector_config=dv, lexicon=lex,
+        verdict=v, results=results, display_run_id=display.id,
         suggestions=rep.suggestions if display.id == rep.display_run_id else [],  # 示范说法按展示轮的逐字稿生成
     )
     db.add(new)

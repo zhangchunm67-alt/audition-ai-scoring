@@ -355,7 +355,8 @@ class DetectorRun(Base):
     run_id: Mapped[uuid.UUID] = fk_uuid("pipeline_runs.id", ondelete="CASCADE")
     detector_id: Mapped[str] = mapped_column(String(32))  # 条目编号，或 "redlines"
     status: Mapped[str] = mapped_column(_enum("completed", "failed", name="detector_status"))
-    tries: Mapped[int] = mapped_column(Integer, default=1)
+    # 兼容历史 tries 列及其非空约束，不作为实际重试计数使用。
+    _legacy_tries: Mapped[int] = mapped_column("tries", Integer, default=1)
     error: Mapped[str | None] = mapped_column(Text)
     finished_at: Mapped[datetime] = created_at()
     __table_args__ = (UniqueConstraint("run_id", "detector_id"),)
@@ -475,6 +476,7 @@ class GoldSet(Base):
     __tablename__ = "gold_sets"
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(128))
+    # regression 仅兼容历史数据；创建接口只接受上线前校准和月度抽检。
     purpose: Mapped[str] = mapped_column(_enum("prelaunch", "monthly_sample", "regression", name="gold_purpose"))
     rubric_version_id: Mapped[uuid.UUID] = fk_uuid("rubric_versions.id")  # 校准员按这个版本打分；金标准与 AI 的对比也按它
     note: Mapped[str | None] = mapped_column(Text)

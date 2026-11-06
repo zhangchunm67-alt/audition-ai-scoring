@@ -12,7 +12,7 @@ from ...providers.base import Providers
 from .. import llm as llm_client
 from ..detector_config import DetectorConfig
 from ..media import Prepared
-from ..text import SegmentText, locate, sentences
+from ..text import SegmentText, locate_chars, sentences
 
 
 @dataclass
@@ -59,16 +59,14 @@ class Ctx:
 
     def quote_ev(self, item: str, kind: str, quote: str, *, st: SegmentText | None = None, after_ms: int | None = None,
                  model_conf: float, source: str = "llm", **kw) -> Evidence:
-        """引用原句的证据：定位回时间；置信度取模型把握与该处转写置信度的较小者（转写不清即低置信）。"""
+        """原文匹配成功才能生成证据；失败由 runner 标记检测失败，禁止按零次或满分处理。"""
         st = st or self.main
-        pos = locate(st, quote, after_ms=after_ms)
-        conf = model_conf
-        if pos:
-            text = st.text
-            i = text.find(quote) if quote in text else -1
-            if i >= 0:
-                conf = min(conf, st.min_confidence(i, i + len(quote)))
-        return self.ev(item, kind, start=pos[0] if pos else None, end=pos[1] if pos else None, quote=quote,
+        span = locate_chars(st, quote, after_ms=after_ms)
+        if span is None:
+            raise ValueError(f"{item}: 引用无法在指定原文范围定位")
+        pos = st.span(*span)
+        conf = min(model_conf, st.min_confidence(*span))
+        return self.ev(item, kind, start=pos[0], end=pos[1], quote=quote,
                        confidence=conf, source=source, segment=st.segment, **kw)
 
 
