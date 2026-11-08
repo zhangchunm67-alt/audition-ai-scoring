@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 每天 02:30 执行到期删除和备份。安装方法见 README“在 Mac Studio 上部署”。
+     把 __DEPLOY_DIR__ 换成部署目录的绝对路径（不要放在“桌面”“文稿”下，macOS 会拦截后台任务访问）。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.audition.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__DEPLOY_DIR__/scripts/daily.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__DEPLOY_DIR__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd 不读 shell 配置：docker 命令通常在 /usr/local/bin（Docker Desktop）或 /opt/homebrew/bin（Colima） -->
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__DEPLOY_DIR__/data/logs/daily.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DEPLOY_DIR__/data/logs/daily.log</string>
+</dict>
+</plist>

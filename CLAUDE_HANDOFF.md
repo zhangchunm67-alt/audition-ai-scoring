@@ -27,7 +27,11 @@
 - **管理后台**：卖点卡编辑固定话术，登记 S2 校准记录；校准员打分页对照固定话术给 S2 打 0–50 分，P1、P3 改为计次；抽题规则的知识题数可以填 0。
 - **演示数据**：demo 卖点卡带演示固定话术和一份草稿校准记录 `demo-uncalibrated`（没有人工样本，只用来跑通流程）。
 
-## 验证状态（本轮）
+### 2026-11-08
+- 部署方案：公司内网 Mac Studio（M5 Max、64 GB、512 GB）+ NAS 备份，见 README“在 Mac Studio 上部署”和 decisions.md T36。新增 `scripts/backup.sh`、`scripts/daily.sh`、`scripts/macos/com.audition.daily.plist`；媒体目录改为宿主机目录 `MEDIA_DIR`。
+- 已用真实容器验证：MinIO 加密写入、数据库迁移、备份、恢复、缺密钥不可解密。应用镜像在 Apple 芯片上尚未跑过，首次部署按 README 检查清单确认。
+
+## 验证状态（2026-11-06）
 
 - `pytest`（计分引擎、流水线、后端接口，PostgreSQL 16）：447 通过，1 跳过（本机没有 Redis 的队列模式测试）。
 - 前端 `npm run typecheck` 通过；`scripts/run_e2e.sh`（Playwright）18 步全部通过。

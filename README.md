@@ -249,7 +249,7 @@ cd frontend && npm run typecheck
 
 ## 用 Docker 部署
 
-> **注意：这套 Docker 部署未在开发环境完整验证。** 开发环境的网络策略禁止访问 Debian 软件源（deb.debian.org），镜像里装不上 ffmpeg 和 Chromium，所以没能完整构建和跑通。compose 配置的语法已校验。请在能正常联网的服务器上先试跑一遍。
+> **注意：应用镜像还没有完整构建、跑通过。** 开发环境的网络策略禁止访问 Debian 软件源，镜像里装不上 ffmpeg 和 Chromium。已在开发环境用真实容器验证过的部分：PostgreSQL、MinIO 启动；对象写入带服务端加密，磁盘上是密文；数据库迁移和演示数据导入；`scripts/backup.sh` 备份；从备份恢复到全新环境；换掉加密密钥后备份无法解密。第一次在正式机器上部署时，请按下面 Mac Studio 一节最后的检查清单逐项确认。
 
 ```bash
 ./scripts/gen_env.sh
@@ -267,21 +267,145 @@ docker compose exec api python -m app.cli seed-demo
 docker compose exec api python -m app.cli create-user --username admin --role admin --display-name 管理员
 ```
 
-- 浏览器打开 http://服务器:8000 。正式部署前须配好 https（前面加反向代理），并把 `.env` 里的 `APP_COOKIE_SECURE` 改为 `true`。
-- `.env` 里的 `APP_DATA_KEY` 务必备份，丢失后已加密的个人信息无法解密。
-- 到期删除：在宿主机加每天一次的定时任务 `docker compose exec -T api python -m app.cli purge-expired`。
-- 自带的对象存储是 Bitnami 的 MinIO 归档镜像（官方镜像已不在 Docker Hub 提供），只用于试用。正式环境请改用阿里云 OSS、腾讯云 COS 等境内对象存储：修改 `.env` 中的 `APP_S3_ENDPOINT`、`APP_S3_BUCKET`、`APP_S3_REGION`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`，并去掉 compose 里的 minio 服务。
+- 浏览器打开 http://服务器:8000 。走公网时必须配 https（前面加反向代理），并把 `.env` 里的 `APP_COOKIE_SECURE` 改为 `true`。
+- `.env` 里的密钥务必另外保存：`APP_DATA_KEY` 丢了，已加密的个人信息无法解密；`MINIO_KMS_SECRET_KEY` 丢了，视频无法解密。
+- 视频等媒体存放在宿主机目录 `MEDIA_DIR`（默认 `./data/minio`，MinIO 加密后的文件）。在 Linux 上这个目录要归 uid 1001 所有：`mkdir -p data/minio && sudo chown 1001 data/minio`。
+- 每天一次：`scripts/daily.sh`，先删除到期媒体，再备份（见下一节）。
+- 自带的对象存储是 Bitnami 的 MinIO 归档镜像（官方镜像已不在 Docker Hub 提供，这个镜像也不再更新），只适合内网使用。走公网或长期使用时，请改用阿里云 OSS、腾讯云 COS 等境内对象存储：修改 `.env` 中的 `APP_S3_ENDPOINT`、`APP_S3_BUCKET`、`APP_S3_REGION`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`，并去掉 compose 里的 minio 服务。
 - 构建环境需要经 HTTPS 代理（自签证书）访问软件源时，用 `docker build --secret id=build_ca,src=<证书文件> .` 传入证书。证书只在构建时使用，不会留在镜像里。
+
+## 在 Mac Studio 上部署（公司内网，NAS 做备份）
+
+适用于：Apple 芯片的 Mac（如 M5 Max、64 GB 内存、512 GB 硬盘），每月约 100 条试镜录像，只在公司内网使用。所用镜像都有 linux/arm64 版本（python、node、postgres、redis、bitnamilegacy/minio 已逐一核对），不需要改代码。
+
+### 存储怎么分
+
+| 放在哪 | 内容 | 容量估算（每月 100 条） |
+|---|---|---|
+| Mac 本机 SSD：`MEDIA_DIR` | 视频、音频、抽帧（MinIO 加密后的文件） | 每条 0.6–2.1 GB；未录用的保存 30 天，滚动占用 60–210 GB；已录用的一直保留，每年增加 70–250 GB（按一成录用估算） |
+| Mac 本机 SSD：Docker 虚拟机 | 数据库、Redis、镜像 | 20–40 GB |
+| NAS：`BACKUP_DIR` | 每日数据库备份（保留 14 天）和媒体镜像 | 与上面两项相当 |
+| **密码管理器等，与 NAS 分开** | `.env`（全部密钥） | 几 KB，生成后不变 |
+
+视频不要直接放在 NAS 的共享目录上跑 MinIO：MinIO 不支持网络文件系统作为数据盘。NAS 只用来做备份。如果 NAS 自带 S3 兼容服务（例如 QNAP 的 QuObjects、TrueNAS 的 MinIO 应用），也可以把 `APP_S3_ENDPOINT` 指向 NAS，把视频直接存到 NAS 上，这样不占 Mac 的硬盘。这种做法要先确认 NAS 支持服务端加密（SSE-S3）。
+
+本机磁盘用到 80% 时，`backup.sh` 会在日志里提醒。
+
+### 1. 准备 Mac
+
+1. **部署目录不要放在“桌面”“文稿”“下载”下面。** 这几个文件夹受 macOS 隐私保护，后台定时任务访问不了。建议单独克隆一份到 `~/audition`，开发用的那份仍然留在原处。
+2. 打开 FileVault（系统设置 → 隐私与安全性）：磁盘上有候选人的人脸、声音和个人信息。
+3. 防止休眠：系统设置 → 能耗，关闭“自动进入睡眠”，打开“断电后自动启动”；或者用命令：
+
+   ```bash
+   sudo pmset -a sleep 0 disksleep 0 autorestart 1
+   ```
+
+4. 开了 FileVault，断电重启后需要有人到现场登录一次，Docker 才会启动。建议给这台机器接 UPS。
+5. 在路由器上给 Mac 固定内网 IP。HR 用 `http://<固定IP>:8000` 访问。只在内网使用时可以保持 `APP_COOKIE_SECURE=false`。代价是登录状态在内网里明文传输，所以不要把 8000 端口映射到公网。
+
+### 2. 安装 Docker
+
+二选一：
+
+- **Docker Desktop**：最省事。员工超过 250 人或年收入超过 1000 万美元的公司，商用需要购买订阅。设置里：Resources 给 8 核 CPU、16 GB 内存；在 General 里勾选“登录时启动 Docker Desktop”。
+- **Colima**：免费开源，需要先装 Homebrew：
+
+  ```bash
+  brew install colima docker docker-compose
+  ```
+
+  ```bash
+  colima start --cpu 8 --memory 16 --disk 60 --vm-type vz --mount-type virtiofs --mount ~/audition:w
+  ```
+
+  安装后按 brew 的提示，把 docker-compose 链接为 docker 的插件，`docker compose` 命令才能用。开机自启：`brew services start colima`。
+
+### 3. 首次部署
+
+```bash
+git clone https://github.com/zhangchunm67-alt/audition-ai-scoring.git ~/audition
+```
+
+```bash
+cd ~/audition && ./scripts/gen_env.sh && mkdir -p data/minio data/logs
+```
+
+编辑 `.env`：把 `BACKUP_DIR` 设为 NAS 挂载目录，例如 `/Volumes/audition-backup`；接入真实 AI 供应商时，再把 `APP_PROVIDERS` 改掉。然后**把整个 `.env` 存进公司密码管理器**，不要放在 NAS 的同一个共享里。
+
+```bash
+docker compose up -d --build
+```
+
+```bash
+docker compose exec api python -m app.cli create-user --username admin --role admin --display-name 管理员
+```
+
+### 4. 挂载 NAS，开启每日备份
+
+1. 在访达里“前往 → 连接服务器”，输入 `smb://<NAS地址>/<共享名>`，勾选“记住密码”。再把这个共享拖进“系统设置 → 通用 → 登录项”，登录时会自动挂载。NAS 上为这个共享单独建账号，只给这台 Mac 读写权限。
+2. 在共享里放一个标记文件。备份脚本只认带这个文件的目录，NAS 没挂载时会直接失败，不会把备份写到本机：
+
+   ```bash
+   touch /Volumes/audition-backup/.audition-backup
+   ```
+
+3. 手动跑一次，确认能成功：
+
+   ```bash
+   ./scripts/daily.sh
+   ```
+
+4. 安装每日任务（每天 02:30 执行到期删除和备份，日志在 `data/logs/daily.log`）：
+
+   ```bash
+   sed "s|__DEPLOY_DIR__|$HOME/audition|g" scripts/macos/com.audition.daily.plist > ~/Library/LaunchAgents/com.audition.daily.plist
+   ```
+
+   ```bash
+   launchctl load ~/Library/LaunchAgents/com.audition.daily.plist
+   ```
+
+### 5. 从备份恢复
+
+需要三样东西：NAS 上的 `db/` 和 `media/`，以及密码管理器里的 `.env`。缺了 `.env` 里的密钥，数据库里的个人信息和全部视频都无法解密（已实测：换了 `MINIO_KMS_SECRET_KEY` 后视频读不出来）。
+
+```bash
+cd ~/audition && cp <密码管理器里保存的 .env> .env && mkdir -p data && cp -a /Volumes/audition-backup/media data/minio
+```
+
+```bash
+docker compose up -d postgres minio
+```
+
+```bash
+docker compose exec -T postgres pg_restore -U audition -d audition --no-owner < /Volumes/audition-backup/db/<最新的 .dump 文件>
+```
+
+```bash
+docker compose up -d
+```
+
+### 6. 首次部署检查清单（应用镜像尚未在 Apple 芯片上跑过）
+
+- [ ] `docker compose up -d --build` 成功；`docker compose ps` 里 api、两个 worker、postgres、redis、minio 都在运行
+- [ ] 用演示数据跑完一条录像，能出报告（`seed-demo` 之后按上文“上传一条试镜录像”操作）
+- [ ] 报告能导出 PDF（Chromium 和中文字体正常）
+- [ ] `./scripts/daily.sh` 成功，NAS 上出现 `db/*.dump` 和 `media/`
+- [ ] 在另一台电脑或另一个目录按“从备份恢复”演练一次
+- [ ] 断电重启后，登录 Mac，系统能自动恢复服务
 
 ## 更换真实 AI 供应商
 
-四类能力（以及笑声检测）都在 `backend/app/providers/base.py` 定义了接口，流水线只依赖接口。接入步骤：
+外部 AI 能力（语音识别、普通话评测、大模型、视觉、笑声检测、声音评价）都在 `backend/app/providers/base.py` 定义了接口，流水线只依赖接口。接入步骤：
 
 1. 在 `backend/app/providers/` 下新建实现，例如 `xxx_asr.py`，实现对应接口：
-   - **语音识别** `transcribe()`：必须关闭顺滑（`disfluency_removal=False`），返回字级时间戳；返回的 `params` 里要如实带回 `disfluency_removal: False`，否则这一轮会被拒绝；
-   - **普通话评测** `assess()`：带参考文本，返回 0–100 分；
+   - **语音识别** `transcribe()`：必须关闭顺滑（`disfluency_removal=False`，例如阿里云 Paraformer 的 `disfluency_removal_enabled=false`），返回字级时间戳和标点；返回的 `params` 里要如实带回 `disfluency_removal: False`，否则这一轮会被拒绝；
+   - **普通话评测** `assess()`：带参考文本（朗读稿）；`details["errors"]` 逐处列出问题 `{text, start_ms, end_ms, type: dialect / mispronounce, confidence}`，P3 按方言处计次，没有这个字段视为评测不完整；
    - **大模型** `complete_json()`：温度固定 0，用 JSON 模式输出，结构见 `backend/app/pipeline/prompts.py`；
-   - **视觉** `analyze()`：任务分 `appearance`（形象）、`fidget`（小动作）、`prop_pointing`（指向道具）；
+   - **视觉** `analyze()`：任务分 `attire`（P1，只判穿着 / 发型是否不符合要求，类别 `attire` / `hairstyle`）、`fidget`（小动作）、`prop_pointing`（指向道具）；
+   - **声音评价** `rate()`：P5 语调、P6 音色、P7 节奏的主观评分，须是能直接听音频的模型，返回 0–满分的整数；
+   - **笑声检测** `detect()`：返回笑声候选片段，是否算“嘻嘻哈哈”由大模型结合上下文判断；
    - 调用失败抛 `ProviderError`，系统会自动重试。
 2. 在 `backend/app/providers/registry.py` 的 `get_providers()` 里按 `APP_PROVIDERS` 注册（可以混用，例如只换语音识别）。
 3. 供应商必须是境内服务；密钥通过环境变量传入，不要写进代码。

@@ -21,6 +21,13 @@ APP_COOKIE_SECURE=false
 APP_RETENTION_DAYS=30
 APP_PORT=8000
 APP_PROVIDERS=mock
+# —— 存储与备份 ——
+# 媒体（MinIO 加密后的文件）在宿主机上的目录，放本机 SSD
+MEDIA_DIR=./data/minio
+# 备份目标：NAS 挂载目录，例如 /Volumes/audition-backup。目录里须有标记文件 .audition-backup（防止 NAS 没挂载时写到本机）
+BACKUP_DIR=
+# 数据库备份保留天数
+BACKUP_KEEP_DAYS=14
 EOT
 chmod 600 .env
 echo "已生成 .env"
