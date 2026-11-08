@@ -20,6 +20,9 @@ x-app: &app
     APP_S3_REGION: ${APP_S3_REGION:-cn-local}
     AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
     AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+  # 本地模型：语音模型放 MODELS_DIR（scripts/download_models.sh），千问在宿主机上原生运行，容器用 host.docker.internal 访问
+  volumes: ["${MODELS_DIR:-./models}:/models:ro"]
+  extra_hosts: ["host.docker.internal:host-gateway"]
   restart: unless-stopped
 
 services:

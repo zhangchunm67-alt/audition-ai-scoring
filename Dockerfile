@@ -21,7 +21,7 @@ RUN --mount=type=secret,id=build_ca,required=false \
 WORKDIR /app
 COPY pyproject.toml ./
 COPY scoring ./scoring
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[local]"
 COPY backend ./backend
 COPY config ./config
 COPY docs/rubric.md docs/prd.md ./docs/

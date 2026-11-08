@@ -6,6 +6,7 @@
 - 评分规则唯一来源：[`docs/source/主播评分表-20261105.xls`](docs/source/)（现行配置 `config/rubric/rubric-v0.2.yaml` 逐条引用原文）
 - 历史资料：[`docs/rubric.md`](docs/rubric.md)（v0.1 改写版，已停用，仅供追溯）、`docs/source/主播评分标准-20241025.xls`（旧表）
 - 与评分表 20261105 的对齐记录：[`docs/decisions.md`](docs/decisions.md) 第 7 节
+- 金标准到位前的离线盲打分（本地千问、本地语音模型、外部判定回放）：[`docs/blind-test/README.md`](docs/blind-test/README.md)
 - 冲突、决定、待确认项：[`docs/decisions.md`](docs/decisions.md)
 
 ## 当前进度
@@ -407,7 +408,7 @@ docker compose up -d
    - **声音评价** `rate()`：P5 语调、P6 音色、P7 节奏的主观评分，须是能直接听音频的模型，返回 0–满分的整数；
    - **笑声检测** `detect()`：返回笑声候选片段，是否算“嘻嘻哈哈”由大模型结合上下文判断；
    - 调用失败抛 `ProviderError`，系统会自动重试。
-2. 在 `backend/app/providers/registry.py` 的 `get_providers()` 里按 `APP_PROVIDERS` 注册（可以混用，例如只换语音识别）。
+2. 设 `APP_PROVIDERS=config`，每种能力单独选实现（`APP_ASR`、`APP_LLM`、`APP_VISION`、`APP_VOICE`、`APP_LAUGH`、`APP_SPEECH_EVAL`）。没选的能力视为“未配置”，对应条目缺证据、不出分。已有的实现：本地 SenseVoice 语音识别和 CED 笑声检测（sherpa-onnx）；兼容 OpenAI 接口的大模型、视觉、声音评价（本地 llama-server 上的千问等）；外部判定回放。用法见 [`docs/blind-test/README.md`](docs/blind-test/README.md)。新供应商在 `backend/app/providers/registry.py` 的 `from_env()` 里注册。
 3. 供应商必须是境内服务；密钥通过环境变量传入，不要写进代码。
 4. 换模型或改提示词前，先在金标准集上跑回归，一致率不下降才发布（PRD 第 5 节）。报告会记录供应商、模型版本和提示词版本。
 5. 用固定样本手动验证一次“口头禅保留”：录一段含“那么”“一个”“对不对”的话，确认转写里都在，且 P2 证据逐条列出。

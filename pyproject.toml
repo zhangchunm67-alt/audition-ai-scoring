@@ -28,6 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6", "httpx>=0.27", "moto[s3]>=5"]
+local = ["sherpa-onnx>=1.10"]  # 本地语音识别、笑声检测（scripts/download_models.sh 下载模型）
 
 [tool.setuptools.packages.find]
 include = ["scoring*"]

@@ -1,0 +1,22 @@
+{
+  "name": "主播A",
+  "video": "videos/主播A.mp4",
+  "main": {"start": "00:05", "end": "10:05"},
+  "reading": {"start": "16:10", "end": "17:10", "text": "（朗读稿原文；没有朗读段就删掉 reading 这一项，P3 会标未评）"},
+  "objections": [
+    {"at": "04:00", "text": "孩子有医保了，还需要买吗？", "answer_points": ["医保有报销范围和比例限制，医保外的部分要自己付"]},
+    {"at": "05:30", "text": "之前得过肺炎，还能买吗？", "answer_points": ["以健康告知为准，如实告知"]},
+    {"at": "07:00", "text": "这么便宜，理赔会不会很难？", "answer_points": ["理赔按合同条款和流程办理"]},
+    {"at": "08:00", "text": "为什么比别家贵？", "answer_points": ["客观对比条款差异"]}
+  ],
+  "props_available": false,
+  "audience": "new_trial",
+  "card": {
+    "fixed_script": {"version": "script-1", "text": "（该产品的固定讲解话术全文；没有就删掉 fixed_script 和 s2_calibration，S2 会标未评）"},
+    "s2_calibration": {"version": "blind-uncalibrated", "fixed_script_version": "script-1", "status": "draft"},
+    "glossary": [{"term": "免赔额", "plain": "先自己掏的那部分钱"}],
+    "targeted_points": ["儿童医院可以用", "门急诊不限次数", "雾化可以报"],
+    "scenarios": ["带孩子去缴费，不用盯着收费员看哪些是医保内、哪些是医保外"],
+    "key_numbers": [{"name": "免赔额", "value": "0 元"}]
+  }
+}
