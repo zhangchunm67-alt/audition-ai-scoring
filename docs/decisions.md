@@ -234,6 +234,7 @@
 | T34 | 迁移 0005：金标准集的评分标准版本、样本状态、分歧条目、裁决、定稿金标准；校准员打分结果 |
 | T35 | 单机部署：`Dockerfile`（单镜像：接口、worker、前端，含 ffmpeg、Chromium、中文字体）+ `docker-compose.yml`（PostgreSQL、Redis、S3 兼容存储、接口、worker、迁移）+ `scripts/gen_env.sh`。**未在开发环境完整验证**：开发环境网络策略禁止访问 deb.debian.org，镜像里装不了 ffmpeg 和 Chromium；compose 配置语法已校验。官方 minio/minio 镜像已不在 Docker Hub 提供，试用存储用 Bitnami 归档镜像，正式部署应换成境内云对象存储 |
 | T36 | 试点部署（2026-11-08）：公司内网的一台 Mac Studio（M5 Max、64 GB、512 GB）运行 docker compose 全套，每月约 100 条，只在内网访问。媒体放本机 SSD（`MEDIA_DIR`，MinIO 服务端加密后的密文），NAS 只做备份：`scripts/daily.sh` 每天先到期删除再备份（数据库 pg_dump 保留 14 天、媒体用 rsync --delete 同步，不在备份里超期保留已删除的候选人资料）；`.env` 密钥与 NAS 分开保存。已在开发环境用真实 PostgreSQL / MinIO 容器验证加密写入、备份、恢复和“缺密钥不可解密”；应用镜像在 Apple 芯片上的构建和运行尚待首次部署时确认（README 检查清单）。备份副本的保留期限并入 P-B12 由法务确认 |
+| T37 | 声学特征（2026-11-09）：音高搜索上限 400 Hz → 600 Hz，周期取“达到最大峰 90% 的最短周期”。原方法把 400 Hz 以上的女声测低一个八度（420 Hz 测成 211 Hz），音高起伏被压小；真实样例上整段音高起伏从 10.7 个半音变为 12.2 个半音。离线盲打分报告新增“声音测量（参考，不计分）”：逐分钟音高、音量起伏、停顿次数、字数，以及连续说话统计，只供人工打 P5–P7 和校准声音模型参照，不按阈值换算成分数 |
 | T17 | 前端：React 18 + TypeScript + Vite + Ant Design 5，接口类型由后端 OpenAPI 生成（`npm run gen:api`）；构建产物由后端直接托管（`APP_FRONTEND_DIST`），单进程部署 |
 
 ## 6. 后续里程碑的验收补充（已记录，按里程碑实现）

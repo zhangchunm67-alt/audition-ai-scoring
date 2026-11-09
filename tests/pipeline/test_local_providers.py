@@ -212,6 +212,7 @@ def test_offline_run_marks_unavailable_items_unscored(short_video, tmp_path):
     assert all(e["start_ms"] is None or 1000 <= e["start_ms"] <= 31000 for e in out["evidence"])
     md = report_md(out)
     assert "**未评**" in md and "VOICE 未配置" in md and "S2 产品讲解 | 50 |" in md
+    assert "## 声音测量（参考，不计分）" in md and out["voice_measures"]["per_minute"][0]["chars"] > 0
     rep = compare_with_gold([out], {"测试": {"S2": items["S2"]["score"], "P5": 3}}, cfg)
     assert rep["items"]["S2"]["agree_rate"] == 1.0 and rep["items"]["P5"]["ai_missing"] == 1
 

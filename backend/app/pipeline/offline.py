@@ -24,7 +24,7 @@ from .detector_config import DetectorConfig
 from .detectors import DETECTORS
 from .detectors.common import Ctx
 from .media import Prepared
-from .text import SegmentText
+from .text import SegmentText, char_count
 
 
 class SpecError(ValueError):
@@ -157,6 +157,10 @@ def run_video(spec: VideoSpec, providers: Providers, cfg: RubricConfig, dcfg: De
         texts[name] = SegmentText(name, [Word(w.text, w.start_ms + s["start_ms"], w.end_ms + s["start_ms"], w.confidence) for w in tr.words])
         asr_info[name] = {"provider": tr.provider, "model_version": tr.model_version, "params": tr.params}
     feats = acoustic.features(audio["main"])
+    voice = acoustic.profile(audio["main"])
+    for row in voice.get("per_minute", []):  # 每分钟字数（与 P4 同一口径：数字按读出的字数计）
+        a = m0 + (row["minute"] - 1) * 60_000
+        row["chars"] = char_count(texts["main"].window(a, min(m1, a + 60_000)).text)
     feats["silences_ms"] = [[a + m0, b + m0] for a, b in feats["silences_ms"]]
 
     ctx = Ctx(round_no=1, props_available=spec.props_available, segments=segments, objections=spec.objections, questions=[],
@@ -194,6 +198,7 @@ def run_video(spec: VideoSpec, providers: Providers, cfg: RubricConfig, dcfg: De
         "name": spec.name, "video": str(spec.video), "duration_ms": total, "segments": segments,
         "objections": spec.objections, "props_available": spec.props_available, "audience": spec.audience,
         "rubric_version": cfg.version, "asr": asr_info, "acoustic": {k: v for k, v in feats.items() if k != "silences_ms"},
+        "voice_measures": voice,
         "transcript": {k: v.text for k, v in texts.items()},
         "words": {k: [[w.text, w.start_ms, w.end_ms, w.confidence] for w in v.words] for k, v in texts.items()},
         "detectors": detectors, "evidence": [e.model_dump(mode="json") for e in evidence], "result": result,
@@ -205,6 +210,30 @@ def _clock(ms: int | None) -> str:
         return "—"
     s = ms // 1000
     return f"{s // 3600:d}:{s // 60 % 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60:02d}:{s % 60:02d}"
+
+
+def voice_md(v: dict) -> list[str]:
+    """“声音测量（参考，不计分）”一节：给人工打 P5–P7 和校准声音模型时参照。"""
+    if not v:
+        return []
+    p, r = v["pauses"], v["speech_runs"]
+    lines = ["", "## 声音测量（参考，不计分）", "",
+             "评分表 P5 语调、P6 音色、P7 节奏都是“根据主观打分”。下面是从音轨测出的数据，只供人工打分和校准声音模型时参照，"
+             "不按阈值换算成分数；音色无法靠这些数据判断。", "",
+             f"- 音高中位数 {v['pitch_median_hz']:g} Hz；音高起伏（5–95 分位）{v['pitch_range_st']:g} 个半音；"
+             f"音量起伏 {v['loudness_range_db']:g} dB；有声时间占 {v['voiced_ratio'] * 100:.0f}%",
+             f"- 停顿（静音 ≥ 0.3 秒）{p['count']} 次，每分钟 {p['per_minute']:g} 次；≥ 0.6 秒 {p['ge_0_6s']} 次，≥ 1 秒 {p['ge_1s']} 次，"
+             f"最长 {p['longest_s']:g} 秒",
+             f"- 两次停顿之间连续说话：中位数 {r['median_s']:g} 秒；超过 10 秒 {r['gt_10s']} 段，超过 30 秒 {r['gt_30s']} 段，"
+             f"最长 {r['longest_s']:g} 秒"]
+    if (v.get("pitch_near_ceiling_ratio") or 0) > 0.05:
+        lines.append(f"- 注意：{v['pitch_near_ceiling_ratio'] * 100:.0f}% 的音高估计贴近测量上限，音高起伏可能仍被低估")
+    lines += ["", "| 分钟 | 音高起伏（半音） | 音量起伏（dB） | 停顿次数 | 字数 |", "|---|---|---|---|---|"]
+    for m in v["per_minute"]:
+        part = "" if m["seconds"] >= 59 else f"（{m['seconds']} 秒）"
+        lines.append(f"| {m['minute']}{part} | {m['pitch_range_st']:g} | {m['loudness_range_db']:g} | {m['pauses']} | {m.get('chars', '—')} |")
+    lines.append(f"\n测量方法：{v['method']}")
+    return lines
 
 
 def report_md(out: dict) -> str:
@@ -235,6 +264,7 @@ def report_md(out: dict) -> str:
         else:
             score, note = "**未评**", det.get("reason") or "；".join(it["missing_reasons"])
         lines.append(f"| {it['item_id']} {it['name']} | {it['max']} | {score} | {note.replace('|', '/')} |")
+    lines += voice_md(out.get("voice_measures") or {})
     lines += ["", "## 证据", ""]
     for e in sorted(out["evidence"], key=lambda e: (e["item_id"], e["start_ms"] or 0)):
         j = e["judgment"]

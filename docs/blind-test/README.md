@@ -84,7 +84,7 @@ APP_OPENAI_EXTRA='{"chat_template_kwargs": {"enable_thinking": false}}' \
 
 每条视频输出到 `<out>/<name>/`：
 
-- `report.md`：维度、各条目得分或未评原因、全部证据（时间、原句、理由）、主体段逐字稿；
+- `report.md`：维度、各条目得分或未评原因、声音测量（参考，不计分）、全部证据（时间、原句、理由）、主体段逐字稿；
 - `result.json`：完整结果，包括逐字时间戳、检测器状态和计分明细。
 
 ## 4. 金标准到了以后
