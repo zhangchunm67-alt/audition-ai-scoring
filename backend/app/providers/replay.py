@@ -61,7 +61,7 @@ class ReplayVision:
             raise ProviderError(f"视觉任务 {task} 未配置判定方式")
         digest = [hashlib.sha256(Path(f.path).read_bytes()).hexdigest()[:16] for f in frames]
         req = {"task": task, "context": context, "frames": [{"path": f.path, "at_ms": f.at_ms} for f in frames],
-               "answer_format": "[{at_ms, end_ms, label, judgment(count/not_count), confidence, reason}]"}
+               "answer_format": "[{at_ms, end_ms, label, judgment(count/not_count), confidence, reason, detail(可选)}]"}
         out = self.store.get(_key("vision", task, digest, context), req)
-        return [VisionFinding(int(x["at_ms"]), int(x["end_ms"]), str(x["label"]), x["judgment"], float(x["confidence"]), str(x.get("reason", "")))
-                for x in out]
+        return [VisionFinding(int(x["at_ms"]), int(x["end_ms"]), str(x["label"]), x["judgment"], float(x["confidence"]),
+                              str(x.get("reason", "")), str(x.get("detail", ""))) for x in out]

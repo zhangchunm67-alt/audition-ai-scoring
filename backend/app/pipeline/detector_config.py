@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-PATH = Path(__file__).resolve().parents[3] / "config" / "detectors" / "detectors-v1.yaml"
+PATH = Path(__file__).resolve().parents[3] / "config" / "detectors" / "detectors-v2.yaml"
 
 
 class _N(BaseModel):
@@ -47,8 +47,10 @@ class DetectorConfig(_N):
         merge_within_ms: int
 
     class P9(_N):
-        guide_phrases: list[str]
-        dedupe_within_ms: int
+        scan_every_s: float = 3.0  # 每隔几秒抽一帧直接看画面
+        guide_phrases: list[str]  # 引导语前后的帧额外补看
+        episode_gap_ms: int = 6000  # 同一块道具的相邻命中帧间隔不超过此值，算同一次使用
+        dedupe_within_ms: int  # 同一块内容在此时长内重复使用只算 1 次
 
     class O4(_N):
         dead_air_ms: int

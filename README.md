@@ -449,7 +449,7 @@ docker compose up -d
 | T5 阈值 | P4 | `metric`、`limit`、`score_by_over` 超限段数 → 分数 |
 | T6 逐题 | S3（旧版另有 O5） | `count` 题数；`levels` 按等级给分，或 `elements` 按要素给分加 `zero_labels` |
 
-检测配置在 `config/detectors/detectors-v1.yaml`（P2 词表、停顿和卡壳阈值、抽帧频率、道具引导语等），与计分配置分开管理，改了需要重跑模型。提示词在 `backend/app/pipeline/prompts.py`，改动须升版本号。
+检测配置在 `config/detectors/detectors-v2.yaml`（P2 词表、停顿和卡壳阈值、抽帧频率、道具引导语等），与计分配置分开管理，改了需要重跑模型。提示词在 `backend/app/pipeline/prompts.py`，改动须升版本号。
 
 ## 交付状态
 

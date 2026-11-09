@@ -150,23 +150,57 @@ def p8(ctx: Ctx):
     return out
 
 
-def p9(ctx: Ctx):
-    """道具使用：转写里找引导语，抽帧判断是否指向道具；同一块内容 1 分钟内重复指只算 1 次。画面里没有道具时不检测（C26）。"""
+PROP_LABELS = {"sticker": "贴片", "kt_board": "KT 板"}
+
+
+def p9_frames(ctx: Ctx) -> tuple[list, list[int]]:
+    """要看的帧：主体段每 scan_every_s 秒一帧，加上口播引导语（看这里、看屏幕……）前后 3 秒的帧。"""
+    c = ctx.cfg.p9
+    main = ctx.seg("main")
+    step = int(c.scan_every_s * 1000)
     guides = []
     for s in main_sentences(ctx):
-        for ph in ctx.cfg.p9.guide_phrases:
+        for ph in c.guide_phrases:
             i = s.text.find(ph)
             if i >= 0:
                 guides.append(ctx.main.span(s.char_start + i, s.char_start + i + len(ph))[0])
                 break
-    kept = []
-    for t in sorted(guides):
-        if not kept or t - kept[-1] > ctx.cfg.p9.dedupe_within_ms:
-            kept.append(t)
-    near = [f for f in ctx.media.motion_frames if any(abs(f.at_ms - t) <= 3000 for t in kept)]
-    found = ctx.providers.vision.analyze("prop_pointing", near, {"guide_ms": kept}) if kept else []
-    return [ctx.ev("P9", "instance", label=f.label, judgment=f.judgment, start=f.at_ms, end=f.end_ms, confidence=f.confidence,
-                   source="vision", reason=f.reason) for f in found]
+    frames = [f for f in ctx.media.motion_frames
+              if (f.at_ms - main["start_ms"]) % step < 1000 or any(abs(f.at_ms - t) <= 3000 for t in guides)]
+    return frames, sorted(guides)
+
+
+def p9(ctx: Ctx):
+    """道具使用（评分表：对贴片正确使用 1 次得 2 分，对 KT 板正确使用 1 次得 1 分）。
+    v2：直接看画面找“举起 KT 板讲解”“指向屏幕上的贴片”，不再只靠口播引导语（原做法把不出声的举牌、指屏全部漏掉）。
+    相邻命中帧（同一类、同一块内容，间隔不超过 episode_gap_ms）合成一次使用；同一块内容 1 分钟内重复使用只算 1 次，
+    重复的仍留证据（not_count）便于复核。画面里没有道具时不检测（C26）。"""
+    c = ctx.cfg.p9
+    frames, guides = p9_frames(ctx)
+    found = ctx.providers.vision.analyze("prop_pointing", frames, {"guide_ms": guides}) if frames else []
+    hits = sorted((f for f in found if f.judgment == "count"), key=lambda f: f.at_ms)
+    episodes: list[dict] = []
+    for f in hits:
+        if f.label not in PROP_LABELS:
+            continue
+        key = (f.label, (f.detail or "").strip())
+        last = next((e for e in reversed(episodes) if e["key"] == key), None)
+        if last and f.at_ms - last["end"] <= c.episode_gap_ms:
+            last["end"], last["conf"] = max(last["end"], f.end_ms), min(last["conf"], f.confidence)
+            continue
+        episodes.append({"key": key, "start": f.at_ms, "end": f.end_ms, "conf": f.confidence, "reason": f.reason})
+    out, counted_at = [], {}
+    for e in episodes:
+        label, detail = e["key"]
+        prev = counted_at.get(e["key"])
+        repeat = prev is not None and e["start"] - prev < c.dedupe_within_ms
+        if not repeat:
+            counted_at[e["key"]] = e["start"]
+        what = f"{PROP_LABELS[label]}“{detail}”" if detail else PROP_LABELS[label]
+        reason = f"{what}：{e['reason']}" + ("；1 分钟内重复使用同一块内容，不重复计分" if repeat else "")
+        out.append(ctx.ev("P9", "instance", label=label, judgment="not_count" if repeat else "count", start=e["start"], end=e["end"],
+                          confidence=e["conf"], source="vision", reason=reason))
+    return out
 
 
 def p10(ctx: Ctx):

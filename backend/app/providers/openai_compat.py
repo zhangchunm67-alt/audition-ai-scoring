@@ -91,7 +91,7 @@ VISION_SYSTEM = "你是保险直播主播试镜的评分助手，只根据给定
 FRAME_FLAGS = {
     "type": "object", "required": ["frames"],
     "properties": {"frames": {"type": "array", "items": {"type": "object", "required": ["index", "flag"], "properties": {
-        "index": {"type": "integer"}, "flag": {"type": "boolean"}, "label": {"type": "string"},
+        "index": {"type": "integer"}, "flag": {"type": "boolean"}, "label": {"type": "string"}, "detail": {"type": "string"},
         "reason": {"type": "string"}, "confidence": {"type": "number"}}}}},
 }
 ATTIRE = {
@@ -119,8 +119,10 @@ class OpenAICompatVision(_Client):
                                    "有则 flag=true，label 填动作英文简称（如 touch_face、touch_hair、play_pen、sway、look_down）。")
         if task == "prop_pointing":
             return self._per_frame(frames, "prop",
-                                   "逐帧判断主播是否正在用手或道具指向画面里的贴片或 KT 板讲解。"
-                                   "是则 flag=true，label 填 sticker（贴片）或 kt_board（KT 板）。")
+                                   "逐帧判断主播是否在正确使用道具：贴片（sticker）指直播画面上叠加的产品信息图文，正确使用是用手指向它、"
+                                   "引导观众看；KT 板（kt_board）指主播手里举着的板子或卡片，正确使用是举到镜头前展示。"
+                                   "是则 flag=true，label 填 sticker 或 kt_board，detail 填板子或贴片上最主要的一句文字（用于判断是不是同一块内容）。"
+                                   "只是放在画面里、没有在用的，flag=false。")
         raise ProviderError(f"不支持的视觉任务 {task}")
 
     def _attire(self, frames: list[Frame]) -> list[VisionFinding]:
@@ -156,7 +158,8 @@ class OpenAICompatVision(_Client):
             for k, f in enumerate(chunk):
                 flag, reason, conf = _judged(got[k])
                 if flag:
-                    res.append(VisionFinding(f.at_ms, f.at_ms + 1000, str(got[k].get("label") or name), "count", conf, reason))
+                    res.append(VisionFinding(f.at_ms, f.at_ms + 1000, str(got[k].get("label") or name), "count", conf, reason,
+                                             str(got[k].get("detail") or "")))
         return res
 
 

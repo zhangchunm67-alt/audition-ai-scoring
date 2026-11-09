@@ -238,3 +238,45 @@ def test_sherpa_sensevoice_real_model():
     tr = asr.transcribe(wav, disfluency_removal=False, word_timestamps=True, hint=SegmentHint("main"))
     assert tr.params["disfluency_removal"] is False and "开饭时间" in tr.text
     assert all(a.start_ms <= b.start_ms for a, b in zip(tr.words, tr.words[1:]))
+
+
+def test_p9_counts_episodes_from_frames_without_guide_phrases():
+    """主播不出声地举 KT 板、指贴片也要算；连续命中合成一次；同一块内容 1 分钟内重复只算 1 次。"""
+    from types import SimpleNamespace
+
+    from app.pipeline.detectors import persona
+    from app.pipeline.detectors.common import Ctx
+    from app.pipeline.text import SegmentText
+    from app.providers.base import VisionFinding, Word
+    from scoring import score_round
+    from tests.scoring.helpers import context, full_marks, item
+
+    text = "今天讲重疾险。"  # 没有任何引导语
+    st = SegmentText("main", [Word(c, i * 100, (i + 1) * 100) for i, c in enumerate(text)])
+    ctx = Ctx(round_no=1, props_available=True, segments=[], objections=[], questions=[], reading_text="", card={}, lexicon={},
+              cfg=None, texts={"main": st}, acoustic={}, media=None, providers=None)
+    ctx.cfg = load_file()[0]
+    ctx.segments = [{"segment": "main", "start_ms": 0, "end_ms": 200_000}]
+    ctx.media = SimpleNamespace(motion_frames=[Frame(f"{i}.jpg", i * 1000) for i in range(200)])
+    seen = {}
+
+    def analyze(task, frames, context):
+        seen["frames"] = [f.at_ms for f in frames]
+        kt = "投保成功赠送30天保障"
+        hit = lambda t, lab, d: VisionFinding(t, t + 1000, lab, "count", 0.8, "举起展示", d)  # noqa: E731
+        return ([hit(t, "kt_board", kt) for t in (9000, 12000, 15000)]  # 连续 → 1 次
+                + [hit(30000, "sticker", "保160种重大疾病")]  # 另一块内容 → 1 次
+                + [hit(45000, "kt_board", kt)]  # 同一块，1 分钟内 → 不计分
+                + [hit(120000, "kt_board", kt)]  # 超过 1 分钟 → 再算 1 次
+                + [hit(150000, "whiteboard", "")])  # 不是贴片或 KT 板 → 忽略
+
+    ctx.providers = SimpleNamespace(vision=SimpleNamespace(analyze=analyze))
+    evs = persona.p9(ctx)
+    assert seen["frames"][:3] == [0, 3000, 6000] and len(seen["frames"]) == 67  # 每 3 秒一帧
+    assert [(e.label, e.judgment, e.start_ms) for e in evs] == [
+        ("kt_board", "count", 9000), ("sticker", "count", 30000), ("kt_board", "not_count", 45000), ("kt_board", "count", 120000)]
+    assert evs[0].end_ms == 16000 and "投保成功赠送30天保障" in evs[0].reason
+    b = full_marks()
+    b.remove("P9")
+    b.items.extend(evs)
+    assert item(score_round(b.items, parse_config(raw_config()), context()), "P9").score == 1 + 2 + 1
