@@ -9,3 +9,7 @@ build/
 dist/
 dump.rdb
 node_modules/
+/data/
+/models/
+/var/
+/uv.lock

@@ -79,3 +79,27 @@ def test_mock_asr_spreads_words_after_objections(tmp_path):
     assert r.params["disfluency_removal"] is False
     after = "".join(w.text for w in r.words if w.start_ms >= 60000)
     assert after.startswith("孩子有医保了还需要买吗") and r.words[-1].end_ms <= 120000
+
+
+@pytest.mark.parametrize("f0", [110, 220, 276, 420, 500, 580])
+@pytest.mark.parametrize("amps", [[1, .6, .4, .3], [.5, 1, .7, .3], [1, .3, .8, .2]])
+def test_pitch_no_octave_error_for_high_voices(f0, amps):
+    """女声常超过 400 Hz：原来的上限会把 420 Hz 测成 211 Hz（低一个八度），音高起伏被压小。"""
+    sr, win = 16000, 480
+    t = np.arange(win) / sr
+    x = sum(a * np.sin(2 * np.pi * f0 * (k + 1) * t + k) for k, a in enumerate(amps)).astype(np.float32)
+    assert abs(acoustic._period(x, sr, win) - f0) / f0 < 0.03
+
+
+def test_voice_profile_per_minute_and_pauses(tmp_path):
+    sr = 16000
+    t = np.arange(sr * 50) / sr
+    speech = 0.3 * np.sin(2 * np.pi * (250 * t + 3 * np.sin(2 * np.pi * 0.5 * t)))  # 250 Hz 附近起伏
+    gap = np.zeros(int(sr * 0.8))
+    sig = np.concatenate([speech[: sr * 40], gap, speech[: sr * 10], gap, speech[: sr * 25]])  # 约 76.6 秒
+    _wav(tmp_path / "v.wav", sig)
+    v = acoustic.profile(str(tmp_path / "v.wav"))
+    assert v["pauses"]["count"] == 2 and v["pauses"]["ge_0_6s"] == 2 and v["pauses"]["ge_1s"] == 0
+    assert v["speech_runs"]["gt_30s"] == 1 and 39 <= v["speech_runs"]["longest_s"] <= 41
+    assert [m["minute"] for m in v["per_minute"]] == [1, 2] and v["per_minute"][1]["seconds"] < 59
+    assert 230 <= v["pitch_median_hz"] <= 270 and v["pitch_near_ceiling_ratio"] == 0

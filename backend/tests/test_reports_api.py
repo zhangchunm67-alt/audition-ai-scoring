@@ -35,7 +35,7 @@ def test_list_and_detail(login, seeded, video_file, db):
     d = hr.get(f"/api/reports/{rep.id}").json()
     assert d["candidate_name"] == "张三" and d["label"] == rep.label and d["verdict"]["reason"]
     assert len(d["result"]["items"]) == 23 and len(d["result"]["dimensions"]) == 4 and d["result"]["redlines_enabled"] is False
-    assert d["trace"]["rubric_version"] == "rubric-v0.2" and d["trace"]["detector_config_version"] == "detectors-v1"
+    assert d["trace"]["rubric_version"] == "rubric-v0.2" and d["trace"]["detector_config_version"] == "detectors-v2"
     assert d["trace"]["model_manifest"]["llm"] == "mock-llm@1" and d["media"]["video_asset_id"]
     assert _actions(db, "report_view") and _actions(db, "report_list")
 

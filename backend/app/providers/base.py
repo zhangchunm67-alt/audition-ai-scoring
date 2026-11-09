@@ -94,6 +94,7 @@ class VisionFinding:
     judgment: str | int
     confidence: float
     reason: str
+    detail: str = ""  # 例如 KT 板 / 贴片上的主要内容，P9 用来判断是不是同一块内容
 
 
 class Vision(Protocol):
