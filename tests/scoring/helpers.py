@@ -1,4 +1,4 @@
-"""测试数据构造。现行配置 rubric-v0.2 按评分表 20261105；旧版 rubric-v0.1 的配置快照保留在 tests/fixtures，
+"""测试数据构造。现行配置 rubric-v0.3 按评分表 20261105；旧版 rubric-v0.1 的配置快照保留在 tests/fixtures，
 用来继续测试计分引擎对旧报告（卖点卡 + 结构、指标分档、O5 等）的重算。示例取自少儿医疗险演示产品。"""
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import yaml
 from scoring import ChecklistPoint, Evidence, ScoringContext, parse_config, score_round
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = ROOT / "config" / "rubric" / "rubric-v0.2.yaml"
+CONFIG_PATH = ROOT / "config" / "rubric" / "rubric-v0.3.yaml"
 LEGACY_CONFIG_PATH = ROOT / "tests" / "fixtures" / "rubric-v0.1.yaml"
 
 # 旧版 rubric-v0.1 的 S2 要点示例（只用于旧配置的重算测试）
@@ -109,7 +109,7 @@ class EvidenceBuilder:
 
 
 def full_marks(props: bool = True) -> EvidenceBuilder:
-    """rubric-v0.2 所有条目满分的一组证据。"""
+    """rubric-v0.3 所有条目满分的一组证据。"""
     b = EvidenceBuilder()
     b.occ("P1", "attire", judgment="not_count", source="vision")
     b.occ("P1", "hairstyle", judgment="not_count", source="vision")

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
-import { AUDIENCE_ZH, useAction, useFetch } from "../components/hooks";
+import { AUDIENCE_ZH, MODE_ZH, useAction, useFetch } from "../components/hooks";
 import { localUrlOf } from "../components/localMedia";
 import { fmtBytes, fmtMs, uploadFile } from "../components/upload";
 import { REC_STATUS } from "./Recordings";
@@ -75,6 +75,83 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
           if (r) onSaved(r);
         }}>
           保存分段
+        </Button>
+      </Col>
+    </Row>
+  );
+}
+
+type LiveObj = { key: number; text: string; video_ms: number };
+type LiveEx = { key: number; start_ms: number; end_ms: number | null };
+
+/** 录播标注（C37）：整段视频都评，不截取、不分段。标出主播回应过的真实观众问题（出现时间和原文），
+ *  以及不是主播本人在讲的时段（副播插话等，排除后不参与评分）。两项都可以为空，但要保存一次表示已看过。 */
+function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec) => void }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const seq = useRef(0);
+  const [objs, setObjs] = useState<LiveObj[]>(() => rec.objection_times.map((o) => ({
+    key: seq.current++, video_ms: o.video_ms as number,
+    text: (rec.sheet_objections.find((s) => s.objection_id === o.objection_id)?.text as string | undefined) ?? "",
+  })));
+  const [exs, setExs] = useState<LiveEx[]>(() => rec.exclusions.map((x) => ({ key: seq.current++, start_ms: x.start_ms as number, end_ms: x.end_ms as number })));
+  const act = useAction();
+  const now = () => Math.round((video.current?.currentTime ?? 0) * 1000);
+  const seek = (ms: number | null) => ms != null && video.current && (video.current.currentTime = ms / 1000);
+  const ready = objs.every((o) => o.text.trim()) && exs.every((x) => x.end_ms != null && x.end_ms > x.start_ms);
+  return (
+    <Row gutter={24}>
+      <Col span={12}>
+        <video ref={video} src={src} controls style={{ width: "100%", background: "#000" }} data-testid="marker-video" />
+        <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+          整段视频都参与评分，不截取 10 分钟，没有朗读段（“普通话标准”由评委听录像打分）。按次计的条目（口头禅、语速、小动作、加分项等）都按每 10 分钟的次数换算后计分。
+        </Typography.Paragraph>
+      </Col>
+      <Col span={12}>
+        <Space style={{ marginBottom: 8 }}>
+          <Typography.Title level={5} style={{ margin: 0 }}>观众异议（{objs.length} 条）</Typography.Title>
+          <Button size="small" data-testid="live-add-objection" onClick={() => setObjs([...objs, { key: seq.current++, text: "", video_ms: now() }])}>在当前时间添加</Button>
+        </Space>
+        <Typography.Paragraph type="secondary">
+          播放到观众提出问题（弹幕出现或被念出来）的时刻点“添加”，填上问题原文。有几条标几条，“解答异议”按实际条数折算；一条都没有时该条不适用，“节奏与气氛”由评委打分。
+        </Typography.Paragraph>
+        <Table size="small" pagination={false} rowKey="key" dataSource={objs} locale={{ emptyText: "没有标出观众异议" }} columns={[
+          { title: "出现时间", dataIndex: "video_ms", width: 80, render: (v) => fmtMs(v) },
+          { title: "问题原文", render: (_, o) => (
+            <Input size="small" maxLength={500} value={o.text} placeholder="观众问了什么"
+              onChange={(e) => setObjs(objs.map((x) => (x.key === o.key ? { ...x, text: e.target.value } : x)))} />
+          ) },
+          { title: "", width: 210, render: (_, o) => (
+            <Space>
+              <Button size="small" onClick={() => setObjs(objs.map((x) => (x.key === o.key ? { ...x, video_ms: now() } : x)))}>设为当前时间</Button>
+              <Button size="small" onClick={() => seek(o.video_ms)}>跳到</Button>
+              <Button size="small" danger onClick={() => setObjs(objs.filter((x) => x.key !== o.key))}>删</Button>
+            </Space>
+          ) },
+        ]} />
+        <Space style={{ margin: "16px 0 8px" }}>
+          <Typography.Title level={5} style={{ margin: 0 }}>排除时段（{exs.length} 段）</Typography.Title>
+          <Button size="small" data-testid="live-add-exclusion" onClick={() => setExs([...exs, { key: seq.current++, start_ms: now(), end_ms: null }])}>从当前时间开始</Button>
+        </Space>
+        <Typography.Paragraph type="secondary">副播、场控等其他人在讲话的时段。排除后这些话不算到主播头上，时长也不计入。</Typography.Paragraph>
+        <Table size="small" pagination={false} rowKey="key" dataSource={exs} locale={{ emptyText: "没有排除时段" }} columns={[
+          { title: "开始", dataIndex: "start_ms", width: 80, render: (v) => fmtMs(v) },
+          { title: "结束", dataIndex: "end_ms", width: 80, render: (v) => fmtMs(v) },
+          { title: "", render: (_, x) => (
+            <Space>
+              <Button size="small" onClick={() => setExs(exs.map((y) => (y.key === x.key ? { ...y, end_ms: now() } : y)))}>结束设为当前时间</Button>
+              <Button size="small" onClick={() => seek(x.start_ms)}>跳到</Button>
+              <Button size="small" danger onClick={() => setExs(exs.filter((y) => y.key !== x.key))}>删</Button>
+            </Space>
+          ) },
+        ]} />
+        <Button type="primary" style={{ marginTop: 16 }} disabled={!ready} data-testid="live-save" onClick={async () => {
+          const r = await act(() => put<Rec>(`/recordings/${rec.id}/live-marks`, {
+            objections: objs.map((o) => ({ text: o.text.trim(), video_ms: o.video_ms })),
+            exclusions: exs.map((x) => ({ start_ms: x.start_ms, end_ms: x.end_ms })),
+          }), "标注已保存");
+          if (r) onSaved(r);
+        }}>
+          {objs.length || exs.length ? "保存标注" : "确认没有要标的，保存"}
         </Button>
       </Col>
     </Row>
@@ -172,18 +249,19 @@ export default function RecordingDetail() {
   if (!rec) return null;
   const src = localUrlOf(rec.id) ?? (rec.video_asset_id ? `/api/media/${rec.video_asset_id}` : null);
   const editable = can("recording.upload");
+  const live = rec.mode === "live";
   return (
     <>
       <Space style={{ marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>{rec.candidate_name} · {rec.sheet_code}</Typography.Title>
         <Tag color={REC_STATUS[rec.status]?.[1]}>{REC_STATUS[rec.status]?.[0]}</Tag>
         {editable && rec.status === "uploaded" && rec.segments.length > 0 && (
-          <Popconfirm title="提交后分段不能再改，确定提交处理？" onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/submit`), "已提交"); if (r) setRec(r); }}>
+          <Popconfirm title={live ? "提交后标注不能再改，确定提交处理？" : "提交后分段不能再改，确定提交处理？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/submit`), "已提交"); if (r) setRec(r); }}>
             <Button type="primary">提交处理</Button>
           </Popconfirm>
         )}
         {editable && ["uploading", "uploaded"].includes(rec.status) && (
-          <Popconfirm title="取消会删除已上传的视频，题单恢复为未使用。确定？" onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/cancel`), "已取消"); if (r) setRec(r); }}>
+          <Popconfirm title={live ? "取消会删除已上传的视频。确定？" : "取消会删除已上传的视频，题单恢复为未使用。确定？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/cancel`), "已取消"); if (r) setRec(r); }}>
             <Button danger>取消</Button>
           </Popconfirm>
         )}
@@ -199,19 +277,20 @@ export default function RecordingDetail() {
         <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成"
           action={rec.report_id && <Button type="primary" onClick={() => nav(`/reports/${rec.report_id}`)}>查看报告</Button>} />
       )}
-      {rec.uses_draft_config && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="题单使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
+      {rec.uses_draft_config && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
       {rec.warnings.map((w) => <Alert key={w} type="info" showIcon style={{ marginBottom: 8 }} message={w} />)}
       <Descriptions size="small" bordered column={3} style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="类型">{MODE_ZH[rec.mode] ?? rec.mode}{live ? "（无题单，整段视频评分）" : ""}</Descriptions.Item>
         <Descriptions.Item label="产品">{rec.product_name}</Descriptions.Item>
         <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[rec.audience] ?? rec.audience}</Descriptions.Item>
         <Descriptions.Item label="道具">{rec.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）"}</Descriptions.Item>
         <Descriptions.Item label="视频时长">{fmtMs(rec.video_duration_ms)}</Descriptions.Item>
-        <Descriptions.Item label="主体段时长">{fmtMs(rec.main_duration_ms)}</Descriptions.Item>
+        <Descriptions.Item label={live ? "参与评分时长" : "主体段时长"}>{fmtMs(rec.main_duration_ms)}</Descriptions.Item>
         <Descriptions.Item label="提交时间">{rec.submitted_at ? dayjs(rec.submitted_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
         <Descriptions.Item label="出结果时间">{rec.finished_at ? dayjs(rec.finished_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
       </Descriptions>
       {rec.status === "uploading" && rec.upload && editable && <Resume rec={rec} onDone={(r) => (setRec(r), reload())} />}
-      {rec.status === "uploaded" && src && editable && <Marker rec={rec} src={src} onSaved={setRec} />}
+      {rec.status === "uploaded" && src && editable && (live ? <LiveMarker rec={rec} src={src} onSaved={setRec} /> : <Marker rec={rec} src={src} onSaved={setRec} />)}
       {["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status) && src && (
         <Row gutter={24}>
           <Col span={12}><video src={src} controls style={{ width: "100%", background: "#000" }} /></Col>
@@ -221,6 +300,12 @@ export default function RecordingDetail() {
               { title: "开始", dataIndex: "start_ms", render: fmtMs },
               { title: "结束", dataIndex: "end_ms", render: fmtMs },
             ]} />
+            {live && (
+              <Typography.Paragraph style={{ marginTop: 12 }}>
+                观众异议 {rec.objection_times.length} 条{rec.objection_times.length ? `：${rec.objection_times.map((o) => fmtMs(o.video_ms as number)).join("、")}` : ""}；
+                排除时段 {rec.exclusions.length} 段{rec.exclusions.length ? `：${rec.exclusions.map((x) => `${fmtMs(x.start_ms as number)}–${fmtMs(x.end_ms as number)}`).join("、")}` : ""}。
+              </Typography.Paragraph>
+            )}
           </Col>
         </Row>
       )}

@@ -42,7 +42,7 @@ def test_import_draft_lists_blockers(login, db):
     r = api.post("/api/rubrics", json={"yaml_text": YAML})
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["status"] == "draft" and body["version"] == "rubric-v0.2" and body["config_hash"].startswith("sha256:")
+    assert body["status"] == "draft" and body["version"] == "rubric-v0.3" and body["config_hash"].startswith("sha256:")
     assert body["blocker_count"] > 0 and any("Q6" in b for b in body["blockers"]) and any("CAL-S2-PRODUCT" in b for b in body["blockers"])
     assert len(body["items"]) == 23 and body["checklist_max"] is None  # S2 按固定话术打分，不再有卖点卡要点满分
     assert body["thresholds"] == {"veteran": 8, "month_1": 10, "new_trial": 15}

@@ -117,7 +117,7 @@ def test_later_round_incomplete(cfg, round_for_total):
 
 
 def test_rounds_must_share_config(cfg, round_for_total):
-    c2 = parse_config(modified(raw_config(), lambda d: d.update(version="rubric-v0.2-alt")))
+    c2 = parse_config(modified(raw_config(), lambda d: d.update(version="rubric-v0.3-alt")))
     b = full_marks()
     other = score_round(b.items, c2, context())
     with pytest.raises(VerdictError):

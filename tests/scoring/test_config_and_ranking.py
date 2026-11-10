@@ -44,7 +44,7 @@ def test_every_item_quotes_the_scoring_sheet(cfg):
 
 
 def test_load_from_file():
-    assert load_config(CONFIG_PATH).version == "rubric-v0.2"
+    assert load_config(CONFIG_PATH).version == "rubric-v0.3"
 
 
 def test_hash_stable_and_sensitive(cfg):

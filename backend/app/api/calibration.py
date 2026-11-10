@@ -267,6 +267,7 @@ def task_detail(aid: uuid.UUID, request: Request, db: Session = DB, user: User =
     return {
         "id": str(a.id), "status": a.status, "evidence": a.evidence, "note": a.note, "set_name": gs.name,
         "video_asset_id": str(video.id) if video else None, "segments": rec.segments, "props_available": rec.props_available,
+        "mode": rec.mode, "exclusions": rec.exclusions or [],
         "audience": rec.audience,
         "objections": [{"objection_id": o["objection_id"], "video_ms": o["video_ms"],
                         "text": next(x["text"] for x in sheet.objections if x["objection_id"] == o["objection_id"])} for o in rec.objection_times],

@@ -1,4 +1,5 @@
-"""录像：登记 → 分片上传（断点续传）→ 标分段和异议时间 → 提交处理（C26–C30）。"""
+"""录像：登记 → 分片上传（断点续传）→ 标分段和异议时间 → 提交处理（C26–C30）。
+两种模式：audition（按题单录的试镜）和 live（直播录播，没有题单，整段视频评分，C37）。"""
 from __future__ import annotations
 
 import hashlib
@@ -8,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,16 +22,18 @@ from ..security.rbac import Perm
 from ..services import audit
 from ..services import human_review as human
 from ..services.media import ProbeError, probe
-from ..services.rubrics import load
+from ..services.rubrics import load, reference
 from ..services.storage import Part, get_storage
 from ..settings import get_settings
 from .candidates import get_candidate, name_of
 from .deps import DB, require
+from .sheets import create_live_sheet
 
 router = APIRouter(tags=["录像"])
 Read = Depends(require(Perm.report_read_all))
 Write = Depends(require(Perm.recording_upload))
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm"}
+MAX_LIVE_OBJECTIONS = 50
 
 
 def _now() -> datetime:
@@ -50,10 +55,21 @@ class FileIn(BaseModel):
 
 class RecordingIn(FileIn):
     candidate_id: uuid.UUID
-    sheet_id: uuid.UUID
+    mode: Literal["audition", "live"] = "audition"
+    sheet_id: uuid.UUID | None = None  # 试镜必填
+    product_id: uuid.UUID | None = None  # 录播必填：没有题单，直接选产品（C37）
+    rubric_version_id: uuid.UUID | None = None  # 录播可选：不给时用现行评分标准（最新已发布，没有则最新草稿）
     consent_record_id: uuid.UUID
     audience: str  # 必选，不设默认值（C27）
     props_available: bool  # 必填：画面里有无贴片 / KT 板（C26）
+
+    @model_validator(mode="after")
+    def _by_mode(self) -> "RecordingIn":
+        if self.mode == "audition" and self.sheet_id is None:
+            raise ValueError("试镜录像须选择题单")
+        if self.mode == "live" and (self.product_id is None or self.sheet_id is not None):
+            raise ValueError("录播没有题单，须选择产品")
+        return self
 
 
 class UploadOut(BaseModel):
@@ -75,9 +91,28 @@ class SegmentsIn(BaseModel):
     objection_offsets_ms: list[int]
 
 
+class LiveObjectionIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    video_ms: int = Field(ge=0)
+
+
+class RangeIn(BaseModel):
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(gt=0)
+
+
+class LiveMarksIn(BaseModel):
+    """录播标注（C37）。时间都是整段视频的毫秒。
+    objections：主播回应过的真实观众问题（出现时间和原文），可以为空；exclusions：不是主播本人在讲的时段（副播插话等）。"""
+
+    objections: list[LiveObjectionIn] = Field(max_length=MAX_LIVE_OBJECTIONS)
+    exclusions: list[RangeIn] = Field(default_factory=list, max_length=200)
+
+
 class RecordingOut(BaseModel):
     id: uuid.UUID
     status: str
+    mode: str
     candidate_id: uuid.UUID
     candidate_name: str
     sheet_id: uuid.UUID
@@ -94,6 +129,7 @@ class RecordingOut(BaseModel):
     main_duration_ms: int | None
     segments: list[dict]
     objection_times: list[dict]
+    exclusions: list[dict]
     upload: UploadOut | None
     warnings: list[str]
     created_at: datetime
@@ -115,11 +151,10 @@ def _video(db: Session, rec: Recording) -> MediaAsset | None:
 
 
 def _warnings(rec: Recording, sheet: AuditionSheet) -> list[str]:
+    """不再提示“主体段不是 10 分钟”：评分不截取 10 分钟，P2 按每 10 分钟的次数换算（C36）。"""
     w = []
-    if rec.main_duration_ms is not None:
-        expect = sheet.draw_rule_snapshot.get("main_seconds", 600) * 1000
-        if abs(rec.main_duration_ms - expect) > 5000:
-            w.append(f"主体段时长 {rec.main_duration_ms / 60000:.1f} 分钟，与规定的 {expect / 60000:.0f} 分钟不符（不足时 P2 按时长换算，规则待确认 Q8）")
+    if rec.mode == "live" and rec.segments and not rec.objection_times:
+        w.append("没有标出观众异议：解答异议（S3）不适用，销售循环按其余条目折算；节奏与气氛（O4）由评委打分")
     return w
 
 
@@ -128,12 +163,12 @@ def _out(db: Session, rec: Recording) -> RecordingOut:
     up = db.scalar(select(UploadSession).where(UploadSession.recording_id == rec.id).order_by(UploadSession.created_at.desc()).limit(1))
     v = _video(db, rec)
     return RecordingOut(
-        id=rec.id, status=rec.status, candidate_id=rec.candidate_id, candidate_name=name_of(get_candidate(db, rec.candidate_id)),
+        id=rec.id, status=rec.status, mode=rec.mode, candidate_id=rec.candidate_id, candidate_name=name_of(get_candidate(db, rec.candidate_id)),
         sheet_id=sheet.id, sheet_code=sheet.code, product_name=db.get(Product, sheet.product_id).name,
         uses_draft_config=sheet.uses_draft_config, audience=rec.audience, props_available=rec.props_available,
         sheet_objections=sheet.objections, sheet_questions=sheet.questions, main_seconds=sheet.draw_rule_snapshot.get("main_seconds", 600),
         video_asset_id=v.id if v else None, video_duration_ms=rec.video_duration_ms, main_duration_ms=rec.main_duration_ms,
-        segments=rec.segments, objection_times=rec.objection_times, upload=_upload_out(up) if up else None,
+        segments=rec.segments, objection_times=rec.objection_times, exclusions=rec.exclusions or [], upload=_upload_out(up) if up else None,
         warnings=_warnings(rec, sheet), created_at=rec.created_at, submitted_at=rec.submitted_at,
         processing_started_at=rec.processing_started_at, finished_at=rec.finished_at, failure_reason=rec.failure_reason,
         report_id=db.scalar(select(Report.id).where(Report.recording_id == rec.id, Report.superseded_at.is_(None))),
@@ -198,22 +233,25 @@ def create_recording(body: RecordingIn, request: Request, db: Session = DB, acto
     consent = db.get(ConsentRecord, body.consent_record_id)
     if consent is None or consent.candidate_id != cand.id:
         raise HTTPException(422, "请先为该候选人登记书面同意，未登记不能上传（C30）")
-    sheet = db.get(AuditionSheet, body.sheet_id)
-    if sheet is None:
-        raise HTTPException(404, "题单不存在")
-    if sheet.status != "issued":
-        raise HTTPException(409, "题单已使用或已作废")
+    ext = _check_file(body)
+    if body.mode == "live":
+        sheet = create_live_sheet(db, body.product_id, body.rubric_version_id or reference(db).id, actor)
+    else:
+        sheet = db.get(AuditionSheet, body.sheet_id)
+        if sheet is None or sheet.kind != "audition":
+            raise HTTPException(404, "题单不存在")
+        if sheet.status != "issued":
+            raise HTTPException(409, "题单已使用或已作废")
     thresholds = load(db.get(RubricVersion, sheet.rubric_version_id)).thresholds
     if body.audience not in thresholds:
         raise HTTPException(422, f"适用达标线必须是 {'、'.join(thresholds)} 之一")
-    ext = _check_file(body)
-    rec = Recording(candidate_id=cand.id, sheet_id=sheet.id, consent_record_id=consent.id, audience=body.audience,
+    rec = Recording(mode=body.mode, candidate_id=cand.id, sheet_id=sheet.id, consent_record_id=consent.id, audience=body.audience,
                     props_available=body.props_available, uploaded_by=actor.id, status="uploading")
     db.add(rec)
     db.flush()
     sheet.status = "used"
     u = _open_upload(db, rec, body, ext, actor)
-    _log(db, request, actor, "recording_create", "recording", rec.id, sheet=sheet.code, audience=rec.audience,
+    _log(db, request, actor, "recording_create", "recording", rec.id, mode=rec.mode, sheet=sheet.code, audience=rec.audience,
          props_available=rec.props_available, upload_id=str(u.id))
     db.commit()
     return _out(db, rec)
@@ -237,7 +275,9 @@ def replace_video(rid: uuid.UUID, body: FileIn, request: Request, db: Session = 
     ext = _check_file(body)
     _abort_open(db, rec)
     _drop_video(db, rec)
-    rec.status, rec.segments, rec.objection_times = "uploading", [], []
+    rec.status, rec.segments, rec.objection_times, rec.exclusions = "uploading", [], [], []
+    if rec.mode == "live":
+        db.get(AuditionSheet, rec.sheet_id).objections = []
     rec.main_duration_ms = rec.video_duration_ms = None
     u = _open_upload(db, rec, body, ext, actor)
     _log(db, request, actor, "recording_replace_video", "recording", rec.id, upload_id=str(u.id))
@@ -250,6 +290,8 @@ def set_segments(rid: uuid.UUID, body: SegmentsIn, request: Request, db: Session
     rec = _get(db, rid)
     if rec.status != "uploaded":
         raise HTTPException(409, "视频上传完成后、提交处理前才能标分段")
+    if rec.mode != "audition":
+        raise HTTPException(409, "录播没有题单和分段，请标注观众异议和排除时段")
     sheet = db.get(AuditionSheet, rec.sheet_id)
     qs, objs = sheet.questions, sheet.objections
     if len(body.question_starts_ms) != len(qs):
@@ -278,8 +320,40 @@ def set_segments(rid: uuid.UUID, body: SegmentsIn, request: Request, db: Session
     return _out(db, rec)
 
 
+@router.put("/recordings/{rid}/live-marks", response_model=RecordingOut)
+def set_live_marks(rid: uuid.UUID, body: LiveMarksIn, request: Request, db: Session = DB, actor: User = Write) -> RecordingOut:
+    """录播标注（C37）：整段视频都是主体段，不截取、没有朗读段。员工看录播标出主播回应过的真实观众问题，
+    以及不是主播本人在讲的时段（排除后不参与评分）。两项都可以为空，但须提交一次，表示已看过。"""
+    rec = _get(db, rid)
+    if rec.status != "uploaded":
+        raise HTTPException(409, "视频上传完成后、提交处理前才能标注")
+    if rec.mode != "live":
+        raise HTTPException(409, "按题单录的试镜请标分段")
+    total = rec.video_duration_ms or 0
+    ex = sorted(((x.start_ms, x.end_ms) for x in body.exclusions))
+    if any(a >= b or b > total for a, b in ex) or any(b1 > a2 for (_, b1), (a2, _) in zip(ex, ex[1:])):
+        raise HTTPException(422, "排除时段须起点早于终点、落在视频时长内，且互不重叠")
+    objs = sorted(body.objections, key=lambda o: o.video_ms)
+    times = [o.video_ms for o in objs]
+    if any(t >= total for t in times) or len(set(times)) != len(times):
+        raise HTTPException(422, "观众异议的时间须落在视频时长内，且互不相同")
+    kept = total - sum(b - a for a, b in ex)
+    if kept < 60_000:
+        raise HTTPException(422, "排除后主播本人讲解不足 1 分钟，无法评分")
+    sheet = db.get(AuditionSheet, rec.sheet_id)
+    ids = [str(uuid.uuid4()) for _ in objs]
+    sheet.objections = [{"objection_id": i, "text": o.text.strip(), "at_ms": o.video_ms} for i, o in zip(ids, objs)]
+    rec.segments = [{"segment": "main", "start_ms": 0, "end_ms": total}]
+    rec.objection_times = [{"objection_id": i, "at_ms": o.video_ms, "video_ms": o.video_ms} for i, o in zip(ids, objs)]
+    rec.exclusions = [{"start_ms": a, "end_ms": b} for a, b in ex]
+    rec.main_duration_ms = kept
+    _log(db, request, actor, "recording_live_marks", "recording", rec.id, objections=len(objs), exclusions=len(ex), main_duration_ms=kept)
+    db.commit()
+    return _out(db, rec)
+
+
 def _ready(db: Session, rec: Recording) -> None:
-    problems = readiness.blockers(db, db.get(AuditionSheet, rec.sheet_id), get_providers())
+    problems = readiness.blockers(db, db.get(AuditionSheet, rec.sheet_id), get_providers(), live=rec.mode == "live")
     if problems:
         raise HTTPException(422, "暂不能处理：" + "；".join(problems))
 
@@ -290,7 +364,7 @@ def submit(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
     if rec.status != "uploaded":
         raise HTTPException(409, "只有已上传、未提交的录像可以提交")
     if not rec.segments:
-        raise HTTPException(422, "请先标出各段起点和异议时间")
+        raise HTTPException(422, "请先标注观众异议和排除时段（没有也要确认一次）" if rec.mode == "live" else "请先标出各段起点和异议时间")
     if db.get(ConsentRecord, rec.consent_record_id) is None:
         raise HTTPException(422, "缺少书面同意登记，不能处理（C30）")
     get_candidate(db, rec.candidate_id)  # 候选人已申请删除的不能再处理
@@ -333,7 +407,7 @@ def cancel(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
     _abort_open(db, rec)
     _drop_video(db, rec)
     rec.status = "cancelled"
-    db.get(AuditionSheet, rec.sheet_id).status = "issued"
+    db.get(AuditionSheet, rec.sheet_id).status = "void" if rec.mode == "live" else "issued"  # 录播的内部记录随录像作废
     _log(db, request, actor, "recording_cancel", "recording", rec.id)
     db.commit()
     return _out(db, rec)

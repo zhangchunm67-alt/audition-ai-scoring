@@ -198,10 +198,14 @@ class RedlineLexiconVersion(Base):
 
 class AuditionSheet(Base):
     """试镜题单：按抽题规则抽好的 4 条异议、6 道题和朗读稿，可打印给候选人按此录制（C29）。
-    生成时固定所用的评分标准、卖点卡、红线词表版本；任一为草稿时 uses_draft_config 为真，报告须标注“非正式”。"""
+    生成时固定所用的评分标准、卖点卡、红线词表版本；任一为草稿时 uses_draft_config 为真，报告须标注“非正式”。
+
+    kind = live：录播评估（C37）没有题单。上传录播时系统自动建一条内部记录，只用来固定评分标准、卖点卡等版本；
+    不抽异议、没有朗读稿，不出现在题单列表里；异议由员工看录播后标出，写回 objections。"""
 
     __tablename__ = "audition_sheets"
     id: Mapped[uuid.UUID] = uuid_pk()
+    kind: Mapped[str] = mapped_column(String(16), default="audition", server_default="audition")  # audition / live
     code: Mapped[str] = mapped_column(String(32), unique=True)
     product_id: Mapped[uuid.UUID] = fk_uuid("products.id")
     product_card_id: Mapped[uuid.UUID] = fk_uuid("product_cards.id")
@@ -210,7 +214,7 @@ class AuditionSheet(Base):
     draw_rule_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON)
     objections: Mapped[list[Any]] = mapped_column(JSON)  # [{objection_id, text, at_ms}]
     questions: Mapped[list[Any]] = mapped_column(JSON)  # [{question_id, text}]
-    reading_script_id: Mapped[uuid.UUID] = fk_uuid("reading_scripts.id")
+    reading_script_id: Mapped[uuid.UUID | None] = fk_uuid("reading_scripts.id", nullable=True)  # 录播没有朗读稿
     reading_text: Mapped[str] = mapped_column(Text)
     recording_rules_version: Mapped[str] = mapped_column(String(32))
     uses_draft_config: Mapped[bool] = mapped_column(Boolean)
@@ -250,10 +254,12 @@ class ConsentRecord(Base):
 
 
 class Recording(Base):
-    """一条上传的试镜录像。一张题单只对应一条录像。"""
+    """一条上传的录像。mode = audition：按题单录的试镜，一张题单只对应一条录像；
+    mode = live：直播录播（老主播、上播 1 个月的主播），没有题单，整段视频评分（C37）。"""
 
     __tablename__ = "recordings"
     id: Mapped[uuid.UUID] = uuid_pk()
+    mode: Mapped[str] = mapped_column(String(16), default="audition", server_default="audition")
     candidate_id: Mapped[uuid.UUID] = fk_uuid("candidates.id")
     sheet_id: Mapped[uuid.UUID] = fk_uuid("audition_sheets.id")
     consent_record_id: Mapped[uuid.UUID] = fk_uuid("consent_records.id")
@@ -267,7 +273,9 @@ class Recording(Base):
     segments: Mapped[list[Any]] = mapped_column(JSON, default=list)
     # 异议时间（C29）：[{objection_id, at_ms 相对主体段起点, video_ms 相对整段视频}]，默认取题单
     objection_times: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    main_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    # 录播里不是主播本人在讲的时段（副播插话等），员工标出后不参与评分（C37）：[{start_ms, end_ms}]，视频时间
+    exclusions: Mapped[list[Any]] = mapped_column(JSON, default=list, server_default="[]")
+    main_duration_ms: Mapped[int | None] = mapped_column(Integer)  # 主体段时长；录播为整段视频减去排除时段
     video_duration_ms: Mapped[int | None] = mapped_column(Integer)
     processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 出报告或最终失败的时间

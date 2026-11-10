@@ -9,7 +9,8 @@ import { ConsentForm, NewCandidateModal, registerConsent } from "./Candidates";
 
 type Rec = S<"RecordingOut">;
 
-/** 上传录像：选候选人和书面同意 → 选题单 → 选达标线和有无道具 → 选文件分片上传 → 进入分段标注。 */
+/** 上传录像：选候选人和书面同意 → 试镜选题单 / 录播选产品 → 选达标线和有无道具 → 选文件分片上传 → 进入标注。
+ *  录播（老主播、上播 1 个月的主播）没有题单，整段视频评分。 */
 export default function NewRecording() {
   const nav = useNavigate();
   const act = useAction();
@@ -18,6 +19,8 @@ export default function NewRecording() {
   const candidates = useFetch<S<"CandidateRow">[]>("/candidates");
   const sheets = useFetch<S<"SheetOut">[]>("/sheets?status=issued");
   const rubric = useFetch<S<"RubricDetail">>("/rubrics/reference");
+  const products = useFetch<S<"ProductOut">[]>("/products");
+  const mode = (Form.useWatch("mode", form) as string | undefined) ?? "audition";
   const candidateId = Form.useWatch("candidate_id", form) as string | undefined;
   const detail = useFetch<S<"CandidateDetail">>(candidateId ? `/candidates/${candidateId}` : null);
   const [newCand, setNewCand] = useState(false);
@@ -51,7 +54,16 @@ export default function NewRecording() {
     <>
       <Typography.Title level={4}>上传录像</Typography.Title>
       <Card style={{ maxWidth: 760 }}>
-        <Form form={form} layout="vertical" disabled={busy}>
+        <Form form={form} layout="vertical" disabled={busy} initialValues={{ mode: "audition" }}>
+          <Form.Item name="mode" label="录像类型" rules={[{ required: true }]}
+            extra={mode === "live"
+              ? "直播录播：没有题单，整段视频评分。上传后标出主播回应过的观众问题，以及副播等其他人讲话的时段。"
+              : "按题单录制的试镜：上传后标出主体段、朗读段的起点和异议时间。"}>
+            <Radio.Group onChange={() => form.setFieldsValue({ sheet_id: undefined, product_id: undefined })}>
+              <Radio.Button value="audition">试镜（按题单录制）</Radio.Button>
+              <Radio.Button value="live">录播（老主播、上播 1 个月，无题单）</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
           <Form.Item label="候选人" required>
             <Space.Compact style={{ width: "100%" }}>
               <Form.Item name="candidate_id" noStyle rules={[{ required: true, message: "请选择候选人" }]}>
@@ -81,10 +93,18 @@ export default function NewRecording() {
             <Select placeholder={candidateId ? "选择本次使用的同意书登记" : "先选择候选人"}
               options={consents.map((c) => ({ value: c.id, label: `${c.consent_text_version}，签署于 ${c.signed_on}` }))} />
           </Form.Item>
-          <Form.Item name="sheet_id" label="试镜题单" rules={[{ required: true, message: "请选择题单" }]} extra="候选人按哪张题单录制，就选哪张；一张题单只能用一次。">
-            <Select showSearch optionFilterProp="label" placeholder="选择未使用的题单"
-              options={(sheets.data ?? []).map((s) => ({ value: s.id, label: `${s.code} · ${s.product_name}${s.note ? ` · ${s.note}` : ""}` }))} />
-          </Form.Item>
+          {mode === "audition" ? (
+            <Form.Item name="sheet_id" label="试镜题单" rules={[{ required: true, message: "请选择题单" }]} extra="候选人按哪张题单录制，就选哪张；一张题单只能用一次。">
+              <Select showSearch optionFilterProp="label" placeholder="选择未使用的题单"
+                options={(sheets.data ?? []).map((s) => ({ value: s.id, label: `${s.code} · ${s.product_name}${s.note ? ` · ${s.note}` : ""}` }))} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="product_id" label="直播讲的产品" rules={[{ required: true, message: "请选择产品" }]}
+              extra="一条录播按一个产品评分，产品须有已发布的卖点卡。产品没有固定话术或校准记录时，“产品讲解”由评委打分。">
+              <Select showSearch optionFilterProp="label" placeholder="选择产品"
+                options={(products.data ?? []).map((p) => ({ value: p.id, label: p.name }))} />
+            </Form.Item>
+          )}
           <Form.Item name="audience" label="适用达标线" rules={[{ required: true, message: "请选择适用达标线" }]}>
             <Radio.Group>
               {Object.entries(rubric.data?.thresholds ?? {}).map(([k, v]) => (
@@ -99,7 +119,7 @@ export default function NewRecording() {
               <Radio.Button value={false}>没有</Radio.Button>
             </Radio.Group>
           </Form.Item>
-          <Form.Item label="视频文件" required extra="主体段、知识问答、朗读连续录在一个文件里；MP4 / MOV / M4V / WEBM。">
+          <Form.Item label="视频文件" required extra={mode === "live" ? "一段完整的直播录播；MP4 / MOV / M4V / WEBM。" : "主体段、朗读连续录在一个文件里；MP4 / MOV / M4V / WEBM。"}>
             <Upload beforeUpload={(f) => (setFile(f), false)} maxCount={1} accept=".mp4,.mov,.m4v,.webm,video/*" onRemove={() => setFile(null)}>
               <Button>选择文件</Button>
             </Upload>

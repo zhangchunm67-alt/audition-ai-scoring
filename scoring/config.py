@@ -148,10 +148,13 @@ class _Item(_Node):
 
 
 class Normalize(_Node):
-    """时长不足时按比例换算次数（P2，Q8）。只在实际时长 < per_minutes 时生效。"""
+    """按时长换算次数（P2，Q8）。both_ways 为假（rubric-v0.2 及以前）：只在实际时长 < per_minutes 时放大；
+    both_ways 为真（rubric-v0.3 起，整段视频计次）：时长不等于 per_minutes 就换算成每 per_minutes 分钟的次数。
+    rubric-v0.3 起逐次加分（T2）和语速超限段数（T5）也可以换算（C38）；按类别去重的加分项不能换算。"""
 
     enabled: bool = True
     per_minutes: int = 10
+    both_ways: bool = False
 
 
 class T1Item(_Item):
@@ -169,6 +172,7 @@ class T2Item(_Item):
     # 仅兼容旧 YAML 的重复 cap。运行时和新配置统一使用 max。
     legacy_cap: int | None = Field(default=None, validation_alias="cap", exclude=True, gt=0)
     distinct_by_label: bool = False  # 同一标签只算一次
+    normalize: Normalize | None = None  # 按每 N 分钟换算次数（C38）
 
     @field_validator("legacy_cap", mode="before")
     @classmethod
@@ -185,6 +189,9 @@ class T2Item(_Item):
             raise ValueError(f"{self.id}: 用 awards 时不要再设 labels")
         if self.legacy_cap is not None and self.legacy_cap != self.max:
             raise ValueError(f"{self.id}: cap ({self.legacy_cap}) 应等于满分 ({self.max})")
+        if self.normalize and self.normalize.enabled and self.distinct_by_label:
+            # “用了几种不同的方法 / 术语”不是频率：种类有限，长视频按时长折算后永远拿不到满分
+            raise ValueError(f"{self.id}: 按类别去重的条目不能按时长换算")
         return self
 
 
@@ -226,6 +233,7 @@ class T5Item(_Item):
     metric: str
     limit: float
     score_by_over: dict[str, int]  # {"0": 5, "1": 3, "2+": 0}
+    normalize: Normalize | None = None  # 超限段数按每 N 分钟换算后四舍五入（C38）
 
     @model_validator(mode="after")
     def _check(self) -> "T5Item":
@@ -410,6 +418,11 @@ def config_hash(cfg: RubricConfig) -> str:
     data.update(status=cfg.legacy_status, rounding="half_up")
     for dimension in data["dimensions"]:
         for item in dimension["items"]:
+            norm = item.get("normalize")
+            if norm and not norm.get("both_ways"):
+                norm.pop("both_ways", None)  # rubric-v0.3 新增的字段：关着时不进哈希，旧配置的身份不变
+            if item["type"] in ("T2", "T5") and norm is None:
+                item.pop("normalize", None)  # rubric-v0.3 才给 T2、T5 加的字段：没设时不进哈希
             if item["type"] == "T2":
                 item["cap"] = item["max"]
             elif item["type"] == "T3+T4":

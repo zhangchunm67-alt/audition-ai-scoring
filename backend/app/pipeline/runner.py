@@ -59,9 +59,27 @@ def scoring_context(rec: Recording, sheet: AuditionSheet, card: dict, completed:
         props_available=rec.props_available, audience=rec.audience, completed_detectors=completed,
         checklist=[ChecklistPoint(**{k: p[k] for k in ("id", "name", "points", "compliance_required") if k in p}) for p in card.get("checklist", [])],
         expected_questions={"S3": [o["objection_id"] for o in rec.objection_times], "O5": [q["question_id"] for q in sheet.questions]},
+        flexible_questions=flexible_questions(rec),
         main_duration_ms=rec.main_duration_ms,
         model_manifest=manifest,
     )
+
+
+def flexible_questions(rec: Recording) -> set[str]:
+    """录播的观众异议是真实的，条数不固定：S3 按实际条数折算，一条都没有时不适用（C37）。"""
+    return {"S3"} if rec.mode == "live" else set()
+
+
+def not_applicable_items(rec: Recording) -> set[str]:
+    """本条录像不适用的条目（不含按有无道具决定的 P9），供按条目分汇总金标准时使用。"""
+    return {i for i in flexible_questions(rec) if not rec.objection_times}
+
+
+def drop_excluded(st: SegmentText, exclusions: list[tuple[int, int]]) -> SegmentText:
+    """去掉排除时段里的字（副播插话等）：之后所有依据逐字稿的条目都不会把这些话算到主播头上。"""
+    if not exclusions:
+        return st
+    return SegmentText(st.segment, [w for w in st.words if not any(a <= w.start_ms < b for a, b in exclusions)])
 
 
 def _now() -> datetime:
@@ -92,7 +110,9 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
     db.commit()
 
     card = db.get(ProductCard, sheet.product_card_id).content
-    problems = readiness.blockers(db, sheet, raw_providers)
+    live = rec.mode == "live"
+    exclusions = [(x["start_ms"], x["end_ms"]) for x in (rec.exclusions or [])]
+    problems = readiness.blockers(db, sheet, raw_providers, live=live)
     if problems:
         raise RoundIncomplete("暂不能处理：" + "；".join(problems))
     lexicon = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id).content if sheet.redline_lexicon_version_id else {}
@@ -122,7 +142,8 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
                 raise RoundIncomplete("语音识别供应商没有确认关闭顺滑，拒绝使用该转写")
             off = seg["start_ms"]
             words = [Word(w.text, w.start_ms + off, w.end_ms + off, w.confidence) for w in tr.words]
-            texts[name] = SegmentText(name, words)
+            # 逐字稿原样保存（报告里能看到副播说了什么），检测器只用排除后的文本
+            texts[name] = drop_excluded(SegmentText(name, words), exclusions) if name == "main" else SegmentText(name, words)
             db.add(Transcript(run_id=run.id, segment=name, text=tr.text, provider=tr.provider, model_version=tr.model_version,
                               disfluency_removal=False, words=[[w.text, w.start_ms, w.end_ms, round(w.confidence, 3)] for w in words]))
         run.stage = "acoustic"
@@ -137,9 +158,18 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         run.stage = "detectors"
         ctx = Ctx(round_no=round_no, props_available=rec.props_available, segments=rec.segments, objections=objections, questions=questions,
                   reading_text=sheet.reading_text, card=card, lexicon=lexicon, cfg=dcfg, texts=texts, acoustic=feats, media=media,
-                  providers=providers)
+                  providers=providers, mode=rec.mode, exclusions=exclusions)
         item_ids = {it.id for _, it in cfg.items()}
         plan = human_plan(dcfg, raw_providers, item_ids)
+        by_hand = set()
+        if not any(s["segment"] == "reading" for s in rec.segments):
+            by_hand.add("P3")  # 没有朗读段（录播）：做不了带参考文本的普通话评测，评委听录像打分
+        if live and not objections:
+            by_hand.add("O4")  # 没有标出观众异议：机器看不出“讲品还是回答问题”的掌控，评委打分
+        if live and not readiness.s2_ready(card):
+            by_hand.add("S2")  # 直播的产品没有固定话术或校准记录：评委打分（试镜在提交前就拦下）
+        plan["manual"] = sorted((set(plan["manual"]) | by_hand) & item_ids)
+        plan["confirm"] = sorted(set(plan["confirm"]) - set(plan["manual"]))
         plan["fallback_applied"] = bool(plan["fallback"] and last_attempt)
         signals = injection.scan(texts)
         if signals:  # 讲话里有针对评分的话：依赖大模型、视觉模型的条目全部转评委确认（T43）
@@ -170,7 +200,7 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
 
         run.stage = "scoring"
         sctx = scoring_context(rec, sheet, card, completed,
-                               {**manifest, **readiness.s2_manifest(card), "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
+                               {**manifest, **({} if "S2" in plan["manual"] else readiness.s2_manifest(card)), "recording_mode": rec.mode, "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
                                 "temperature": "0", "asr_disfluency_removal": "false", "human_review": plan})
         result = score_round(evidence, cfg, sctx)
         db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=result.config_hash, result=result.model_dump(mode="json")))

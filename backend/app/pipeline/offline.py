@@ -53,6 +53,7 @@ class VideoSpec:
     props_available: bool = False
     audience: str = "new_trial"
     card: dict = field(default_factory=dict)
+    mode: str = "audition"  # live：直播录播，观众异议按实际条数折算，一条都没有时 S3 不适用（C37）
 
 
 def load_spec(path: str | Path) -> VideoSpec:
@@ -83,7 +84,7 @@ def load_spec(path: str | Path) -> VideoSpec:
         main_start_ms=parse_time(main["start"]) if "start" in main else None,
         main_end_ms=parse_time(main["end"]) if "end" in main else None,
         reading=reading, objections=objs, props_available=bool(d.get("props_available", False)),
-        audience=d.get("audience", "new_trial"), card=card,
+        audience=d.get("audience", "new_trial"), card=card, mode=d.get("mode", "audition"),
     )
 
 
@@ -113,7 +114,7 @@ def _frames(video: Path, a: int, b: int, every_s: float, out: Path) -> list[Fram
 
 
 SKIP = {
-    "S3": lambda s, n: None if len(s.objections) == n else (
+    "S3": lambda s, n: None if len(s.objections) == n or s.mode == "live" else (
         f"标注了 {len(s.objections)} 条观众异议，评分表要求 {n} 条（每条 5 分），解答异议不按比例折算" if s.objections
         else "录像没有标注观众异议（时间和原文），无法评解答异议"),
     "O4": lambda s, n: None if s.objections else "录像没有标注观众异议，无法评节奏掌控（讲品还是回答问题）",
@@ -126,7 +127,7 @@ def run_video(spec: VideoSpec, providers: Providers, cfg: RubricConfig, dcfg: De
     workdir.mkdir(parents=True, exist_ok=True)
     total = duration_ms(spec.video)
     m0 = spec.main_start_ms or 0
-    m1 = spec.main_end_ms or min(total, m0 + 600_000)
+    m1 = spec.main_end_ms or total  # 不截取 10 分钟（C36）：没写终点就到视频结尾；有朗读段的请写明主体段终点
     if not 0 <= m0 < m1 <= total:
         raise SpecError(f"{spec.name}: 主体段 {m0}–{m1} 毫秒不在视频时长 {total} 毫秒内")
     segments = [{"segment": "main", "start_ms": m0, "end_ms": m1}]
@@ -165,7 +166,7 @@ def run_video(spec: VideoSpec, providers: Providers, cfg: RubricConfig, dcfg: De
 
     ctx = Ctx(round_no=1, props_available=spec.props_available, segments=segments, objections=spec.objections, questions=[],
               reading_text=spec.reading["text"] if spec.reading else "", card=spec.card, lexicon={}, cfg=dcfg, texts=texts,
-              acoustic={"main": feats}, media=media, providers=providers)
+              acoustic={"main": feats}, media=media, providers=providers, mode=spec.mode)
     evidence, completed, detectors = [], set(), {}
     for _, it in cfg.items():
         if it.applicable_if == "props_available" and not spec.props_available:
@@ -189,6 +190,7 @@ def run_video(spec: VideoSpec, providers: Providers, cfg: RubricConfig, dcfg: De
     manifest = {**providers.manifest(), "prompts": prompts.prompt_set_hash(), "detector_config": dcfg.version, "mode": "offline-blind"}
     sctx = ScoringContext(props_available=spec.props_available, audience=spec.audience, completed_detectors=completed,
                           expected_questions={"S3": [o["objection_id"] for o in spec.objections]} if "S3" in completed else {},
+                          flexible_questions={"S3"} if spec.mode == "live" else set(),
                           main_duration_ms=m1 - m0, model_manifest=manifest)
     try:
         result = score_round(evidence, cfg, sctx).model_dump(mode="json")

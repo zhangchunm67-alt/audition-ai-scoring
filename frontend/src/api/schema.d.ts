@@ -726,6 +726,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/live-marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Live Marks
+         * @description 录播标注（C37）：整段视频都是主体段，不截取、没有朗读段。员工看录播标出主播回应过的真实观众问题，
+         *     以及不是主播本人在讲的时段（排除后不参与评分）。两项都可以为空，但须提交一次，表示已看过。
+         */
+        put: operations["set_live_marks_api_recordings__rid__live_marks_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/{rid}/submit": {
         parameters: {
             query?: never;
@@ -916,6 +937,7 @@ export interface paths {
         /**
          * List Reports
          * @description 排名口径（C9、I4）：同一日期范围内的报告一起排名，筛选标签不改变名次。
+         *     mode 给出时只在试镜或录播内部排名（C37）。
          */
         get: operations["list_reports_api_reports_get"];
         put?: never;
@@ -1702,6 +1724,24 @@ export interface components {
             /** User Id */
             user_id: string | null;
         };
+        /**
+         * LiveMarksIn
+         * @description 录播标注（C37）。时间都是整段视频的毫秒。
+         *     objections：主播回应过的真实观众问题（出现时间和原文），可以为空；exclusions：不是主播本人在讲的时段（副播插话等）。
+         */
+        LiveMarksIn: {
+            /** Objections */
+            objections: components["schemas"]["LiveObjectionIn"][];
+            /** Exclusions */
+            exclusions?: components["schemas"]["RangeIn"][];
+        };
+        /** LiveObjectionIn */
+        LiveObjectionIn: {
+            /** Text */
+            text: string;
+            /** Video Ms */
+            video_ms: number;
+        };
         /** LoginIn */
         LoginIn: {
             /** Username */
@@ -1845,6 +1885,13 @@ export interface components {
              */
             product_id: string;
         };
+        /** RangeIn */
+        RangeIn: {
+            /** Start Ms */
+            start_ms: number;
+            /** End Ms */
+            end_ms: number;
+        };
         /** RecordingIn */
         RecordingIn: {
             /** Filename */
@@ -1859,10 +1906,17 @@ export interface components {
              */
             candidate_id: string;
             /**
-             * Sheet Id
-             * Format: uuid
+             * Mode
+             * @default audition
+             * @enum {string}
              */
-            sheet_id: string;
+            mode: "audition" | "live";
+            /** Sheet Id */
+            sheet_id?: string | null;
+            /** Product Id */
+            product_id?: string | null;
+            /** Rubric Version Id */
+            rubric_version_id?: string | null;
             /**
              * Consent Record Id
              * Format: uuid
@@ -1882,6 +1936,8 @@ export interface components {
             id: string;
             /** Status */
             status: string;
+            /** Mode */
+            mode: string;
             /**
              * Candidate Id
              * Format: uuid
@@ -1926,6 +1982,10 @@ export interface components {
             }[];
             /** Objection Times */
             objection_times: {
+                [key: string]: unknown;
+            }[];
+            /** Exclusions */
+            exclusions: {
                 [key: string]: unknown;
             }[];
             upload: components["schemas"]["UploadOut"] | null;
@@ -1980,6 +2040,8 @@ export interface components {
             submitted_at: string | null;
             /** Audience */
             audience: string;
+            /** Mode */
+            mode: string;
             /** Label */
             label: string;
             /** Reason */
@@ -3956,6 +4018,41 @@ export interface operations {
             };
         };
     };
+    set_live_marks_api_recordings__rid__live_marks_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveMarksIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_api_recordings__rid__submit_post: {
         parameters: {
             query?: never;
@@ -4280,6 +4377,7 @@ export interface operations {
                 date_to?: string | null;
                 label?: string | null;
                 audience?: string | null;
+                mode?: string | null;
                 sort?: string;
             };
             header?: never;
@@ -4315,6 +4413,7 @@ export interface operations {
                 date_to?: string | null;
                 label?: string | null;
                 audience?: string | null;
+                mode?: string | null;
                 sort?: string;
             };
             header?: never;

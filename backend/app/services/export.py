@@ -67,16 +67,18 @@ def report_html(d: dict) -> str:
     problems = [s for seg in d["sentences"] for s in seg["sentences"] if s["issue"]][:40]
     prob = "".join(_problem_row(s) for s in problems)
     t = d["trace"]
+    live = d.get("mode") == "live"
+    kind = "录播" if live else "试镜"
     manifest = "；".join(f"{k}={v_}" for k, v_ in (t["model_manifest"] or {}).items())
-    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>试镜评分报告</title><style>
+    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>{kind}评分报告</title><style>
 body {{ font-family: "WenQuanYi Zen Hei", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 12px; color: #000; margin: 24px; }}
 h1 {{ font-size: 20px; margin: 0 0 4px; }} h2 {{ font-size: 14px; margin: 18px 0 6px; border-bottom: 1px solid #888; }}
 table {{ width: 100%; border-collapse: collapse; }} td, th {{ border: 1px solid #aaa; padding: 3px 6px; text-align: left; vertical-align: top; }}
 .label {{ display: inline-block; padding: 2px 10px; border: 2px solid #000; font-size: 16px; font-weight: bold; }}
 .banner {{ background: #fff4e5; border: 1px solid #f0a020; padding: 4px 8px; margin: 4px 0; }} .meta {{ color: #444; }}
 </style></head><body>
-<h1>主播试镜评分报告</h1>
-<div class="meta">{_e(d['candidate_name'])} · {_e(d['product_name'])} · 题单 {_e(d['sheet_code'])} · 提交 {_cn(d['submitted_at'])} · 第 {d['revision']} 版</div>
+<h1>主播{kind}评分报告</h1>
+<div class="meta">{_e(d['candidate_name'])} · {_e(d['product_name'])} · {'录播（无题单，整段视频评分）' if live else '题单'} {_e(d['sheet_code'])} · 提交 {_cn(d['submitted_at'])} · 第 {d['revision']} 版</div>
 <p><span class="label">{LABEL_ZH[d['label']]}</span> {_e(v['reason'])}</p>
 {''.join(f'<div class="banner">{_e(b)}</div>' for b in banners)}
 <h2>总档位与维度</h2>

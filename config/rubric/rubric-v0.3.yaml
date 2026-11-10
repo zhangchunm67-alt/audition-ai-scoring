@@ -1,7 +1,12 @@
-# 主播评分标准 · 机器可执行版 v0.2 —— 计分配置
+# 主播评分标准 · 机器可执行版 v0.3 —— 计分配置
 #
 # 唯一规则来源：docs/source/主播评分表-20261105.xls（下称“评分表”）。每个条目的 note 先引评分表原文，再写机器口径。
 # rubric-v0.1（docs/rubric.md 的改写版）已停用，只在 git 历史和已存报告的配置快照里保留，用于追溯和重算旧报告。
+# v0.3（2026-11-10）与 v0.2 的差别：不再截取主体段前 10 分钟，整段视频评分（decisions.md C36）；
+# 按次计的条目都换算成每 10 分钟的次数再计分（C38）：P2、P4、P8、P10、L3（扣分），P9、L2、L4、L5、O3（加分）。
+# 不换算的：P1（穿着发型是否合规，不是频率）、P3（只评朗读段或由评委打分）、S3（按异议条数）、
+# S4 / O1 / O2（按“用了几种不同的方法、术语、卖点”去重计分，种类有限，按时长折算后长视频永远拿不到满分）。
+# v0.2 同样只用于查看和重算已有报告，不能用于新的处理。
 # 评分表没有写明、由实现补充的规则一律带 pending；评分表写“根据主观打分”的条目一律带 calibration_required。
 # 标记约定：
 #   pending: [Q6]               规则来自待确认项（docs/decisions.md 第 4 节、第 7 节），未拍板
@@ -9,7 +14,7 @@
 # 带标记的配置只能用于开发和测试；scoring.publish_blockers() 会列出全部标记，清零前不能发布为正式配置。
 # 改动只影响计分（不需要重跑模型）。词表、抽帧率、提示词等检测配置单独管理，改了需要重跑。
 
-version: rubric-v0.2
+version: rubric-v0.3
 expected_item_count: 23                # 评分表：人设 10 条、销售循环 4 条、表达逻辑 5 条、其他 4 条
 removed_items: [O5]                    # 保险知识：评分表 20261105 已删除（旧表 20241025 有）
 
@@ -54,10 +59,12 @@ dimensions:
         max: 40
         per: 1
         free: 20
-        window: main_10min
-        note: 评分表：是……的、一个、……的情况下/的话、这边给你、那么、什么呀、懂了吗、对不对（10分钟，每处扣1分，免除20处）
+        window: main
+        note: >-
+          评分表：是……的、一个、……的情况下/的话、这边给你、那么、什么呀、懂了吗、对不对（10分钟，每处扣1分，免除20处）。
+          不截取 10 分钟（C36）：整段主体段计次，时长不是 10 分钟时按 次数 × 10 ÷ 实际分钟数 换算后再扣分
         pending: [Q6]
-        normalize: {enabled: true, per_minutes: 10, pending: [Q8, P-B8]}
+        normalize: {enabled: true, per_minutes: 10, both_ways: true, pending: [Q8, P-B8]}
 
       - id: P3
         name: 普通话标准
@@ -80,6 +87,7 @@ dimensions:
         note: 评分表：语速（一分钟不超过400字）。超限分钟数到分值的对应关系评分表未写
         score_by_over: {"0": 5, "1": 3, "2+": 0}
         pending: [Q10]
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: P5
         name: 语调
@@ -120,6 +128,7 @@ dimensions:
         per: 1
         free: 0
         note: 评分表：小动作-出现一次扣1分。低头看稿是否计次（Q11）属于检测配置
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: P9
         name: 道具使用
@@ -128,6 +137,7 @@ dimensions:
         awards: {sticker: 2, kt_board: 1}
         note: 评分表：对贴片正确使用1次得2分，对KT板正确使用一次得1分
         applicable_if: props_available   # C26：上传时登记画面里有无贴片 / KT 板
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: P10
         name: 嘻嘻哈哈
@@ -136,6 +146,7 @@ dimensions:
         per: 5
         free: 0
         note: 评分表：嘻嘻哈哈-出现一次扣5分
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
   # ─────────────── 销售循环 100 ───────────────
   - id: S
@@ -211,6 +222,7 @@ dimensions:
         max: 20
         award: 10
         note: 评分表：总分、总分总、结论先行【每正确使用1个得10分】
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: L3
         name: 推理运用
@@ -220,6 +232,7 @@ dimensions:
         free: 0
         note: 评分表：推荐使用归纳法【演绎法使用错误一次扣10分】
         pending: [Q16]
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: L4
         name: 归纳能力
@@ -228,6 +241,7 @@ dimensions:
         award: 10
         note: 评分表：论点：不遗漏、不重复（讲3-4点）【每正确使用1个得10分】。同一段话能否同时在 L2 和 L4 得分（Q17）
         pending: [Q17]
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: L5
         name: 事实运用
@@ -235,6 +249,7 @@ dimensions:
         max: 20
         award: 10
         note: 评分表：能够掌握准确的事实、最好运用数字【每正确使用1个得10分】
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
   # ─────────────── 其他 100 ───────────────
   - id: O
@@ -264,6 +279,7 @@ dimensions:
         max: 20
         award: 10
         note: 评分表：不用盯着收费员看是否医保内外【2处、每处10分】
+        normalize: {enabled: true, per_minutes: 10, both_ways: true}   # C38：按每 10 分钟换算
 
       - id: O4
         name: 节奏与气氛

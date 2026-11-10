@@ -16,7 +16,7 @@ export type Dimension = { id: string; name: string; status: string; raw: number 
 export type RoundSummary = { round_no: number; total_grade: number; grade_pass: boolean; dimension_scores: Record<string, number>; dimension_grades: Record<string, number> };
 export type ReportDetail = {
   id: string; revision: number; superseded_at: string | null; created_at: string; recording_id: string; candidate_id: string; candidate_name: string;
-  submitted_at: string | null; sheet_code: string; product_name: string; audience: string; props_available: boolean;
+  submitted_at: string | null; sheet_code: string; product_name: string; audience: string; props_available: boolean; mode?: string;
   label: "recommend" | "pending" | "not_recommend"; conclusion: string; critical: boolean; redline_hit: boolean; informal: boolean;
   verdict: { reason: string; rounds: RoundSummary[]; display_round: number; majority_grade_pass: boolean };
   display_round: number;

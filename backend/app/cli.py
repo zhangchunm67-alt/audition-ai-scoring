@@ -1,7 +1,7 @@
 """命令行工具。
 
   python -m app.cli create-user --username admin --role admin --display-name 管理员   # 密码从环境变量 NEW_USER_PASSWORD 或交互输入
-  python -m app.cli seed-demo                                                          # 导入评分标准 v0.2、检测配置 v1 和一套演示数据
+  python -m app.cli seed-demo                                                          # 导入评分标准 v0.3、检测配置 v1 和一套演示数据
   python -m app.cli purge-expired                                                      # 删除到期媒体（每天由定时任务执行）
   python -m app.cli worker                                                             # 启动处理队列 worker（APP_QUEUE=rq）
 
@@ -27,7 +27,7 @@ from .security.passwords import hash_password
 from .security.rbac import Role
 
 ROOT = Path(__file__).resolve().parents[2]
-RUBRIC_PATH = ROOT / "config" / "rubric" / "rubric-v0.2.yaml"
+RUBRIC_PATH = ROOT / "config" / "rubric" / "rubric-v0.3.yaml"
 
 DEMO_CHECKLIST = [
     ("coverage", "保障范围", 5, False), ("deductible", "免赔额", 4, True), ("ratio", "报销比例", 3, False),
@@ -121,7 +121,7 @@ def seed_demo(db: Session) -> None:
             k: {"name": n, "keywords": kw, "examples": kw, "not_redline": [], "correct": c} for k, (n, kw, c) in DEMO_REDLINES.items()
         }))
     db.commit()
-    print("已导入评分标准 v0.2（草稿）和演示产品、卖点卡、异议、知识题、抽题规则、朗读稿、红线词表（草稿）")
+    print("已导入评分标准 v0.3（草稿）和演示产品、卖点卡、异议、知识题、抽题规则、朗读稿、红线词表（草稿）")
 
 
 def main(argv: list[str] | None = None) -> None:

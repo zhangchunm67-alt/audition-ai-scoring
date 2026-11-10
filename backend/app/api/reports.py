@@ -34,6 +34,7 @@ class ReportRow(BaseModel):
     candidate_name: str
     submitted_at: datetime | None
     audience: str
+    mode: str
     label: str
     reason: str
     total_grade: int
@@ -70,7 +71,8 @@ def _get(db: Session, rid: uuid.UUID, user: User) -> Report:
     return rep
 
 
-def _rows(db: Session, user: User, date_from: date | None, date_to: date | None, audience: str | None) -> list[tuple[Report, Recording, dict]]:
+def _rows(db: Session, user: User, date_from: date | None, date_to: date | None, audience: str | None,
+          mode: str | None = None) -> list[tuple[Report, Recording, dict]]:
     q = select(Report, Recording).join(Recording, Report.recording_id == Recording.id).where(Report.superseded_at.is_(None))
     if date_from:
         q = q.where(Recording.submitted_at >= datetime.combine(date_from, time.min, CN))
@@ -78,6 +80,8 @@ def _rows(db: Session, user: User, date_from: date | None, date_to: date | None,
         q = q.where(Recording.submitted_at < datetime.combine(date_to + timedelta(days=1), time.min, CN))
     if audience:
         q = q.where(Recording.audience == audience)
+    if mode:  # 试镜和录播取证方式不同，分数不混在一起排名（C37）
+        q = q.where(Recording.mode == mode)
     if not allowed(user.role, Perm.report_read_all):
         q = q.join(Candidate, Recording.candidate_id == Candidate.id).where(Candidate.linked_user_id == user.id)
     out = []
@@ -86,8 +90,8 @@ def _rows(db: Session, user: User, date_from: date | None, date_to: date | None,
     return out
 
 
-def _ranked(db: Session, user: User, date_from, date_to, label, audience, sort) -> list[ReportRow]:
-    data = _rows(db, user, date_from, date_to, audience)
+def _ranked(db: Session, user: User, date_from, date_to, label, audience, sort, mode=None) -> list[ReportRow]:
+    data = _rows(db, user, date_from, date_to, audience, mode)
     by_id: dict[str, tuple[Report, Recording, dict]] = {str(rep.id): (rep, rec, res) for rep, rec, res in data}
     entries = []
     for rep, rec, res in data:
@@ -104,7 +108,7 @@ def _ranked(db: Session, user: User, date_from, date_to, label, audience, sort) 
             continue
         rows.append(ReportRow(
             id=rep.id, rank=i, recording_id=rec.id, candidate_name=name_of(db.get(Candidate, rec.candidate_id)), submitted_at=rec.submitted_at,
-            audience=rec.audience, label=rep.label, reason=rep.verdict["reason"], total_grade=rnd["total_grade"], threshold=res["threshold"],
+            audience=rec.audience, mode=rec.mode, label=rep.label, reason=rep.verdict["reason"], total_grade=rnd["total_grade"], threshold=res["threshold"],
             dimension_scores=rnd["dimension_scores"], dimension_grades=rnd["dimension_grades"], critical=rep.critical, informal=rep.informal,
             low_confidence_count=len(res["low_confidence_items"]), revision=rep.revision,
         ))
@@ -118,12 +122,14 @@ def list_reports(
     date_to: date | None = None,
     label: str | None = Query(None, pattern=r"^(recommend|pending|not_recommend)$"),
     audience: str | None = None,
+    mode: str | None = Query(None, pattern=r"^(audition|live)$"),
     sort: str = "default",
     db: Session = DB,
     user: User = Depends(_viewer),
 ) -> list[ReportRow]:
-    """排名口径（C9、I4）：同一日期范围内的报告一起排名，筛选标签不改变名次。"""
-    rows = _ranked(db, user, date_from, date_to, label, audience, sort)
+    """排名口径（C9、I4）：同一日期范围内的报告一起排名，筛选标签不改变名次。
+    mode 给出时只在试镜或录播内部排名（C37）。"""
+    rows = _ranked(db, user, date_from, date_to, label, audience, sort, mode)
     audit.record(db, request, actor_type="user", actor_id=str(user.id), action="report_list", target_type="report", target_id="*",
                  date_from=str(date_from), date_to=str(date_to), label=label, sort=sort, count=len(rows))
     db.commit()
@@ -137,11 +143,12 @@ def export_xlsx(
     date_to: date | None = None,
     label: str | None = Query(None, pattern=r"^(recommend|pending|not_recommend)$"),
     audience: str | None = None,
+    mode: str | None = Query(None, pattern=r"^(audition|live)$"),
     sort: str = "default",
     db: Session = DB,
     user: User = Depends(require(Perm.report_read_all)),
 ) -> Response:
-    rows = _ranked(db, user, date_from, date_to, label, audience, sort)
+    rows = _ranked(db, user, date_from, date_to, label, audience, sort, mode)
     items = {str(r.id): score_result(db, db.get(Report, r.id).display_run_id, db.get(Report, r.id).rubric_version_id)["items"] for r in rows}
     desc = f"{date_from or '最早'} 至 {date_to or '今天'}"
     data = ranking_xlsx([r.model_dump() for r in rows], {k: v for k, v in items.items()}, desc)

@@ -57,3 +57,12 @@ def test_legacy_calibration_config_makes_levels_direct(legacy_cfg):
     parts = {it.id: [p.source for p in it.parts] for _, it in c.items() if isinstance(it, T4Item)}
     assert parts == {"P1": ["evidence"], "P3": ["evidence"], "P5": ["evidence"], "P7": ["evidence"], "S1": ["evidence"],
                      "L1": ["evidence"], "O4": ["evidence", "evidence"]}
+
+
+def test_aggregate_not_applicable_item_excluded_from_dimension_max(cfg):
+    """录播里没有标出观众异议：S3 不适用，销售循环按 80 分折算（C37）。"""
+    scores = {i.item_id: i.score for i in score_round(full_marks().items, cfg, context()).items}
+    scores["S3"] = None
+    agg = aggregate_item_scores(cfg, scores, props_available=True, audience="veteran", not_applicable={"S3"})
+    s = next(d for d in agg.dimensions if d.id == "S")
+    assert agg.status == "complete" and s.applicable_max == 80 and s.score == 100

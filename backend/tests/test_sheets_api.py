@@ -21,7 +21,7 @@ def test_generate_sheet_from_demo(login, seeded):
     assert s["questions"] == []  # 评分表 20261105 删除了 O5 保险知识，不再抽知识题
     assert s["reading_text"] and s["recording_rules_version"] == "rules-v1"
     assert s["uses_draft_config"] is True  # 评分标准和红线词表都是草稿，报告须标“非正式”
-    assert s["rubric_version"] == "rubric-v0.2" and s["product_card_version"] == 1
+    assert s["rubric_version"] == "rubric-v0.3" and s["product_card_version"] == 1
     hr = login("hr")
     assert hr.get(f"/api/sheets/{s['id']}").status_code == 200
     assert hr.post("/api/sheets", json={"product_id": pid, "rubric_version_id": rid}).status_code == 403

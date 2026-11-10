@@ -14,7 +14,7 @@ type ItemDef = {
   elements?: Record<string, number> | null; levels?: Record<string, number> | null; zero_labels?: string[];
 };
 type Task = {
-  id: string; status: string; evidence: Ev[]; note: string | null; set_name: string; video_asset_id: string | null; props_available: boolean;
+  id: string; status: string; evidence: Ev[]; note: string | null; set_name: string; video_asset_id: string | null; props_available: boolean; mode?: string; exclusions?: { start_ms: number; end_ms: number }[];
   segments: { segment: string; start_ms: number; end_ms: number }[]; objections: { objection_id: string; video_ms: number; text: string }[];
   questions: { question_id: string; text: string }[]; card: { checklist: { id: string; name: string }[]; fixed_script?: { version: string; text: string } | null; glossary: string[]; targeted_points: string[] };
   p2_categories: string[]; dimensions: { id: string; name: string; items: ItemDef[] }[];
@@ -205,7 +205,9 @@ export default function CalibrationTask() {
               ))}
             </div>
             <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-              画面里{task.props_available ? "有" : "没有"}贴片或 KT 板。异议出现时间：{task.objections.map((o) => fmtMs(o.video_ms)).join("、")}。
+              画面里{task.props_available ? "有" : "没有"}贴片或 KT 板。异议出现时间：{task.objections.map((o) => fmtMs(o.video_ms)).join("、") || "无"}。
+              {task.mode === "live" && " 这是直播录播：整段视频评分，没有朗读段；观众异议有几条评几条，一条都没有时“解答异议”不适用。"}
+              {(task.exclusions?.length ?? 0) > 0 && ` 以下时段不是主播本人在讲，不评：${task.exclusions!.map((x) => `${fmtMs(x.start_ms)}–${fmtMs(x.end_ms)}`).join("、")}。`}
             </Typography.Paragraph>
             <Input.TextArea rows={3} disabled={done} value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注（可选）" />
             {!done && (

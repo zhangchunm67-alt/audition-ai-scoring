@@ -16,6 +16,9 @@ export APP_STORAGE=local APP_STORAGE_DIR="$TMP/storage" APP_UPLOAD_PART_BYTES=65
 export E2E_VIDEO="$TMP/audition.mp4"
 ffmpeg -v error -y -f lavfi -i testsrc=size=320x240:rate=15:duration=20 -f lavfi -i sine=frequency=440:duration=20 \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart "$E2E_VIDEO"
+export E2E_LIVE_VIDEO="$TMP/live.mp4"  # 录播评估：没有题单，整段 90 秒都评
+ffmpeg -v error -y -f lavfi -i testsrc=size=320x240:rate=15:duration=90 -f lavfi -i sine=frequency=330:duration=90 \
+  -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -shortest -movflags +faststart "$E2E_LIVE_VIDEO"
 
 psql "$DB_ADMIN_URL" -qc "DROP DATABASE IF EXISTS ${DB_NAME}" -c "CREATE DATABASE ${DB_NAME}"
 (cd "$ROOT/frontend" && npm run build --silent)
