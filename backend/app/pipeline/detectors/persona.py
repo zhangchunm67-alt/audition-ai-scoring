@@ -7,8 +7,6 @@ import re
 from ..text import char_count, sentences
 from .common import Ctx, binary, check_level, main_sentences
 
-TEN_MIN = 600_000
-
 
 def p1(ctx: Ctx):
     """形象：每 30 秒 1 帧，多模态模型只判穿着、发型是否不符合要求（评分表：不符合直接扣 10 分）。不判相貌（Q5）。"""
@@ -23,9 +21,9 @@ def p1(ctx: Ctx):
 
 
 def p2(ctx: Ctx):
-    """语言干净：词表召回候选 → 大模型逐个判断“删掉后意思是否不变”。统计窗口为主体段 10 分钟。"""
-    main = ctx.seg("main")
-    window = ctx.main.window(main["start_ms"], main["start_ms"] + TEN_MIN)
+    """语言干净：词表召回候选 → 大模型逐个判断“删掉后意思是否不变”。
+    整段主体段计次，不截取前 10 分钟（C36）；评分表的“10 分钟免除 20 处”由计分引擎按时长换算成每 10 分钟的次数。"""
+    window = ctx.main
     cands = []
     for s in sentences(window):
         for cat in ctx.cfg.p2.categories:
@@ -111,6 +109,9 @@ def pause_events(ctx: Ctx) -> dict[str, list[tuple[int, int, str]]]:
     run_start = words[0].start_ms if words else 0
     for prev, cur in zip(words, words[1:]):
         gap = cur.start_ms - prev.end_ms
+        if ctx.excluded(prev.end_ms, cur.start_ms):  # 中间是排除时段（副播在讲），不是主播的停顿
+            run_start = cur.start_ms
+            continue
         if gap >= c.pause_ms:
             ev["pause"].append((prev.end_ms, cur.start_ms, "停顿"))
             run_start = cur.start_ms
@@ -230,6 +231,8 @@ def p10(ctx: Ctx):
     items = []
     for i, c in enumerate(cands):
         a, b = base + c.start_ms, base + c.end_ms
+        if ctx.excluded(a, b):  # 排除时段里的笑声不是主播的
+            continue
         context = ctx.main.window(a - 8000, b + 8000).text
         items.append({"id": str(i), "context": context, "_t": (a, b, c.confidence)})
     res = {r["id"]: r for r in ctx.ask("p10_laugh", {"candidates": [{"id": x["id"], "context": x["context"]} for x in items]})["items"]}

@@ -4,6 +4,13 @@ from __future__ import annotations
 from .common import Ctx, binary, check_level
 
 S2_MAX = 50
+# 录播整段评分（C37）：视频可能很长，找某条异议的回答只看它出现后的这段时间，不把之后几小时的讲话都交给模型。
+# 试镜的主体段只有十来分钟，仍给出异议之后的全部内容（C8）。
+LIVE_ANSWER_WINDOW_MS = 300_000
+
+
+def answer_window_end(ctx: Ctx, video_ms: int, main_end: int) -> int:
+    return min(main_end, video_ms + LIVE_ANSWER_WINDOW_MS) if ctx.mode == "live" else main_end
 
 
 class S2NotCalibrated(ValueError):
@@ -68,7 +75,7 @@ def objection_checks(ctx: Ctx) -> list[dict]:
     def run():
         res = []
         for o in ctx.objections:
-            after = ctx.main.window(o["video_ms"], main_end).text  # 按内容归属（C8）：给出弹出后的全部内容，由模型找对应回答
+            after = ctx.main.window(o["video_ms"], answer_window_end(ctx, o["video_ms"], main_end)).text  # 按内容归属（C8）：给出弹出后的全部内容，由模型找对应回答
             res.append(ctx.ask("s3_objection", {"objection": o["text"], "answer_points": o.get("answer_points", []), "transcript_after": after}))
         return res
 

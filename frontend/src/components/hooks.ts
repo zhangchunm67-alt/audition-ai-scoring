@@ -49,4 +49,5 @@ export const msToClock = (ms: number) => {
 
 export const STATUS_ZH: Record<string, string> = { draft: "草稿", published: "已发布", retired: "已停用", issued: "未使用", used: "已使用", void: "已作废" };
 export const ROLE_ZH: Record<string, string> = { admin: "管理员", compliance: "合规", calibrator: "校准员", hr: "HR", anchor: "新主播" };
+export const MODE_ZH: Record<string, string> = { audition: "试镜", live: "录播" };
 export const AUDIENCE_ZH: Record<string, string> = { veteran: "老主播", month_1: "上播 1 个月", new_trial: "新主播内部试播" };

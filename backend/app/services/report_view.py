@@ -93,7 +93,7 @@ def detail(db: Session, rep: Report) -> dict[str, Any]:
         "id": str(rep.id), "revision": rep.revision, "superseded_at": rep.superseded_at, "created_at": rep.created_at,
         "recording_id": str(rec.id), "candidate_id": str(rec.candidate_id), "candidate_name": name_of(get_candidate(db, rec.candidate_id)),
         "submitted_at": rec.submitted_at, "sheet_code": sheet.code, "product_name": db.get(Product, sheet.product_id).name,
-        "audience": rec.audience, "props_available": rec.props_available,
+        "audience": rec.audience, "props_available": rec.props_available, "mode": rec.mode,
         "label": rep.label, "conclusion": rep.conclusion, "critical": rep.critical, "redline_hit": rep.redline_hit, "informal": rep.informal,
         "verdict": rep.verdict, "display_round": rep.verdict.get("display_round"),
         "result": {k: result[k] for k in ("items", "dimensions", "total_grade", "threshold", "audience", "critical", "low_confidence_items",
@@ -106,5 +106,6 @@ def detail(db: Session, rep: Report) -> dict[str, Any]:
             "redline_lexicon_version": lex.version if lex else None, "model_manifest": rep.model_manifest,
         },
         "media": {"video_asset_id": str(video.id) if video and video.deleted_at is None else None,
-                  "video_deleted": bool(video and video.deleted_at), "segments": rec.segments, "objection_times": rec.objection_times},
+                  "video_deleted": bool(video and video.deleted_at), "segments": rec.segments, "objection_times": rec.objection_times,
+                  "exclusions": rec.exclusions or []},
     }

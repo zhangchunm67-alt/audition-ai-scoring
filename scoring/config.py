@@ -148,10 +148,12 @@ class _Item(_Node):
 
 
 class Normalize(_Node):
-    """时长不足时按比例换算次数（P2，Q8）。只在实际时长 < per_minutes 时生效。"""
+    """按时长换算次数（P2，Q8）。both_ways 为假（rubric-v0.2 及以前）：只在实际时长 < per_minutes 时放大；
+    both_ways 为真（rubric-v0.3 起，整段视频计次）：时长不等于 per_minutes 就换算成每 per_minutes 分钟的次数。"""
 
     enabled: bool = True
     per_minutes: int = 10
+    both_ways: bool = False
 
 
 class T1Item(_Item):
@@ -410,6 +412,9 @@ def config_hash(cfg: RubricConfig) -> str:
     data.update(status=cfg.legacy_status, rounding="half_up")
     for dimension in data["dimensions"]:
         for item in dimension["items"]:
+            norm = item.get("normalize")
+            if norm and not norm.get("both_ways"):
+                norm.pop("both_ways", None)  # rubric-v0.3 新增的字段：关着时不进哈希，旧配置的身份不变
             if item["type"] == "T2":
                 item["cap"] = item["max"]
             elif item["type"] == "T3+T4":

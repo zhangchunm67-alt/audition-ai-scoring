@@ -28,7 +28,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="离线盲打分")
     ap.add_argument("specs", nargs="+", help="视频说明文件（JSON）")
     ap.add_argument("--out", default="var/blind", help="输出目录")
-    ap.add_argument("--rubric", default=str(ROOT / "config/rubric/rubric-v0.2.yaml"))
+    ap.add_argument("--rubric", default=str(ROOT / "config/rubric/rubric-v0.3.yaml"))
     ap.add_argument("--work", default="var/blind-work", help="中间文件（音频、抽帧）目录")
     args = ap.parse_args()
     cfg = load_config(args.rubric)

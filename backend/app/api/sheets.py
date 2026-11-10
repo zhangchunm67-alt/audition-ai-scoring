@@ -87,18 +87,18 @@ def _code() -> str:
 
 @router.get("", response_model=list[SheetOut])
 def list_sheets(status: str | None = None, db: Session = DB, _: User = Read) -> list[SheetOut]:
-    q = select(AuditionSheet).order_by(AuditionSheet.created_at.desc())
+    q = select(AuditionSheet).where(AuditionSheet.kind == "audition").order_by(AuditionSheet.created_at.desc())  # 录播的内部记录不是题单
     if status:
         q = q.where(AuditionSheet.status == status)
     return [_out(db, s) for s in db.scalars(q.limit(500))]
 
 
-@router.post("", response_model=SheetOut, status_code=201)
-def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User = Write) -> SheetOut:
-    product = db.get(Product, body.product_id)
+def resolve_setup(db: Session, product_id: uuid.UUID, rubric_version_id: uuid.UUID):
+    """试镜题单和录播评估共用：核对产品、评分标准、已发布的卖点卡、红线词表，返回要固定下来的各版本。"""
+    product = db.get(Product, product_id)
     if product is None:
         raise HTTPException(404, "产品不存在")
-    rv = db.get(RubricVersion, body.rubric_version_id)
+    rv = db.get(RubricVersion, rubric_version_id)
     if rv is None or rv.status == "retired":
         raise HTTPException(422, "评分标准版本不存在或已停用")
     card = db.scalar(select(ProductCard).where(ProductCard.product_id == product.id, ProductCard.status == "published"))
@@ -113,14 +113,34 @@ def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User 
         )
         if lex is None:
             raise HTTPException(422, "该评分标准启用了红线，但还没有红线词表")
+    bad = unsupported_items(cfg)
+    if bad:
+        raise HTTPException(422, f"评分标准 {cfg.version} 与当前检测器不匹配，不能用于新的评分：{'、'.join(bad)}")
+    check_card_total(card.content, checklist_max(cfg))  # C25：旧版评分标准按所选版本再校验一次
+    return product, rv, card, cfg, lex
+
+
+def create_live_sheet(db: Session, product_id: uuid.UUID, rubric_version_id: uuid.UUID, actor: User) -> AuditionSheet:
+    """录播评估没有题单（C37）：建一条内部记录固定评分标准、卖点卡、红线词表版本。不抽异议和朗读稿，状态直接为已使用。"""
+    product, rv, card, _, lex = resolve_setup(db, product_id, rubric_version_id)
+    s = AuditionSheet(
+        kind="live", code="LB" + _code()[2:], product_id=product.id, product_card_id=card.id, rubric_version_id=rv.id,
+        redline_lexicon_version_id=lex.id if lex else None, draw_rule_snapshot={}, objections=[], questions=[],
+        reading_script_id=None, reading_text="", recording_rules_version="live",
+        uses_draft_config=rv.status != "published" or (lex is not None and lex.status != "published"), status="used", created_by=actor.id,
+    )
+    db.add(s)
+    db.flush()
+    return s
+
+
+@router.post("", response_model=SheetOut, status_code=201)
+def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User = Write) -> SheetOut:
+    product, rv, card, cfg, lex = resolve_setup(db, body.product_id, body.rubric_version_id)
     rule = db.scalar(select(DrawRule).where(DrawRule.product_id == product.id).order_by(DrawRule.created_at.desc()).limit(1))
     if rule is None:
         raise HTTPException(422, "该产品还没有抽题规则")
 
-    bad = unsupported_items(cfg)
-    if bad:
-        raise HTTPException(422, f"评分标准 {cfg.version} 与当前检测器不匹配，不能用于新的试镜：{'、'.join(bad)}")
-    check_card_total(card.content, checklist_max(cfg))  # C25：旧版评分标准按所选版本再校验一次
     counts = question_counts(cfg)
     want_q = counts.get("O5", 0)  # 评分表 20261105 删除了 O5 保险知识，新版不抽知识题
     if counts.get("S3") != rule.objection_count or want_q != rule.question_count:
@@ -158,7 +178,7 @@ def create_sheet(body: SheetIn, request: Request, db: Session = DB, actor: User 
 @router.get("/{sid}", response_model=SheetOut)
 def get_sheet(sid: uuid.UUID, db: Session = DB, _: User = Read) -> SheetOut:
     s = db.get(AuditionSheet, sid)
-    if s is None:
+    if s is None or s.kind != "audition":
         raise HTTPException(404, "题单不存在")
     return _out(db, s)
 
@@ -166,7 +186,7 @@ def get_sheet(sid: uuid.UUID, db: Session = DB, _: User = Read) -> SheetOut:
 @router.post("/{sid}/void", response_model=SheetOut)
 def void_sheet(sid: uuid.UUID, request: Request, db: Session = DB, actor: User = Write) -> SheetOut:
     s = db.get(AuditionSheet, sid)
-    if s is None:
+    if s is None or s.kind != "audition":
         raise HTTPException(404, "题单不存在")
     if s.status != "issued":
         raise HTTPException(409, "只有未使用的题单可以作废")

@@ -2249,6 +2249,60 @@
     }
    }
   },
+  "/api/recordings/{rid}/live-marks": {
+   "put": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Set Live Marks",
+    "description": "录播标注（C37）：整段视频都是主体段，不截取、没有朗读段。员工看录播标出主播回应过的真实观众问题，\n以及不是主播本人在讲的时段（排除后不参与评分）。两项都可以为空，但须提交一次，表示已看过。",
+    "operationId": "set_live_marks_api_recordings__rid__live_marks_put",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LiveMarksIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/recordings/{rid}/submit": {
    "post": {
     "tags": [
@@ -2721,7 +2775,7 @@
      "报告"
     ],
     "summary": "List Reports",
-    "description": "排名口径（C9、I4）：同一日期范围内的报告一起排名，筛选标签不改变名次。",
+    "description": "排名口径（C9、I4）：同一日期范围内的报告一起排名，筛选标签不改变名次。\nmode 给出时只在试镜或录播内部排名（C37）。",
     "operationId": "list_reports_api_reports_get",
     "parameters": [
      {
@@ -2789,6 +2843,23 @@
         }
        ],
        "title": "Audience"
+      }
+     },
+     {
+      "name": "mode",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^(audition|live)$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Mode"
       }
      },
      {
@@ -2903,6 +2974,23 @@
         }
        ],
        "title": "Audience"
+      }
+     },
+     {
+      "name": "mode",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^(audition|live)$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Mode"
       }
      },
      {
@@ -4991,6 +5079,53 @@
     ],
     "title": "LinkIn"
    },
+   "LiveMarksIn": {
+    "properties": {
+     "objections": {
+      "items": {
+       "$ref": "#/components/schemas/LiveObjectionIn"
+      },
+      "type": "array",
+      "maxItems": 50,
+      "title": "Objections"
+     },
+     "exclusions": {
+      "items": {
+       "$ref": "#/components/schemas/RangeIn"
+      },
+      "type": "array",
+      "maxItems": 200,
+      "title": "Exclusions"
+     }
+    },
+    "type": "object",
+    "required": [
+     "objections"
+    ],
+    "title": "LiveMarksIn",
+    "description": "录播标注（C37）。时间都是整段视频的毫秒。\nobjections：主播回应过的真实观众问题（出现时间和原文），可以为空；exclusions：不是主播本人在讲的时段（副播插话等）。"
+   },
+   "LiveObjectionIn": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Text"
+     },
+     "video_ms": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Video Ms"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "video_ms"
+    ],
+    "title": "LiveObjectionIn"
+   },
    "LoginIn": {
     "properties": {
      "username": {
@@ -5328,6 +5463,26 @@
     ],
     "title": "QuestionOut"
    },
+   "RangeIn": {
+    "properties": {
+     "start_ms": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Start Ms"
+     },
+     "end_ms": {
+      "type": "integer",
+      "exclusiveMinimum": 0.0,
+      "title": "End Ms"
+     }
+    },
+    "type": "object",
+    "required": [
+     "start_ms",
+     "end_ms"
+    ],
+    "title": "RangeIn"
+   },
    "RecordingIn": {
     "properties": {
      "filename": {
@@ -5351,10 +5506,50 @@
       "format": "uuid",
       "title": "Candidate Id"
      },
-     "sheet_id": {
+     "mode": {
       "type": "string",
-      "format": "uuid",
+      "enum": [
+       "audition",
+       "live"
+      ],
+      "title": "Mode",
+      "default": "audition"
+     },
+     "sheet_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Sheet Id"
+     },
+     "product_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Product Id"
+     },
+     "rubric_version_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rubric Version Id"
      },
      "consent_record_id": {
       "type": "string",
@@ -5376,7 +5571,6 @@
      "content_type",
      "size_bytes",
      "candidate_id",
-     "sheet_id",
      "consent_record_id",
      "audience",
      "props_available"
@@ -5393,6 +5587,10 @@
      "status": {
       "type": "string",
       "title": "Status"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
      },
      "candidate_id": {
       "type": "string",
@@ -5498,6 +5696,14 @@
       "type": "array",
       "title": "Objection Times"
      },
+     "exclusions": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Exclusions"
+     },
      "upload": {
       "anyOf": [
        {
@@ -5584,6 +5790,7 @@
     "required": [
      "id",
      "status",
+     "mode",
      "candidate_id",
      "candidate_name",
      "sheet_id",
@@ -5600,6 +5807,7 @@
      "main_duration_ms",
      "segments",
      "objection_times",
+     "exclusions",
      "upload",
      "warnings",
      "created_at",
@@ -5689,6 +5897,10 @@
       "type": "string",
       "title": "Audience"
      },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
      "label": {
       "type": "string",
       "title": "Label"
@@ -5744,6 +5956,7 @@
      "candidate_name",
      "submitted_at",
      "audience",
+     "mode",
      "label",
      "reason",
      "total_grade",

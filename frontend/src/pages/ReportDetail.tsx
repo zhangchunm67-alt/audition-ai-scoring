@@ -202,7 +202,7 @@ export default function ReportDetail() {
             )}
             <Descriptions size="small" column={1} style={{ marginTop: 12 }}>
               <Descriptions.Item label="产品">{d.product_name}</Descriptions.Item>
-              <Descriptions.Item label="题单">{d.sheet_code}</Descriptions.Item>
+              <Descriptions.Item label={d.mode === "live" ? "录播（无题单，整段评分）" : "题单"}>{d.sheet_code}</Descriptions.Item>
               <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[d.audience] ?? d.audience}</Descriptions.Item>
               <Descriptions.Item label="道具">{d.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）"}</Descriptions.Item>
               <Descriptions.Item label="提交时间">{d.submitted_at ? dayjs(d.submitted_at).format("YYYY-MM-DD HH:mm") : "—"}</Descriptions.Item>

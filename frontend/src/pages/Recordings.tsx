@@ -4,11 +4,11 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { S } from "../api/client";
 import { useAuth } from "../auth";
-import { AUDIENCE_ZH, useFetch } from "../components/hooks";
+import { AUDIENCE_ZH, MODE_ZH, useFetch } from "../components/hooks";
 
 export const REC_STATUS: Record<string, [string, string]> = {
   uploading: ["上传中", "processing"],
-  uploaded: ["待标分段", "orange"],
+  uploaded: ["待标注", "orange"],
   submitted: ["已提交，待处理", "blue"],
   processing: ["处理中", "blue"],
   awaiting_human: ["等待评委打分", "gold"],
@@ -40,7 +40,8 @@ export default function Recordings() {
         dataSource={data}
         columns={[
           { title: "候选人", dataIndex: "candidate_name", render: (n, r) => <Link to={`/recordings/${r.id}`}>{n}</Link> },
-          { title: "题单", dataIndex: "sheet_code" },
+          { title: "类型", dataIndex: "mode", render: (m) => MODE_ZH[m] ?? m },
+          { title: "题单 / 录播编号", dataIndex: "sheet_code" },
           { title: "产品", dataIndex: "product_name" },
           { title: "适用达标线", dataIndex: "audience", render: (a) => AUDIENCE_ZH[a] ?? a },
           { title: "道具", dataIndex: "props_available", render: (p) => (p ? "有" : "无") },

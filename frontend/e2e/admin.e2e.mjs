@@ -69,7 +69,7 @@ try {
 
   await step("评分标准草稿显示发布阻碍，发布按钮不可用", async () => {
     await navigate(page, "评分标准");
-    await page.getByRole("link", { name: "rubric-v0.2" }).click();
+    await page.getByRole("link", { name: "rubric-v0.3" }).click();
     await page.getByText(/项待确认规则或测试占位值，不能发布/).waitFor();
     assert.equal(await page.getByRole("button", { name: "发 布" }).isDisabled(), true);
   });
@@ -95,7 +95,7 @@ try {
     await dlg.getByLabel("产品").click();
     await page.getByTitle("少儿医疗险（演示）").click();
     await dlg.getByLabel("评分标准版本").click();
-    await page.getByTitle("rubric-v0.2（草稿）").click();
+    await page.getByTitle("rubric-v0.3（草稿）").click();
     await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
     await page.getByText(/^题单 TS/).waitFor();
     for (const t of ["04:00", "05:30", "07:00", "08:00"]) await page.getByText(t, { exact: true }).waitFor();
@@ -298,7 +298,7 @@ try {
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("名称").fill("上线前金标准（演示）");
     await dlg.getByLabel("评分标准版本").click();
-    await page.getByTitle("rubric-v0.2").click();
+    await page.getByTitle("rubric-v0.3").click();
     await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
     await page.getByRole("heading", { name: "上线前金标准（演示）" }).waitFor();
     await page.locator(".ant-select", { hasText: "选择已出报告的录像加入" }).click();
@@ -360,6 +360,56 @@ try {
     await page.getByRole("tab", { name: "效率" }).click();
     await page.getByText("处理时长（分钟）中位数 / p95 / 最长").waitFor();
     await page.getByText("各条目低置信比例").waitFor();
+  });
+
+  // ───────────── 录播评估（C37）：没有题单，整段视频评分 ─────────────
+  await step("HR 上传录播：不选题单，标出观众异议和排除时段，提交后等评委打分", async () => {
+    await hr.goto(`${BASE}/recordings`); // 前面的步骤留着候选人抽屉，直接重新进页面
+    await hr.getByRole("button", { name: "上传录像" }).click();
+    await hr.getByText("录播（老主播、上播 1 个月，无题单）").click();
+    assert.equal(await hr.getByLabel("试镜题单").count(), 0);
+    await hr.getByRole("button", { name: "新 建" }).click();
+    const dlg = hr.getByRole("dialog");
+    await dlg.getByLabel("姓名").fill("赵老师");
+    await dlg.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await hr.getByLabel("同意书版本").fill("consent-v1");
+    await hr.getByRole("button", { name: "登 记" }).click();
+    await hr.getByText("consent-v1，签署于").waitFor();
+    await hr.getByLabel("直播讲的产品").click();
+    await hr.getByTitle("少儿医疗险（演示）").click();
+    await hr.getByText("老主播（总档位 < 8）").click();
+    await hr.getByText("没有", { exact: true }).click();
+    await hr.locator('input[type="file"]').last().setInputFiles(process.env.E2E_LIVE_VIDEO);
+    await hr.getByRole("button", { name: "开始上传" }).click();
+    await hr.getByTestId("live-save").waitFor({ timeout: 30000 });
+    await hr.getByText("无题单，整段视频评分").waitFor();
+    const setTime = (sec) => hr.locator('[data-testid="marker-video"]').evaluate((v, t) => { v.currentTime = t; }, sec);
+    await setTime(20);
+    await hr.getByTestId("live-add-objection").click();
+    await hr.getByPlaceholder("观众问了什么").fill("孩子有医保了，还需要买吗？");
+    await setTime(40);
+    await hr.getByTestId("live-add-exclusion").click();
+    await setTime(45);
+    await hr.getByRole("button", { name: "结束设为当前时间" }).click();
+    await hr.getByTestId("live-save").click();
+    await hr.getByText("标注已保存").waitFor();
+    await hr.getByText("01:25.0").waitFor(); // 参与评分时长 = 90 秒 − 排除的 5 秒
+    await hr.getByRole("button", { name: "提交处理" }).click();
+    await hr.getByRole("button", { name: /确\s*定|OK/ }).click();
+    await hr.getByText("等待评委打分").first().waitFor({ timeout: 120000 });
+    const card = hr.getByTestId("human-scoring");
+    await card.getByText("人设塑造·普通话标准").waitFor(); // 没有朗读段，评委听录像打分
+    await hr.getByTestId("human-P3").fill("10");
+    await card.getByRole("button", { name: /保存/ }).click();
+    await hr.getByText("评分已完成").waitFor({ timeout: 60000 });
+    await hr.getByRole("button", { name: "查看报告" }).click();
+    await hr.getByText("录播（无题单，整段评分）").waitFor();
+    await navigate(hr, "报告与排名");
+    await hr.getByText("王小明").waitFor(); // 默认只排试镜
+    assert.equal(await hr.getByRole("link", { name: "赵老师" }).count(), 0);
+    await hr.getByTestId("report-mode").click();
+    await hr.getByTitle("录播").click();
+    await hr.getByRole("link", { name: "赵老师" }).waitFor();
   });
 
   console.log(`\n端到端测试通过：${steps.length} 步`);

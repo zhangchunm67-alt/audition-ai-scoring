@@ -25,7 +25,7 @@ EVIDENCE_TYPES = {
 
 def unsupported_items(cfg) -> list[str]:
     """评分配置里与检测器证据协议对不上的条目。检测器按评分表 20261105 改写（rubric-v0.2 起）；
-    旧版 rubric-v0.1（卖点卡 + 结构、O5 保险知识、P3 评测分分档等）只能查看已有报告，不能用于新的处理。"""
+    旧版 rubric-v0.1（卖点卡 + 结构、O5 保险知识、P3 评测分分档等）和 rubric-v0.2（P2 只计前 10 分钟）只能查看已有报告，不能用于新的处理。"""
     out = []
     for _, it in cfg.items():
         want = EVIDENCE_TYPES.get(it.id)
@@ -33,6 +33,9 @@ def unsupported_items(cfg) -> list[str]:
             out.append(f"{it.id}（没有检测器）")
         elif it.type != want:
             out.append(f"{it.id}（配置为 {it.type}，检测器产出 {want} 证据）")
+        elif it.id == "P2" and not (it.normalize and it.normalize.enabled and it.normalize.both_ways):
+            # rubric-v0.3 起不截取前 10 分钟（C36）：检测器对整段主体段计次，配置须按时长双向换算，否则长视频会被多扣
+            out.append("P2（检测器按整段主体段计次，配置须开启 normalize.both_ways 按每 10 分钟换算）")
     return out
 
 

@@ -24,7 +24,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="盲打分与金标准对比")
     ap.add_argument("--results", default="var/blind")
     ap.add_argument("--gold", required=True)
-    ap.add_argument("--rubric", default=str(ROOT / "config/rubric/rubric-v0.2.yaml"))
+    ap.add_argument("--rubric", default=str(ROOT / "config/rubric/rubric-v0.3.yaml"))
     ap.add_argument("--out", help="对比结果 JSON 输出路径")
     args = ap.parse_args()
     cfg = load_config(args.rubric)

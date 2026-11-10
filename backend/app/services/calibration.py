@@ -21,7 +21,7 @@ from ..models.entities import (
     RubricVersion,
 )
 from ..models.convert import row_to_evidence
-from ..pipeline.runner import scoring_context
+from ..pipeline.runner import not_applicable_items, scoring_context
 from . import audit
 from .notify import notify
 from .rescore import ai_outcome
@@ -113,7 +113,8 @@ def consolidate(db: Session, sample: GoldSample, *, actor_id: str | None = None)
         sample.status = "needs_adjudication"
         return
     scores = {k: (sample.adjudication[k]["score"] if k in flagged else _median(vs)) for k, vs in per_item.items()}
-    agg = aggregate_item_scores(cfg, scores, props_available=rec.props_available, audience=rec.audience)
+    agg = aggregate_item_scores(cfg, scores, props_available=rec.props_available, audience=rec.audience,
+                                not_applicable=not_applicable_items(rec))
     sample.gold = {"items": scores, "dimensions": [d.model_dump() for d in agg.dimensions], "total_grade": agg.total_grade,
                    "grade_pass": agg.grade_pass, "critical": agg.critical, "calibrators": len(subs), "adjudicated": flagged}
     sample.status, sample.finalized_at = "final", datetime.now(timezone.utc)

@@ -22,7 +22,7 @@ def test_actions_are_logged(login, db, anon):
         assert a in acts, a
     assert "rubric_publish" not in acts
     row = db.scalar(select(AuditLog).where(AuditLog.action == "rubric_import"))
-    assert row.detail["version"] == "rubric-v0.2" and row.actor_type == "user" and row.actor_id
+    assert row.detail["version"] == "rubric-v0.3" and row.actor_type == "user" and row.actor_id
 
 
 def test_sheet_generation_logged(login, seeded, db):

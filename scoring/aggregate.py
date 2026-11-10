@@ -21,14 +21,16 @@ class Aggregate(BaseModel):
     missing_items: list[str]
 
 
-def aggregate_item_scores(cfg: RubricConfig, scores: dict[str, float | None], *, props_available: bool, audience: str) -> Aggregate:
+def aggregate_item_scores(cfg: RubricConfig, scores: dict[str, float | None], *, props_available: bool, audience: str,
+                          not_applicable: frozenset[str] | set[str] = frozenset()) -> Aggregate:
+    """not_applicable：本条录像不适用的条目（录播里没有标出观众异议时的 S3），不计入维度满分。"""
     if audience not in cfg.thresholds:
         raise ScoringInputError(f"未知的达标线 {audience!r}")
     dims, missing = [], []
     for dim in cfg.dimensions:
         raw, app_max, complete = Fraction(0), 0, True
         for it in dim.items:
-            if it.applicable_if == "props_available" and not props_available:
+            if (it.applicable_if == "props_available" and not props_available) or it.id in not_applicable:
                 continue
             app_max += it.max
             v = scores.get(it.id)

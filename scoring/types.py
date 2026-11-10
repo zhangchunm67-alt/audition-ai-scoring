@@ -96,6 +96,8 @@ class ScoringContext(BaseModel):
     completed_detectors: set[str]  # 已成功运行的检测器：条目编号，以及 "redlines"
     checklist: list[ChecklistPoint] = Field(default_factory=list)  # 卖点卡必讲要点（S2）
     expected_questions: dict[str, list[str]] = Field(default_factory=dict)  # {"S3": [异议 id], "O5": [题目 id]}
+    # 录播评估：这些逐题条目的条数取实际标出的条数，得分按比例折算到满分；一条都没有时本条不适用（decisions.md C37）
+    flexible_questions: set[str] = Field(default_factory=set)
     main_duration_ms: int | None = None
     model_manifest: dict[str, Any] = Field(default_factory=dict)  # 模型版本清单，原样写入结果
     # —— 人工打分（见 docs/decisions.md T39）——

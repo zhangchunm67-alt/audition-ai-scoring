@@ -88,11 +88,12 @@ def _score_t1(item: T1Item, evs: list[Evidence], ctx: ScoringContext, res: ItemR
         if ctx.main_duration_ms is None or ctx.main_duration_ms <= 0:
             raise _Missing("缺少主体段时长，无法按时长换算次数")
         full_ms = item.normalize.per_minutes * 60_000
-        if ctx.main_duration_ms < full_ms:
+        if ctx.main_duration_ms < full_ms or (item.normalize.both_ways and ctx.main_duration_ms != full_ms):
             factor = Fraction(full_ms, ctx.main_duration_ms)
             n = n * factor
+            why = "不足" if ctx.main_duration_ms < full_ms else "超过"
             res.notes.append(
-                f"主体段不足 {item.normalize.per_minutes} 分钟，次数按 {len(occ)} × {item.normalize.per_minutes} ÷ "
+                f"主体段{why} {item.normalize.per_minutes} 分钟，次数按 {len(occ)} × {item.normalize.per_minutes} ÷ "
                 f"{ctx.main_duration_ms / 60000:.2f} 分钟 = {float(n):.2f} 计"
             )
     over = max(Fraction(0), n - item.free)
@@ -332,7 +333,8 @@ def _score_t6(item: T6Item, evs: list[Evidence], ctx: ScoringContext, res: ItemR
     expected = ctx.expected_questions.get(item.id)
     if expected is None:
         raise _Missing("缺少本场的题目或异议列表")
-    if len(expected) != item.count or len(set(expected)) != len(expected):
+    flexible = item.id in ctx.flexible_questions  # 录播：按实际标出的条数折算（decisions.md C37）
+    if len(set(expected)) != len(expected) or (len(expected) != item.count and not flexible) or not expected:
         raise ScoringInputError(f"{item.id}: 本场应有 {item.count} 道不重复的题目，实际 {len(expected)}")
     by_q: dict[str, list[Evidence]] = defaultdict(list)
     for e in _order(evs):
@@ -371,6 +373,10 @@ def _score_t6(item: T6Item, evs: list[Evidence], ctx: ScoringContext, res: ItemR
             for lab, e in got.items():
                 total += item.elements[lab]
                 res.contributions.append(Contribution(evidence_id=e.evidence_id, delta=item.elements[lab], note=f"{q}：{lab}"))
+    if len(expected) != item.count:
+        scaled = total * item.count / len(expected)
+        res.notes.append(f"实际 {len(expected)} 条（评分表按 {item.count} 条计），得分按 {_f(total):g} × {item.count} ÷ {len(expected)} = {_f(scaled):.2f} 折算")
+        return scaled
     return total
 
 
@@ -448,6 +454,10 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
             if it.applicable_if == "props_available" and not ctx.props_available:
                 res.status = "not_applicable"
                 res.notes.append("画面里没有贴片或 KT 板，本条不适用")
+                continue
+            if it.id in ctx.flexible_questions and not ctx.expected_questions.get(it.id):
+                res.status = "not_applicable"
+                res.notes.append("整段视频里没有标出观众异议，本条不适用，维度按其余条目折算")
                 continue
             app_max += it.max
             machine: Fraction | None = None

@@ -30,8 +30,14 @@ class Ctx:
     acoustic: dict[str, dict]  # 分段 → 特征（静音已换算为视频时间）
     media: Prepared
     providers: Providers
+    mode: str = "audition"  # audition / live（录播评估，C37）
+    exclusions: list[tuple[int, int]] = field(default_factory=list)  # 录播里不是主播本人在讲的时段（视频时间），已从逐字稿剔除
     _ids: itertools.count = field(default_factory=lambda: itertools.count(1))
     _cache: dict[str, Any] = field(default_factory=dict)
+
+    def excluded(self, start_ms: int, end_ms: int) -> bool:
+        """[start, end] 是否碰到排除时段。"""
+        return any(a < end_ms and start_ms < b for a, b in self.exclusions)
 
     def seg(self, name: str) -> dict:
         return next(s for s in self.segments if s["segment"] == name)

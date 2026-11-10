@@ -253,7 +253,7 @@ def test_segments_and_objection_alignment(login, seeded, video_file):
     for o, sheet_o, off in zip(out["objection_times"], out["sheet_objections"], SEG["objection_offsets_ms"]):
         assert o["objection_id"] == sheet_o["objection_id"] and o["at_ms"] == off and o["video_ms"] == 1000 + off
         assert o["sheet_at_ms"] == sheet_o["at_ms"]
-    assert any("主体段时长" in w for w in out["warnings"])  # 测试视频远短于 10 分钟
+    assert out["warnings"] == []  # 不再要求主体段正好 10 分钟：整段评分，P2 按每 10 分钟换算（C36）
 
 
 def test_segments_without_knowledge_questions(login, seeded, video_file):

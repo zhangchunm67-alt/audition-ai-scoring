@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .common import Ctx, binary, check_level
-from .sales import objection_checks
+from .sales import answer_window_end, objection_checks
 
 
 def l1(ctx: Ctx):
@@ -67,7 +67,7 @@ def o4(ctx: Ctx):
     latencies, unanswered, segs = [], 0, []
     for i, (o, r) in enumerate(zip(ctx.objections, checks)):
         nxt = ctx.objections[i + 1]["video_ms"] if i + 1 < len(ctx.objections) else main["end_ms"]
-        after = ctx.main.window(o["video_ms"], nxt)
+        after = ctx.main.window(o["video_ms"], answer_window_end(ctx, o["video_ms"], nxt))
         first = next((w for w in after.words if w.text.strip()), None)
         if not r["answered"] or first is None:
             unanswered += 1

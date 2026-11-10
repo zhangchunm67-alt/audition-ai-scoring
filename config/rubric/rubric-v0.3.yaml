@@ -1,7 +1,9 @@
-# 主播评分标准 · 机器可执行版 v0.2 —— 计分配置
+# 主播评分标准 · 机器可执行版 v0.3 —— 计分配置
 #
 # 唯一规则来源：docs/source/主播评分表-20261105.xls（下称“评分表”）。每个条目的 note 先引评分表原文，再写机器口径。
 # rubric-v0.1（docs/rubric.md 的改写版）已停用，只在 git 历史和已存报告的配置快照里保留，用于追溯和重算旧报告。
+# v0.3（2026-11-10）与 v0.2 只差一处：不再截取主体段前 10 分钟，P2 按整段计次后换算成每 10 分钟的次数（decisions.md C36）。
+# v0.2 同样只用于查看和重算已有报告，不能用于新的处理。
 # 评分表没有写明、由实现补充的规则一律带 pending；评分表写“根据主观打分”的条目一律带 calibration_required。
 # 标记约定：
 #   pending: [Q6]               规则来自待确认项（docs/decisions.md 第 4 节、第 7 节），未拍板
@@ -9,7 +11,7 @@
 # 带标记的配置只能用于开发和测试；scoring.publish_blockers() 会列出全部标记，清零前不能发布为正式配置。
 # 改动只影响计分（不需要重跑模型）。词表、抽帧率、提示词等检测配置单独管理，改了需要重跑。
 
-version: rubric-v0.2
+version: rubric-v0.3
 expected_item_count: 23                # 评分表：人设 10 条、销售循环 4 条、表达逻辑 5 条、其他 4 条
 removed_items: [O5]                    # 保险知识：评分表 20261105 已删除（旧表 20241025 有）
 
@@ -54,10 +56,12 @@ dimensions:
         max: 40
         per: 1
         free: 20
-        window: main_10min
-        note: 评分表：是……的、一个、……的情况下/的话、这边给你、那么、什么呀、懂了吗、对不对（10分钟，每处扣1分，免除20处）
+        window: main
+        note: >-
+          评分表：是……的、一个、……的情况下/的话、这边给你、那么、什么呀、懂了吗、对不对（10分钟，每处扣1分，免除20处）。
+          不截取 10 分钟（C36）：整段主体段计次，时长不是 10 分钟时按 次数 × 10 ÷ 实际分钟数 换算后再扣分
         pending: [Q6]
-        normalize: {enabled: true, per_minutes: 10, pending: [Q8, P-B8]}
+        normalize: {enabled: true, per_minutes: 10, both_ways: true, pending: [Q8, P-B8]}
 
       - id: P3
         name: 普通话标准

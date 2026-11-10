@@ -1,4 +1,4 @@
-"""T1–T6 计分类型（现行配置 rubric-v0.2，按评分表 20261105）。旧版配置的机制见 test_legacy_v01.py。"""
+"""T1–T6 计分类型（现行配置 rubric-v0.3，按评分表 20261105）。旧版配置的机制见 test_legacy_v01.py。"""
 import pytest
 
 from scoring import EvidenceError, ScoringInputError, score_round
@@ -97,7 +97,35 @@ def test_t1_normalize_short_main_segment(cfg):
     r = run(cfg, b, main_duration_ms=300_000)  # 5 分钟：15 × 2 = 30 次
     assert item(r, "P2").score == 30
     assert item(run(cfg, b, main_duration_ms=600_000), "P2").score == 40
-    assert item(run(cfg, b, main_duration_ms=720_000), "P2").score == 40  # 超过 10 分钟不换算
+    assert item(run(cfg, b, main_duration_ms=720_000), "P2").score == 40  # 12 分钟：15 × 10 ÷ 12 = 12.5 次，免扣内
+
+
+def test_t1_normalize_long_video_counts_per_ten_minutes(cfg):
+    """C36：不截取 10 分钟，整段计次后换算成每 10 分钟的次数。60 分钟讲了 150 处 = 每 10 分钟 25 处，超出免扣 5 处。"""
+    b = full_marks()
+    for _ in range(150):
+        b.occ("P2", "那么")
+    r = run(cfg, b, main_duration_ms=3_600_000)
+    assert item(r, "P2").score == 35
+    assert any("超过 10 分钟" in n for n in item(r, "P2").notes)
+
+
+def test_t1_normalize_legacy_config_only_scales_up():
+    """rubric-v0.2 及以前（both_ways 关）：超过 10 分钟不换算，旧报告重算结果不变；且哈希里不出现新字段。"""
+    from scoring import parse_config
+    from scoring.config import config_hash
+    from tests.scoring.helpers import item_raw, raw_config
+
+    d = raw_config()
+    item_raw(d, "P2")["normalize"].pop("both_ways")
+    old = parse_config(d)
+    b = full_marks()
+    for _ in range(30):
+        b.occ("P2", "那么")
+    assert item(run(old, b, main_duration_ms=1_200_000), "P2").score == 30
+    d2 = raw_config()
+    item_raw(d2, "P2")["normalize"]["both_ways"] = False
+    assert config_hash(parse_config(d2)) == config_hash(old)
 
 
 def test_t1_normalize_needs_duration(cfg):
@@ -334,3 +362,43 @@ def test_t6_missing_question_list(cfg):
 
 
 
+
+
+# ───────────── 录播：观众异议按实际条数折算（C37） ─────────────
+
+
+def _answers(b, refs, full: int):
+    b.remove("S3")
+    for i, o in enumerate(refs):
+        if i < full:
+            for el in ("direct_answer", "advantage", "altruistic_close"):
+                b.add("S3", "question", ref=o, label=el, judgment="count")
+        else:
+            b.add("S3", "question", ref=o, label="no_answer", judgment="count")
+    return b
+
+
+@pytest.mark.parametrize("n,full,expected", [(2, 2, 20), (2, 1, 10), (3, 2, 13.33), (4, 3, 15), (8, 6, 15), (1, 0, 0)])
+def test_t6_flexible_count_scales_to_item_max(cfg, n, full, expected):
+    refs = [f"live-{i}" for i in range(n)]
+    r = run(cfg, _answers(full_marks(), refs, full), expected_questions={"S3": refs}, flexible_questions={"S3"})
+    assert r.status == "complete"
+    assert item(r, "S3").score == pytest.approx(expected, abs=0.01)
+    s = next(d for d in r.dimensions if d.id == "S")
+    assert s.applicable_max == 100
+    if n != 4:
+        assert any("折算" in x for x in item(r, "S3").notes)
+
+
+def test_t6_flexible_none_marked_is_not_applicable(cfg):
+    b = full_marks()
+    b.remove("S3")
+    r = run(cfg, b, expected_questions={"S3": []}, flexible_questions={"S3"})
+    assert r.status == "complete" and item(r, "S3").status == "not_applicable"
+    s = next(d for d in r.dimensions if d.id == "S")
+    assert s.applicable_max == 80 and s.score == 100
+
+
+def test_t6_fixed_count_still_enforced_without_flexible(cfg):
+    with pytest.raises(ScoringInputError):
+        run(cfg, full_marks(), expected_questions={"S3": []})

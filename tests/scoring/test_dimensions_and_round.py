@@ -276,7 +276,7 @@ def test_duplicate_evidence_id_rejected(cfg):
 
 def test_traceability_fields(cfg):
     r = score_round(full_marks().items, cfg, context())
-    assert r.rubric_version == "rubric-v0.2"
+    assert r.rubric_version == "rubric-v0.3"
     assert r.config_hash == config_hash(cfg) and r.config_hash.startswith("sha256:")
     assert r.model_manifest == {"asr": "mock-asr@1", "llm": "mock-llm@1", "prompt": "p-v1"}
     for i in r.items:
