@@ -14,6 +14,7 @@ import Reports from "./pages/Reports";
 import Recordings from "./pages/Recordings";
 import SheetPrint from "./pages/SheetPrint";
 import Login from "./pages/Login";
+import { ChangePasswordButton, ForcePasswordChange } from "./pages/ChangePassword";
 import ProductDetail from "./pages/ProductDetail";
 import Products from "./pages/Products";
 import ReadingScripts from "./pages/ReadingScripts";
@@ -71,6 +72,7 @@ export default function App() {
   const loc = useLocation();
   if (loading) return <Spin style={{ margin: 80 }} />;
   if (!me) return <Login />;
+  if (me.must_change_password) return <ForcePasswordChange />;
   if (/^\/sheets\/[^/]+\/print$/.test(loc.pathname)) {
     return (
       <Routes>
@@ -123,6 +125,7 @@ export default function App() {
             <span>
               {me.display_name}（{ROLE_ZH[me.role] ?? me.role}）
             </span>
+            <ChangePasswordButton />
             <Button onClick={logout}>退出</Button>
           </Space>
         </Layout.Header>

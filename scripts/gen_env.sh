@@ -15,8 +15,10 @@ S3_ACCESS_KEY=audition$(p | tr -dc 'a-z0-9' | head -c 8)
 S3_SECRET_KEY=$(p)
 MINIO_KMS_SECRET_KEY=audition-kms:$(k)
 # —— 运行配置 ——
-# 本机用 http 试用时为 false；正式部署必须走 https 并改为 true
-APP_COOKIE_SECURE=false
+# 员工访问用的地址（内网域名或 Mac Studio 的固定内网 IP），Caddy 按它签发 HTTPS 证书
+APP_HOST=
+# 登录 cookie 只经 HTTPS 发送。只在本机 http://127.0.0.1:8000 临时调试时才改成 false
+APP_COOKIE_SECURE=true
 # 未录用候选人媒体保存天数：30 仅为占位，正式值待法务确认
 APP_RETENTION_DAYS=30
 APP_PORT=8000
@@ -28,6 +30,12 @@ MEDIA_DIR=./data/minio
 BACKUP_DIR=
 # 数据库备份保留天数
 BACKUP_KEEP_DAYS=14
+# 媒体备份保留几代（每天一代，没变的文件用硬链接，不重复占空间）
+BACKUP_MEDIA_KEEP=7
+# 数据库备份加密口令（openssl AES-256）。务必另存到密码管理器：丢了就解不开备份；不要和备份放在同一个 NAS
+BACKUP_KEY=$(p)$(p)
+# 备份失败时推送告警的群机器人地址（企业微信 / 钉钉 / 飞书的 webhook），留空则只写日志和管理后台
+BACKUP_ALERT_WEBHOOK=
 EOT
 chmod 600 .env
 echo "已生成 .env"

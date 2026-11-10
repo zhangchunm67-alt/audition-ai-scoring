@@ -61,6 +61,9 @@ class User(Base):
     role: Mapped[str] = mapped_column(ROLE)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 会话版本：退出、改密码、管理员重置密码或改角色时加 1，之前签发的登录状态全部失效
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # 管理员设的密码须本人先改
     created_at: Mapped[datetime] = created_at()
 
 

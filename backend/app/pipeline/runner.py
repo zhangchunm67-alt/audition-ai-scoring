@@ -23,9 +23,9 @@ from ..providers.base import Providers, SegmentHint, Word
 from ..providers.resilient import resilient
 from ..services.storage import Storage
 from ..settings import get_settings
-from . import acoustic, prompts, readiness
+from . import acoustic, injection, prompts, readiness
 from .detector_config import DetectorConfig, parse as parse_detector_cfg
-from .detectors import DETECTORS, NEEDS_PROPS, human_plan
+from .detectors import CAPABILITIES, DETECTORS, NEEDS_PROPS, human_plan
 from .detectors.common import Ctx
 from .media import materialize
 from .text import SegmentText
@@ -141,6 +141,12 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         item_ids = {it.id for _, it in cfg.items()}
         plan = human_plan(dcfg, raw_providers, item_ids)
         plan["fallback_applied"] = bool(plan["fallback"] and last_attempt)
+        signals = injection.scan(texts)
+        if signals:  # 讲话里有针对评分的话：依赖大模型、视觉模型的条目全部转评委确认（T43）
+            model_items = {i for i in item_ids if CAPABILITIES.get(i, set()) & {"llm", "vision", "voice"}}
+            plan["confirm"] = sorted((set(plan["confirm"]) | model_items) - set(plan["manual"]))
+            plan["injection"] = [{"segment": x.segment, "quote": x.quote, "at_ms": x.at_ms} for x in signals]
+            log.warning("录像 %s 第 %d 轮：逐字稿里有疑似针对评分的话 %d 处，模型条目转评委确认", rec.id, round_no, len(signals))
         todo = {k: fn for k, fn in DETECTORS.items()
                 if (k in item_ids or (k == "redlines" and cfg.redlines.enabled)) and not (k in NEEDS_PROPS and not rec.props_available)
                 and k not in plan["manual"]}

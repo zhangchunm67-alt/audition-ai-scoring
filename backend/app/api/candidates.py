@@ -195,3 +195,21 @@ async def register_consent(
                  target_id=str(rec.id), candidate_id=str(c.id), version=rec.consent_text_version, has_attachment=rec.attachment_asset_id is not None)
     db.commit()
     return ConsentOut.model_validate(rec, from_attributes=True)
+
+
+class EraseIn(BaseModel):
+    reason: str = Field(min_length=2, max_length=200)  # 例如“候选人撤回同意（某年某月某日书面申请）”
+    confirm_name: str = Field(min_length=1, max_length=64)  # 须与候选人姓名一致，防止删错人
+
+
+@router.post("/{cid}/erase", status_code=200)
+def erase(cid: uuid.UUID, body: EraseIn, request: Request, db: Session = DB,
+          actor: User = Depends(require(Perm.candidate_erase))) -> dict:
+    """删除候选人的全部资料（视频、逐字稿、证据原句、姓名手机号等），只留去标识的分数。不可恢复。"""
+    from ..services.erasure import erase_candidate
+
+    c = get_candidate(db, cid)
+    if name_of(c) != body.confirm_name.strip():
+        raise HTTPException(422, "输入的姓名与候选人不一致")
+    out = erase_candidate(db, get_storage(), cid, actor_id=str(actor.id), reason=body.reason)
+    return {"erased": True, **out}

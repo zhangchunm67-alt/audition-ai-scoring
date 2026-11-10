@@ -7,6 +7,7 @@ type Ctx = {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
   can: (perm: string) => boolean;
 };
 
@@ -25,8 +26,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await post("/auth/logout").catch(() => undefined);
     setMe(null);
   }, []);
+  const refresh = useCallback(async () => {
+    setMe(await get<Me>("/auth/me").catch(() => null));
+  }, []);
   const can = useCallback((perm: string) => !!me?.permissions.includes(perm), [me]);
-  return <AuthContext.Provider value={{ me, loading, login, logout, can }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ me, loading, login, logout, refresh, can }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): Ctx {

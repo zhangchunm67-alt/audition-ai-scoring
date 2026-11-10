@@ -60,6 +60,9 @@ def pending_items(db: Session, rec: Recording) -> list[dict]:
                                             "label": f"{dim_name.get(it.dimension, it.dimension)}·{it.name}", "max": it.max,
                                             "reasons": it.missing_reasons, "suggested": {}, "evidence": []})
             d["suggested"][str(run.round_no)] = it.suggested_score
+            inj = (run.model_manifest.get("human_review") or {}).get("injection") or []
+            if inj and not any(r.startswith("逐字稿里有疑似") for r in d["reasons"]):
+                d["reasons"] = [*d["reasons"], "逐字稿里有疑似针对评分的话，模型给分可能受影响：" + "；".join(x["quote"] for x in inj[:3])]
             if not d["evidence"]:
                 rows = db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == it.item_id)
                                   .order_by(EvidenceRow.start_ms))

@@ -52,6 +52,7 @@
      "登录"
     ],
     "summary": "Logout",
+    "description": "退出：本账号之前签发的登录状态全部失效（包括别处登录、被截获的）。",
     "operationId": "logout_api_auth_logout_post",
     "responses": {
      "204": {
@@ -74,6 +75,48 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/MeOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/password": {
+   "post": {
+    "tags": [
+     "登录"
+    ],
+    "summary": "Change Password",
+    "description": "本人改密码。管理员设的初始密码或重置的密码，须本人先改才能使用系统。改完其他地方的登录全部失效。",
+    "operationId": "change_password_api_auth_password_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PasswordIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MeOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -1891,6 +1934,62 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/ConsentOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/candidates/{cid}/erase": {
+   "post": {
+    "tags": [
+     "候选人"
+    ],
+    "summary": "Erase",
+    "description": "删除候选人的全部资料（视频、逐字稿、证据原句、姓名手机号等），只留去标识的分数。不可恢复。",
+    "operationId": "erase_api_candidates__cid__erase_post",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Cid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EraseIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true,
+         "title": "Response Erase Api Candidates  Cid  Erase Post"
         }
        }
       }
@@ -3734,6 +3833,30 @@
     }
    }
   },
+  "/api/dashboard/ops": {
+   "get": {
+    "tags": [
+     "看板"
+    ],
+    "summary": "Ops",
+    "description": "运维状态：上次备份结果（scripts/backup.sh 写入）、等待评委打分和处理中的录像数。超过 36 小时没有成功备份即告警。",
+    "operationId": "ops_api_dashboard_ops_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "type": "object",
+         "title": "Response Ops Api Dashboard Ops Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/audit-logs": {
    "get": {
     "tags": [
@@ -4516,6 +4639,28 @@
     ],
     "title": "DrawRuleOut"
    },
+   "EraseIn": {
+    "properties": {
+     "reason": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 2,
+      "title": "Reason"
+     },
+     "confirm_name": {
+      "type": "string",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Confirm Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "reason",
+     "confirm_name"
+    ],
+    "title": "EraseIn"
+   },
    "EvidenceIn": {
     "properties": {
      "evidence": {
@@ -4888,6 +5033,11 @@
       },
       "type": "array",
       "title": "Permissions"
+     },
+     "must_change_password": {
+      "type": "boolean",
+      "title": "Must Change Password",
+      "default": false
      }
     },
     "type": "object",
@@ -4999,6 +5149,25 @@
      "product_id"
     ],
     "title": "ObjectionOut"
+   },
+   "PasswordIn": {
+    "properties": {
+     "old_password": {
+      "type": "string",
+      "title": "Old Password"
+     },
+     "new_password": {
+      "type": "string",
+      "minLength": 10,
+      "title": "New Password"
+     }
+    },
+    "type": "object",
+    "required": [
+     "old_password",
+     "new_password"
+    ],
+    "title": "PasswordIn"
    },
    "ProductIn": {
     "properties": {

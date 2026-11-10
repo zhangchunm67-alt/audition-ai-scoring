@@ -16,7 +16,9 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="主播试镜 AI 评分系统", version="0.6.0", docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
+    prod = settings.env == "production"  # 生产环境不对外提供接口文档（不登录也能看到全部接口）
+    app = FastAPI(title="主播试镜 AI 评分系统", version="0.6.0", docs_url=None if prod else "/api/docs", redoc_url=None,
+                  openapi_url=None if prod else "/api/openapi.json")
 
     @app.middleware("http")
     async def csrf_guard(request: Request, call_next):
@@ -27,6 +29,8 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("X-Frame-Options", "DENY")  # 防点击劫持
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
         return response
 
     for r in (auth, users, rubrics, products, scripts, redlines, sheets, rules, candidates, recordings, media, reports, calibration, dashboard, audit_logs):

@@ -1,0 +1,28 @@
+# 内网 HTTPS（全面审查安全性第 2 条）：Caddy 用自己的内部证书颁发机构给 APP_HOST 签证书。
+# 首次启动后把根证书装到员工电脑上（README“启用 HTTPS”），浏览器就不再提示不安全。
+{
+	# 内网用，不向公网申请证书
+	local_certs
+	skip_install_trust
+}
+
+{$APP_HOST} {
+	tls internal
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+	request_body {
+		# 分片上传每片 8 MB，留余量
+		max_size 64MB
+	}
+	reverse_proxy api:8000
+}
+
+http://{$APP_HOST} {
+	redir https://{host}{uri} permanent
+}

@@ -58,7 +58,8 @@ def list_anchors(db: Session = DB, _: User = Depends(require(Perm.hiring_update)
 def create_user(body: UserIn, request: Request, db: Session = DB, actor: User = Admin) -> UserOut:
     if db.scalar(select(User).where(User.username == body.username)):
         raise HTTPException(409, "用户名已存在")
-    u = User(username=body.username, display_name=body.display_name, role=body.role.value, password_hash=hash_password(body.password))
+    u = User(username=body.username, display_name=body.display_name, role=body.role.value, password_hash=hash_password(body.password),
+             must_change_password=True)  # 管理员设的初始密码，本人首次登录须修改
     db.add(u)
     db.flush()
     audit.record(db, request, actor_type="user", actor_id=str(actor.id), action="user_create", target_type="user", target_id=str(u.id), role=u.role)
@@ -77,8 +78,10 @@ def update_user(user_id: uuid.UUID, body: UserPatch, request: Request, db: Sessi
     for k, v in changed.items():
         setattr(u, k, v.value if isinstance(v, Role) else v)
     if body.password:
-        u.password_hash = hash_password(body.password)
+        u.password_hash, u.must_change_password = hash_password(body.password), True
         changed["password"] = "已重置"
+    if body.password or body.role or body.is_active is False:
+        u.session_version += 1  # 重置密码、改角色、停用：之前的登录全部失效
     audit.record(db, request, actor_type="user", actor_id=str(actor.id), action="user_update", target_type="user", target_id=str(u.id),
                  changes={k: (v.value if isinstance(v, Role) else v) for k, v in changed.items()})
     db.commit()

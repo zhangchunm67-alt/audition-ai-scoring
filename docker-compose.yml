@@ -63,7 +63,8 @@ services:
 
   api:
     <<: *app
-    ports: ["${APP_PORT:-8000}:8000"]
+    # 只在本机回环地址开放：员工一律经 caddy 的 HTTPS 访问，内网其他机器连不到这个明文端口
+    ports: ["127.0.0.1:${APP_PORT:-8000}:8000"]
     depends_on:
       migrate: {condition: service_completed_successfully}
       minio: {condition: service_healthy}
@@ -78,6 +79,19 @@ services:
       minio: {condition: service_healthy}
       redis: {condition: service_started}
 
+  # 内网 HTTPS 入口（deploy/Caddyfile）：443 端口，证书由 Caddy 内部证书颁发机构签发
+  caddy:
+    image: caddy:2.8
+    ports: ["443:443", "80:80"]
+    environment:
+      APP_HOST: ${APP_HOST:?请在 .env 里设置 APP_HOST（员工访问用的地址，如 audition.lan 或 Mac 的内网 IP）}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on: [api]
+    restart: unless-stopped
+
 volumes:
+  caddydata:
   pgdata:
   redisdata:

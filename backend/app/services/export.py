@@ -15,6 +15,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 LABEL_ZH = {"recommend": "推荐", "pending": "待定", "not_recommend": "不推荐"}
 AUDIENCE_ZH = {"veteran": "老主播", "month_1": "上播 1 个月", "new_trial": "新主播内部试播"}
 DIM_ORDER = ["P", "S", "L", "O"]
+DIM_ZH = {"P": "人设塑造", "S": "销售循环", "L": "表达逻辑", "O": "其他"}
 
 
 class PdfError(RuntimeError):
@@ -125,6 +126,13 @@ def html_to_pdf(doc: str) -> bytes:
         return out.read_bytes()
 
 
+def _safe(v):
+    """防 Excel 公式注入：以 = + - @ 或制表、回车开头的文字前面加单引号，按文本显示，不会被当成公式执行。"""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 def ranking_xlsx(rows: list[dict], items_by_report: dict[str, list[dict]], date_desc: str) -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -137,8 +145,8 @@ def ranking_xlsx(rows: list[dict], items_by_report: dict[str, list[dict]], date_
         c.font = Font(bold=True)
         c.fill = PatternFill("solid", fgColor="DDEBF7")
     for r in rows:
-        ws.append([r["rank"], r["candidate_name"], _cn(r["submitted_at"]) if r["submitted_at"] else "",
-                   AUDIENCE_ZH.get(r["audience"], r["audience"]), LABEL_ZH[r["label"]], r["reason"], r["total_grade"], r["threshold"],
+        ws.append([r["rank"], _safe(r["candidate_name"]), _cn(r["submitted_at"]) if r["submitted_at"] else "",
+                   AUDIENCE_ZH.get(r["audience"], r["audience"]), LABEL_ZH[r["label"]], _safe(r["reason"]), r["total_grade"], r["threshold"],
                    "是" if r["critical"] else "", "是" if r["informal"] else "",
                    *[f"{r['dimension_scores'][k]} 分 / {r['dimension_grades'][k]} 档" for k in DIM_ORDER],
                    r["low_confidence_count"], r["revision"], str(r["id"])])
@@ -147,13 +155,14 @@ def ranking_xlsx(rows: list[dict], items_by_report: dict[str, list[dict]], date_
     for row in ws.iter_rows(min_row=3):
         row[5].alignment = Alignment(wrap_text=True, vertical="top")
     ws2 = wb.create_sheet("条目明细")
-    codes = [i["item_id"] for i in next(iter(items_by_report.values()), [])]
-    ws2.append(["排名", "候选人", *codes])
+    first = next(iter(items_by_report.values()), [])
+    codes = [i["item_id"] for i in first]
+    ws2.append(["排名", "候选人", *[DIM_ZH.get(i["dimension"], i["dimension"]) + "·" + i["name"] for i in first]])  # 按评分表位置称呼
     for c in ws2[1]:
         c.font = Font(bold=True)
     for r in rows:
         its = {i["item_id"]: i for i in items_by_report.get(str(r["id"]), [])}
-        ws2.append([r["rank"], r["candidate_name"], *[("不适用" if its[c]["status"] == "not_applicable" else its[c]["score"]) if c in its else "" for c in codes]])
+        ws2.append([r["rank"], _safe(r["candidate_name"]), *[("不适用" if its[c]["status"] == "not_applicable" else its[c]["score"]) if c in its else "" for c in codes]])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

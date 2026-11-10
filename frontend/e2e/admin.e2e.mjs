@@ -77,11 +77,11 @@ try {
   await step("卖点卡：固定话术带版本，改版本提示 S2 须重新校准；保存为新版本", async () => {
     await navigate(page, "产品与题库");
     await page.getByRole("link", { name: "少儿医疗险（演示）" }).click();
-    await page.getByText("S2 校准 demo-uncalibrated（草稿）").waitFor();
+    await page.getByText("产品讲解校准 demo-uncalibrated（草稿）").waitFor();
     await page.getByRole("button", { name: "基于最新版本修改" }).click();
     const ver = page.locator('input[id="fixed_script_version"]');
     await ver.fill("demo-script-2");
-    await page.getByText(/话术版本已改，原 S2 校准记录（demo-uncalibrated）不再适用/).waitFor();
+    await page.getByText(/话术版本已改，原产品讲解校准记录（demo-uncalibrated）不再适用/).waitFor();
     await ver.fill("demo-script-1");
     assert.equal(await page.getByText(/话术版本已改/).count(), 0);
     await page.getByRole("button", { name: "保存为新版本（草稿）" }).click();
@@ -183,8 +183,17 @@ try {
     await hr.getByText("分段已保存").waitFor();
     await hr.getByRole("button", { name: "提交处理" }).click();
     await hr.getByRole("button", { name: /确\s*定|OK/ }).click();
-    await hr.getByText("已出报告").waitFor({ timeout: 90000 }); // inline 模式：提交后同步跑完 Mock 流水线
-    await hr.getByText("评分已完成").waitFor();
+    // inline 模式：提交后同步跑完 Mock 流水线；检测配置 v3 里有须评委打分的条目，停在“等待评委打分”
+    await hr.getByText("等待评委打分").first().waitFor({ timeout: 90000 });
+  });
+
+  await step("评委打分：普通话标准由评委打，其余主观条目确认机器建议分，填完自动出报告", async () => {
+    const card = hr.getByTestId("human-scoring");
+    await card.getByText("人设塑造·普通话标准").waitFor();
+    await card.getByText("销售循环·产品讲解").waitFor();
+    await hr.getByTestId("human-P3").fill("9");
+    await card.getByRole("button", { name: /保存/ }).click();
+    await hr.getByText("评分已完成").waitFor({ timeout: 60000 });
   });
 
   await step("刷新后视频经后端代理播放（Range 请求）", async () => {
@@ -211,7 +220,8 @@ try {
     assert.match(await hr.getByTestId("label").textContent(), /^(推荐|待定|不推荐)$/);
     await hr.getByText("非正式报告").waitFor();
     await hr.getByText("人设塑造").first().waitFor();
-    await hr.getByText("P2 语言干净").waitFor();
+    await hr.getByRole("cell", { name: "语言干净", exact: true }).waitFor();  // 按评分表位置称呼，不显示代码
+    await hr.getByText("人工打分").first().waitFor();
   });
 
   await step("逐句评分：点句子时间跳到视频对应位置，有问题的句子附 AI 示范说法", async () => {
@@ -261,7 +271,17 @@ try {
     await hr.getByTitle("王小明（e2e-anchor）").click();
     await hr.getByText("已关联").waitFor();
     const an = await (await browser.newContext()).newPage();
-    await loginAs(an, "e2e-anchor");
+    // 管理员设的初始密码：新主播首次登录须先改密码
+    await an.goto(BASE);
+    await an.getByLabel("用户名").fill("e2e-anchor");
+    await an.getByLabel("密码").fill(PW);
+    await an.getByRole("button", { name: "登 录" }).click();
+    await an.getByText("请先修改密码").waitFor();
+    await an.getByLabel("原密码").fill(PW);
+    await an.getByLabel("新密码（至少 10 位）").fill("anchor-new-pass-1");
+    await an.getByLabel("再输一次新密码").fill("anchor-new-pass-1");
+    await an.getByRole("button", { name: "修改密码" }).click();
+    await an.getByRole("button", { name: "退 出" }).waitFor();
     await an.waitForURL((url) => url.pathname === "/reports");
     assert.deepEqual(await primaryMenu(an).getByRole("menuitem").allTextContents(), ["我的试镜记录"]);
     assert.equal(await an.getByRole("button", { name: "系统管理", exact: true }).count(), 0);
