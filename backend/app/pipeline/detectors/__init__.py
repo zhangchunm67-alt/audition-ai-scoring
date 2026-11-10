@@ -34,3 +34,29 @@ def unsupported_items(cfg) -> list[str]:
         elif it.type != want:
             out.append(f"{it.id}（配置为 {it.type}，检测器产出 {want} 证据）")
     return out
+
+
+# 各检测器依赖的模型能力（语音识别是所有条目的前提，不在此列）。某能力未配置时，依赖它的条目转评委打分。
+CAPABILITIES = {
+    "P1": {"vision"}, "P2": {"llm"}, "P3": {"speech_eval"}, "P4": set(), "P5": {"voice"}, "P6": {"voice"}, "P7": {"voice"},
+    "P8": {"vision"}, "P9": {"vision"}, "P10": {"laugh", "llm"},
+    "S1": {"llm"}, "S2": {"llm"}, "S3": {"llm"}, "S4": {"llm"},
+    "L1": {"llm"}, "L2": {"llm"}, "L3": {"llm"}, "L4": {"llm"}, "L5": {"llm"},
+    "O1": {"llm"}, "O2": {"llm"}, "O3": {"llm"}, "O4": {"llm"},
+    "redlines": {"llm"},
+}
+
+
+def unavailable_capabilities(providers) -> set[str]:
+    from ...providers.registry import Unavailable
+
+    return {c for c in ("asr", "speech_eval", "llm", "vision", "laugh", "voice") if isinstance(getattr(providers, c), Unavailable)}
+
+
+def human_plan(dcfg, providers, item_ids: set[str]) -> dict:
+    """本次处理的人工打分分工：manual（只由评委打分，不跑检测器）、confirm、confirm_on_deduction、fallback。"""
+    hr, missing = dcfg.human_review, unavailable_capabilities(providers)
+    by_cap = {i for i in item_ids if CAPABILITIES.get(i, set()) & missing}
+    return {"manual": sorted((set(hr.manual) | by_cap) & item_ids), "confirm": sorted(set(hr.confirm) & item_ids),
+            "confirm_on_deduction": sorted(set(hr.confirm_on_deduction) & item_ids), "fallback": hr.fallback,
+            "unavailable": sorted(missing)}

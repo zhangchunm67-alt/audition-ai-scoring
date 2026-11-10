@@ -280,3 +280,32 @@ def test_p9_counts_episodes_from_frames_without_guide_phrases():
     b.remove("P9")
     b.items.extend(evs)
     assert item(score_round(b.items, parse_config(raw_config()), context()), "P9").score == 1 + 2 + 1
+
+
+def test_load_gold_csv_tolerates_excel_exports(tmp_path):
+    from app.pipeline.offline import load_gold_csv
+
+    cfg = parse_config(raw_config())
+    f = tmp_path / "gold.csv"
+    f.write_bytes("视频\t条目\t人工分\n主播1\tp3\t9\n主播1\t人设塑造·形象\t10\n主播1\t语言干净\t\n".encode("gb18030"))  # GBK、Tab、小写、名称
+    gold, _ = load_gold_csv(f, cfg)
+    assert gold == {"主播1": {"P3": 9.0, "P1": 10.0}}
+    f.write_text("视频,条目,人工分\n主播1,P3,11\n主播1,X9,1\n主播1,S2,很好\n主播1,P1,5\n主播1,P1,6\n", "utf-8")
+    with pytest.raises(ValueError) as e:
+        load_gold_csv(f, cfg)
+    msg = str(e.value)
+    assert "第 2 行" in msg and "0–10" in msg and "第 3 行" in msg and "X9" in msg and "不是数字" in msg and "重复" in msg
+    f.write_text("视频;条目\n主播1;P3\n", "utf-8")
+    with pytest.raises(ValueError, match="人工分"):
+        load_gold_csv(f, cfg)
+
+
+def test_compare_reports_conclusion_and_unmatched_names():
+    cfg = parse_config(raw_config())
+    full = {it.id: it.max for _, it in cfg.items()}
+    out = {"name": "主播1", "props_available": True, "audience": "veteran",
+           "result": {"items": [{"item_id": k, "score": v, "status": "scored"} for k, v in full.items()], "dimensions": [
+               {"id": d, "grade": 1} for d in "PSLO"], "grade_pass": True, "total_grade": 4}}
+    rep = compare_with_gold([out], {"主播1": full, "主播9": {"P3": 1}}, cfg)
+    assert rep["conclusion_agree_rate"] == 1.0 and rep["conclusions"][0]["gold_total"] == 4
+    assert any("主播9" in w for w in rep["warnings"])

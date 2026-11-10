@@ -31,6 +31,7 @@ ITEM_AGREE_RATIO = Fraction(1, 10)  # 条目一致：AI 与金标准相差不超
 TARGET_DIM = 0.85  # 维度档位相差 ≤ 1 档的比例（PRD 第 1 节，C34）
 TARGET_CONCLUSION = 0.95  # 结论一致（PRD 第 1 节，C34）
 TARGET_ITEM = 0.85  # 条目级监控线（Q20 改作监控，C34）
+MIN_GATE_SAMPLES = 30  # 上线门槛的最小定稿样本数：样本太少时一致率不可信（全面审查功能性第 7 条）
 
 
 def _cfg(rv: RubricVersion):
@@ -146,6 +147,10 @@ def compare(db: Session, sample: GoldSample) -> dict[str, Any] | None:
         if it.status == "not_applicable":
             continue
         g = gold["items"].get(it.item_id)
+        if it.source == "human":  # 评委打的分：人和人比，不算 AI 的准确度，不进条目一致率
+            items.append({"item_id": it.item_id, "name": it.name, "ai": None, "gold": g, "max": it.max, "agree": None,
+                          "low_confidence": False, "human_scored": True, "human": it.score})
+            continue
         agree = it.score is not None and g is not None and abs(Fraction(str(it.score)) - Fraction(str(g))) <= ITEM_AGREE_RATIO * maxes[it.item_id]
         items.append({"item_id": it.item_id, "name": it.name, "ai": it.score, "gold": g, "max": it.max, "agree": agree, "low_confidence": it.low_confidence})
     dims = [{"id": k, "name": gdims[k]["name"], "ai_grade": adims[k].grade, "gold_grade": gdims[k]["grade"],
@@ -173,6 +178,8 @@ def metrics(db: Session, samples: list[GoldSample]) -> dict[str, Any]:
             dim_ok += sum(1 for d in c["dimensions"] if d["agree"])
             con_ok += 1 if c["conclusion_agree"] else 0
         for it in c["items"]:
+            if it.get("human_scored"):
+                continue
             st = item_stats.setdefault(it["item_id"], {"item_id": it["item_id"], "name": it["name"], "ok": 0, "n": 0})
             st["n"] += 1
             st["ok"] += 1 if it["agree"] else 0
@@ -197,7 +204,8 @@ def metrics(db: Session, samples: list[GoldSample]) -> dict[str, Any]:
         "samples": len(samples), "final": len(final), "pending": len(samples) - len(final),
         "dimension_agreement": dim_rate, "conclusion_agreement": con_rate,
         "targets": {"dimension": TARGET_DIM, "conclusion": TARGET_CONCLUSION, "item": TARGET_ITEM},
-        "gate_passed": bool(final) and dim_rate is not None and con_rate is not None and dim_rate >= TARGET_DIM and con_rate >= TARGET_CONCLUSION,
+        "min_gate_samples": MIN_GATE_SAMPLES,
+        "gate_passed": len(final) >= MIN_GATE_SAMPLES and dim_rate is not None and con_rate is not None and dim_rate >= TARGET_DIM and con_rate >= TARGET_CONCLUSION,
         "items": items, "low_confidence_share": _rate(low_conf, item_total),
         "human_dimension_agreement": _rate(hh_dim_ok, hh_dim_n), "human_conclusion_agreement": _rate(hh_con_ok, hh_con_n),
     }

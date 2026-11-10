@@ -51,33 +51,52 @@ def _result(db, run) -> dict:
 # ───────────── 端到端 ─────────────
 
 
-@pytest.mark.parametrize("task,item_id,response", [
-    ("s4_closing", "S4", {"items": [{"method": "herd", "compliant": True, "quote": "这是一段原文不存在的虚构证据",
-                                      "reason": "虚构", "confidence": 0.99}]}),
-    ("s1_need", "S1", {"level": 10, "quote": "这是一段原文不存在的虚构证据", "reason": "虚构", "confidence": 0.99}),
-    ("l3_deduction", "L3", {"items": [{"valid": False, "quote": "这是一段原文不存在的虚构证据",
-                                         "reason": "虚构", "confidence": 0.99}]}),
-])
-def test_fabricated_quote_cannot_produce_report(login, seeded, video_file, db, task, item_id, response):
-    class FabricatingLLM(MockLLM):
-        def complete_json(self, requested_task, *args, **kwargs):
-            if requested_task == task:
-                return response
-            return super().complete_json(requested_task, *args, **kwargs)
+class _Fabricating(MockLLM):
+    def __init__(self, task, response):
+        super().__init__()
+        self.task, self.response = task, response
 
-    set_providers(_providers(llm=FabricatingLLM()))
+    def complete_json(self, requested_task, *args, **kwargs):
+        if requested_task == self.task:
+            return self.response
+        return super().complete_json(requested_task, *args, **kwargs)
+
+
+FAKE = "这是一段原文不存在的虚构证据"
+
+
+def test_fabricated_quote_cannot_produce_report(login, seeded, video_file, db):
+    """一条证据决定整条分数的条目（等级、逐题）：引用对不上原文 → 检测器失败，不出报告。"""
+    set_providers(_providers(llm=_Fabricating("s1_need", {"level": 10, "quote": FAKE, "reason": "虚构", "confidence": 0.99})))
     rec = _submit(login("hr"), seeded, video_file)
     assert rec.status == "failed"
     assert _report(db, rec) is None
     for run in _runs(db, rec):
-        detector = db.scalar(select(DetectorRun).where(DetectorRun.run_id == run.id, DetectorRun.detector_id == item_id))
+        detector = db.scalar(select(DetectorRun).where(DetectorRun.run_id == run.id, DetectorRun.detector_id == "S1"))
         assert detector.status == "failed" and "引用无法" in detector.error
         result = _result(db, run)
-        scored_item = next(i for i in result["items"] if i["item_id"] == item_id)
+        scored_item = next(i for i in result["items"] if i["item_id"] == "S1")
         assert result["status"] == "incomplete"
         assert scored_item["status"] == "missing_evidence" and scored_item["score"] is None
         assert scored_item["contributions"] == []
-        assert not db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == item_id)).all()
+        assert not db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == "S1")).all()
+
+
+@pytest.mark.parametrize("task,item_id,response", [
+    ("s4_closing", "S4", {"items": [{"method": "herd", "compliant": True, "quote": FAKE, "reason": "虚构", "confidence": 0.99}]}),
+    ("l3_deduction", "L3", {"items": [{"valid": False, "quote": FAKE, "reason": "虚构", "confidence": 0.99}]}),
+])
+def test_fabricated_quote_in_list_item_dropped(login, seeded, video_file, db, task, item_id, response):
+    """逐条计的条目：对不上原文的那一条被排除、不计分、条目标低置信，其余照常出报告，不让整条录像失败。"""
+    set_providers(_providers(llm=_Fabricating(task, response)))
+    rec = _submit(login("hr"), seeded, video_file)
+    assert rec.status == "done", rec.failure_reason
+    run = _runs(db, rec)[0]
+    rows = db.scalars(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == item_id)).all()
+    assert len(rows) == 1 and rows[0].review["status"] == "rejected" and rows[0].start_ms is None
+    it = next(i for i in _result(db, run)["items"] if i["item_id"] == item_id)
+    max_ = it["max"]
+    assert it["score"] == (0 if item_id == "S4" else max_) and it["low_confidence"]
 
 
 def test_end_to_end_short_video(login, seeded, video_file, db):
@@ -152,7 +171,7 @@ def test_full_length_critical_three_rounds_and_traceability(login, seeded, full_
     # 可追溯
     m = rep.model_manifest
     assert m["asr"] == "mock-asr@1" and m["llm"] == "mock-llm@1" and m["temperature"] == "0" and m["asr_disfluency_removal"] == "false"
-    assert m["prompts"].startswith("prompts-v2:") and m["detector_config"] == "detectors-v2"
+    assert m["prompts"].startswith("prompts-v3:") and m["detector_config"] == "detectors-v3"
     assert rep.config_hash.startswith("sha256:") and rep.rubric_version_id and rep.detector_config_version_id
     # 口头禅保留：转写里有“那么”“一个”，P2 证据逐条记了原句和时间
     tr = db.scalar(select(Transcript).where(Transcript.run_id == runs[0].id, Transcript.segment == "main"))
@@ -248,7 +267,7 @@ def test_final_failure_notifies_and_can_reprocess(login, seeded, video_file, db)
     rec = _submit(hr, seeded, video_file)
     assert rec.status == "failed" and "已自动重试 2 次" in rec.failure_reason
     notes = {n.template: n for n in db.scalars(select(Notification))}
-    assert notes["processing_failed_rerecord"].audience == "candidate" and notes["processing_failed_rerecord"].channel == "mock"
+    assert "processing_failed_rerecord" not in notes  # 失败多半是系统问题，不自动让候选人重录
     assert notes["processing_failed_alert"].audience == "admin" and notes["processing_failed_alert"].status == "sent"
     assert db.scalar(select(AuditLog).where(AuditLog.action == "processing_failed"))
     det = {d.detector_id: d for d in db.scalars(select(DetectorRun).where(DetectorRun.run_id == _runs(db, rec)[0].id))}
@@ -387,3 +406,58 @@ def test_rq_queue_mode(login, seeded, video_file, db, monkeypatch):
     SimpleWorker([Queue(orchestrator.QUEUE_NAME, connection=conn)], connection=conn).work(burst=True)
     db.expire_all()
     assert db.get(Recording, rec["id"]).status == "done"
+
+
+# ───────────── 处理中断（断电、重启）与并发名额 ─────────────
+
+
+def test_stuck_recording_swept_and_reprocessed(login, seeded, video_file, db):
+    """提交后断电：任务丢了，录像停在“已提交”。超时后可直接重新处理，或由清理任务标为失败。"""
+    from app.pipeline.orchestrator import sweep_stuck
+
+    hr = login("hr")
+
+    def stuck(age_h: float) -> Recording:
+        r = _uploaded(hr, db, video_file)
+        assert hr.put(f"/api/recordings/{r['id']}/segments", json=SEG).status_code == 200
+        rec = db.get(Recording, r["id"])
+        rec.status, rec.submitted_at = "submitted", datetime.now(timezone.utc) - timedelta(hours=age_h)
+        db.commit()
+        return rec
+
+    rec = stuck(5)
+    assert sweep_stuck(db, older_than_min=600) == []
+    assert hr.post(f"/api/recordings/{rec.id}/reprocess").status_code == 200  # 已超过默认 180 分钟，可直接重新处理
+    db.expire_all()
+    assert db.get(Recording, rec.id).status == "done"
+    rec2 = stuck(5)
+    assert sweep_stuck(db, older_than_min=60) == [str(rec2.id)]
+    db.expire_all()
+    rec2 = db.get(Recording, rec2.id)
+    assert rec2.status == "failed" and "中断" in rec2.failure_reason
+    rec3 = stuck(0.1)
+    assert hr.post(f"/api/recordings/{rec3.id}/reprocess").status_code == 409  # 刚提交的不能重来
+
+
+def test_lease_released_after_worker_killed():
+    """worker 在调用中途被杀：它占的名额到期自动归还，不会把后面的处理卡死。"""
+    import time
+
+    redis = pytest.importorskip("redis")
+    conn = redis.Redis()
+    try:
+        conn.ping()
+    except Exception:
+        pytest.skip("没有本机 Redis")
+    from app.providers.registry import limit
+
+    conn.delete("audition:lease:test")
+    cm = limit("test", 1, conn, ttl_s=1)
+    cm.__enter__()  # 占住唯一的名额，然后“被杀”：不释放
+    t0 = time.time()
+    with limit("test", 1, conn, ttl_s=1):
+        pass
+    assert 0.5 < time.time() - t0 < 5
+    with limit("test", 1, conn):
+        assert conn.zcard("audition:lease:test") == 1
+    assert conn.zcard("audition:lease:test") == 0

@@ -30,7 +30,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout */
+        /**
+         * Logout
+         * @description 退出：本账号之前签发的登录状态全部失效（包括别处登录、被截获的）。
+         */
         post: operations["logout_api_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -49,6 +52,26 @@ export interface paths {
         get: operations["me_api_auth_me_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description 本人改密码。管理员设的初始密码或重置的密码，须本人先改才能使用系统。改完其他地方的登录全部失效。
+         */
+        post: operations["change_password_api_auth_password_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -611,6 +634,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/candidates/{cid}/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Erase
+         * @description 删除候选人的全部资料（视频、逐字稿、证据原句、姓名手机号等），只留去标识的分数。不可恢复。
+         */
+        post: operations["erase_api_candidates__cid__erase_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings": {
         parameters: {
             query?: never;
@@ -712,6 +755,7 @@ export interface paths {
         /**
          * Reprocess
          * @description 处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。
+         *     卡在“已提交 / 处理中”超过设定时长的（断电、重启中断）也可以重新处理。
          */
         post: operations["reprocess_api_recordings__rid__reprocess_post"];
         delete?: never;
@@ -734,6 +778,40 @@ export interface paths {
          * @description 取消：删除已上传的视频，题单恢复为未使用。
          */
         post: operations["cancel_api_recordings__rid__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/human-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Human Review */
+        get: operations["human_review_api_recordings__rid__human_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/human-scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Human Scores */
+        put: operations["human_scores_api_recordings__rid__human_scores_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1154,6 +1232,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ops
+         * @description 运维状态：上次备份结果（scripts/backup.sh 写入）、等待评委打分和处理中的录像数。超过 36 小时没有成功备份即告警。
+         */
+        get: operations["ops_api_dashboard_ops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audit-logs": {
         parameters: {
             query?: never;
@@ -1468,6 +1566,13 @@ export interface components {
              */
             product_id: string;
         };
+        /** EraseIn */
+        EraseIn: {
+            /** Reason */
+            reason: string;
+            /** Confirm Name */
+            confirm_name: string;
+        };
         /** EvidenceIn */
         EvidenceIn: {
             /** Evidence */
@@ -1512,6 +1617,35 @@ export interface components {
         HiringIn: {
             /** Hiring Status */
             hiring_status: string;
+        };
+        /** HumanReviewOut */
+        HumanReviewOut: {
+            /** Status */
+            status: string;
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Scores */
+            scores: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** HumanScoreIn */
+        HumanScoreIn: {
+            /** Score */
+            score: number;
+            /** Note */
+            note?: string | null;
+        };
+        /** HumanScoresIn */
+        HumanScoresIn: {
+            /** Scores */
+            scores: {
+                [key: string]: components["schemas"]["HumanScoreIn"];
+            };
         };
         /** ItemRow */
         ItemRow: {
@@ -1587,6 +1721,11 @@ export interface components {
             role: string;
             /** Permissions */
             permissions: string[];
+            /**
+             * Must Change Password
+             * @default false
+             */
+            must_change_password: boolean;
         };
         /** ObjectionIn */
         ObjectionIn: {
@@ -1629,6 +1768,13 @@ export interface components {
              * Format: uuid
              */
             product_id: string;
+        };
+        /** PasswordIn */
+        PasswordIn: {
+            /** Old Password */
+            old_password: string;
+            /** New Password */
+            new_password: string;
         };
         /** ProductIn */
         ProductIn: {
@@ -2278,6 +2424,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeOut"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3575,6 +3754,43 @@ export interface operations {
             };
         };
     };
+    erase_api_candidates__cid__erase_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EraseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_recordings_api_recordings_get: {
         parameters: {
             query?: {
@@ -3820,6 +4036,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    human_review_api_recordings__rid__human_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    human_scores_api_recordings__rid__human_scores_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanScoresIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanReviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -4656,6 +4938,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_api_dashboard_ops_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

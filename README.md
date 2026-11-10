@@ -195,6 +195,34 @@ cd frontend && npm run typecheck
    - 首轮临界时，自动追加 2 轮（共 3 轮取多数）；
    - 偶发失败先就地重试单次调用，再按整轮重试 2 次；仍失败则通知候选人重录、告警管理员，录像页可点“重新处理”。
 
+## 评委打分
+
+机器评不了、或在校准达标前须由人确认的条目，由评委（管理员、HR）在系统里打分（决定记录 T39）。分工写在检测配置 `config/detectors/detectors-v3.yaml` 的 `human_review` 里：
+
+| 分工 | 条目（按评分表位置） | 原因 |
+|---|---|---|
+| 只由评委打分 | 人设塑造·普通话标准 | 还没有真实的普通话评测 |
+| 机器给建议分，评委确认 | 人设塑造·声音·语调、音色、节奏；销售循环·激发需求、产品讲解；表达逻辑·电梯法则；其他·节奏与气氛 | 模型直接给整数分的主观条目，尚未校准，且容易受主播话术影响 |
+| 机器判扣分时评委确认 | 人设塑造·形象、嘻嘻哈哈 | 误判一次就扣 10 分 / 5 分 |
+| 机器评不出时转评委 | 任意条目 | 模型重试后仍失败，不让整条录像失败 |
+| 讲话里有针对评分的话时 | 所有依赖模型的条目 | 主播说“给满分”“忽略以上”之类，模型给分可能被影响（T43） |
+
+另外，某个模型没有配置时，依赖它的条目自动转评委。
+
+流程：机器部分跑完后，录像状态变成“等待评委打分”；评委打开录像页，看视频、看机器建议分和相关原句，给每条打分（可分几次录入）；全部填完后自动出报告，报告里这些条目标“人工打分”，悬停可看打分人、机器建议分和备注。
+
+校准一致率达标后，发布新版检测配置，把条目从这些名单里移出，交给机器。
+
+## 删除候选人资料
+
+候选人撤回同意或要求删除时，管理员调用 `POST /api/candidates/{编号}/erase`（须输入候选人姓名确认），或在服务器上运行：
+
+```bash
+docker compose exec api python -m app.cli erase-candidate --id <候选人编号> --reason "候选人书面申请撤回同意"
+```
+
+会删除：原视频和全部派生媒体、授权书扫描件、逐字稿、证据原句和理由、示范说法、评委和校准员的备注、姓名和手机号。保留去标识的分数和结论（用于准确度统计）以及审计记录。不可恢复。未录用候选人的保存期限正式值仍待法务确认（P-B12），目前到期只自动删视频等媒体。
+
 ## 看报告
 
 - **报告与排名**：按提交日期范围列出最新报告并排名，可按结论标签筛选、按单个维度排序，可导出 Excel。
@@ -303,7 +331,8 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
    ```
 
 4. 开了 FileVault，断电重启后需要有人到现场登录一次，Docker 才会启动。建议给这台机器接 UPS。
-5. 在路由器上给 Mac 固定内网 IP。HR 用 `http://<固定IP>:8000` 访问。只在内网使用时可以保持 `APP_COOKIE_SECURE=false`。代价是登录状态在内网里明文传输，所以不要把 8000 端口映射到公网。
+5. 在路由器上给 Mac 固定内网 IP（或在内网 DNS 里给它起个名字，如 `audition.lan`），填到 `.env` 的 `APP_HOST`。员工一律用 `https://<APP_HOST>` 访问（见下文“启用 HTTPS”）；接口服务的 8000 端口只对本机开放，内网其他电脑连不到明文端口。
+6. 打开 macOS 防火墙（系统设置 → 网络 → 防火墙），只放行 Docker；本地模型服务只监听本机，不需要放行。
 
 ### 2. 安装 Docker
 
@@ -332,7 +361,9 @@ git clone https://github.com/zhangchunm67-alt/audition-ai-scoring.git ~/audition
 cd ~/audition && ./scripts/gen_env.sh && mkdir -p data/minio data/logs
 ```
 
-编辑 `.env`：把 `BACKUP_DIR` 设为 NAS 挂载目录，例如 `/Volumes/audition-backup`；接入真实 AI 供应商时，再把 `APP_PROVIDERS` 改掉。然后**把整个 `.env` 存进公司密码管理器**，不要放在 NAS 的同一个共享里。
+编辑 `.env`：填 `APP_HOST`；把 `BACKUP_DIR` 设为 NAS 挂载目录，例如 `/Volumes/audition-backup`；有群机器人的话填 `BACKUP_ALERT_WEBHOOK`；接入本地模型时按下文“在 Mac 上运行本地模型”改 `APP_PROVIDERS` 等。然后**把整个 `.env` 存进公司密码管理器**，不要放在 NAS 的同一个共享里：里面的 `BACKUP_KEY` 是解开数据库备份的唯一钥匙。
+
+生产环境（`APP_ENV=production`，compose 里已设）不会用模拟模型：`APP_PROVIDERS=mock` 时所有能力都视为未配置，录像提交会因为“语音识别没有配置”被拒绝。
 
 ```bash
 docker compose up -d --build
@@ -341,6 +372,70 @@ docker compose up -d --build
 ```bash
 docker compose exec api python -m app.cli create-user --username admin --role admin --display-name 管理员
 ```
+
+管理员在“系统管理 → 账号”里给其他人建账号时设的是初始密码，本人第一次登录必须先改密码；管理员重置密码、改角色或停用账号后，那个人之前的登录立即失效。每个人退出时，自己在其他地方的登录也一并失效。
+
+### 3a. 启用 HTTPS
+
+compose 里的 `caddy` 服务在 443 端口提供 HTTPS，证书由它自带的内部证书颁发机构签发（不连公网）。首次 `docker compose up -d` 之后，把根证书导出来装到员工电脑上，浏览器才不会提示“不安全”：
+
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./audition-root.crt
+```
+
+- Mac：双击 `audition-root.crt` 加入“钥匙串访问”的“系统”钥匙串，再双击证书，把“信任”改为“始终信任”。
+- Windows：双击 → 安装证书 → 本地计算机 → 放到“受信任的根证书颁发机构”。公司有域控的，可以用组策略统一下发。
+
+根证书私钥在 `caddydata` 卷里，随 Docker 数据一起保存；重建这台机器时要重新导出、重新下发。
+
+### 3b. 在 Mac 上运行本地模型
+
+模型要在 macOS 上原生运行（Docker 里用不了 Apple GPU），每个模型一个 llama.cpp 进程。各模型的选型和下载见 [`docs/blind-test/README.md`](docs/blind-test/README.md)。
+
+1. 安装 llama.cpp：`brew install llama.cpp`；下载语音识别和笑声模型：`./scripts/download_models.sh`。
+2. 在部署目录建 `models.env`（`chmod 600`，存进密码管理器），内容见 `scripts/macos/model_server.sh` 开头的说明。`MODEL_API_KEY` 用一个随机串。
+3. 每个模型装一个开机自启任务（把 `llm` 换成 `vlm`、`omni` 再各装一次）：
+
+   ```bash
+   sed "s|__DEPLOY_DIR__|$HOME/audition|g; s|__NAME__|llm|g" scripts/macos/com.audition.model.plist > ~/Library/LaunchAgents/com.audition.model.llm.plist
+   ```
+
+   ```bash
+   launchctl load ~/Library/LaunchAgents/com.audition.model.llm.plist
+   ```
+
+4. 在 `.env` 里改为本地模型（容器经 `host.docker.internal` 访问本机）：
+
+   ```
+   APP_PROVIDERS=config
+   APP_ASR=sherpa
+   APP_LAUGH=sherpa
+   APP_LLM=openai
+   APP_VISION=openai
+   APP_VOICE=openai
+   APP_SENSEVOICE_DIR=/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+   APP_VAD_MODEL=/models/silero_vad.onnx
+   APP_CED_DIR=/models/sherpa-onnx-ced-mini-audio-tagging-2024-04-19
+   APP_LLM_BASE_URL=http://host.docker.internal:8081/v1
+   APP_LLM_MODEL=qwen-text
+   APP_VLM_BASE_URL=http://host.docker.internal:8082/v1
+   APP_VLM_MODEL=qwen-vl
+   APP_OMNI_BASE_URL=http://host.docker.internal:8083/v1
+   APP_OMNI_MODEL=qwen-omni
+   APP_OPENAI_API_KEY=<与 models.env 的 MODEL_API_KEY 相同>
+   APP_OPENAI_EXTRA={"chat_template_kwargs": {"enable_thinking": false}}
+   ```
+
+   `APP_SPEECH_EVAL` 不填：普通话评测还没有真实服务，“人设塑造·普通话标准”由评委打分。哪个能力没配，依赖它的条目就自动转评委打分，不会出错。
+5. 重启：`docker compose up -d`。检查容器能连到模型：
+
+   ```bash
+   docker compose exec api curl -fsS -H "Authorization: Bearer $(sed -n 's/^APP_OPENAI_API_KEY=//p' .env)" http://host.docker.internal:8081/v1/models
+   ```
+
+   连不上时，先确认 `launchctl list | grep audition` 里模型在运行、`data/logs/model-llm.log` 没有报错。**不要**为了连通把模型改成监听 `0.0.0.0`。
+
+三个千问模型加 Docker 大约占 40–50 GB 内存，上线前用真实模型跑一次压测（`scripts/load_test.py`），确认内存和处理时长。
 
 ### 4. 挂载 NAS，开启每日备份
 
@@ -357,7 +452,7 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
    ./scripts/daily.sh
    ```
 
-4. 安装每日任务（每天 02:30 执行到期删除和备份，日志在 `data/logs/daily.log`）：
+4. 安装每日任务（每天 02:30 依次执行：处理中断检查、到期删除、备份；日志在 `data/logs/daily.log`）：
 
    ```bash
    sed "s|__DEPLOY_DIR__|$HOME/audition|g" scripts/macos/com.audition.daily.plist > ~/Library/LaunchAgents/com.audition.daily.plist
@@ -367,12 +462,18 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
    launchctl load ~/Library/LaunchAgents/com.audition.daily.plist
    ```
 
+备份做了三道保护：
+
+- **数据库备份加密**：先在本机导出、校验，再用 `.env` 里的 `BACKUP_KEY` 加密后写到 NAS，NAS 上只有密文（`db/*.dump.enc`）。
+- **媒体保留多代**：每天一个快照目录 `media/<日期时间>/`，没变的文件用硬链接，不重复占空间，保留 `BACKUP_MEDIA_KEEP` 代（默认 7）。本机媒体目录是空的、或文件数比上次少一半以上时，脚本拒绝备份并报失败，不会拿损坏的数据覆盖备份。
+- **失败有人知道**：结果写进管理后台（看板顶部显示“上次成功备份时间”，超过 36 小时没有成功备份会标红）；失败时推送到 `BACKUP_ALERT_WEBHOOK`（企业微信、钉钉、飞书的群机器人），Mac 上有人登录时也会弹通知。
+
 ### 5. 从备份恢复
 
-需要三样东西：NAS 上的 `db/` 和 `media/`，以及密码管理器里的 `.env`。缺了 `.env` 里的密钥，数据库里的个人信息和全部视频都无法解密（已实测：换了 `MINIO_KMS_SECRET_KEY` 后视频读不出来）。
+需要三样东西：NAS 上的 `db/` 和 `media/`，以及密码管理器里的 `.env`。缺了 `.env` 里的密钥，数据库备份解不开，数据库里的个人信息和全部视频也无法解密（已实测：换了 `MINIO_KMS_SECRET_KEY` 后视频读不出来）。
 
 ```bash
-cd ~/audition && cp <密码管理器里保存的 .env> .env && mkdir -p data && cp -a /Volumes/audition-backup/media data/minio
+cd ~/audition && cp <密码管理器里保存的 .env> .env && mkdir -p data && cp -a "/Volumes/audition-backup/media/$(ls /Volumes/audition-backup/media | grep '^20' | tail -n 1)" data/minio
 ```
 
 ```bash
@@ -380,7 +481,7 @@ docker compose up -d postgres minio
 ```
 
 ```bash
-docker compose exec -T postgres pg_restore -U audition -d audition --no-owner < /Volumes/audition-backup/db/<最新的 .dump 文件>
+./scripts/restore_db.sh /Volumes/audition-backup/db/<最新的 .dump.enc 文件>
 ```
 
 ```bash
@@ -389,11 +490,14 @@ docker compose up -d
 
 ### 6. 首次部署检查清单（应用镜像尚未在 Apple 芯片上跑过）
 
-- [ ] `docker compose up -d --build` 成功；`docker compose ps` 里 api、两个 worker、postgres、redis、minio 都在运行
+- [ ] `docker compose up -d --build` 成功；`docker compose ps` 里 caddy、api、两个 worker、postgres、redis、minio 都在运行
+- [ ] 员工电脑装好根证书后，`https://<APP_HOST>` 能打开且没有安全提示；`http://<APP_HOST>:8000` 从其他电脑打不开
+- [ ] 本地模型：容器内 `curl` 能连到三个模型（见 3b 第 5 步）；不带 API key 访问被拒绝
 - [ ] 用演示数据跑完一条录像，能出报告（`seed-demo` 之后按上文“上传一条试镜录像”操作）
 - [ ] 报告能导出 PDF（Chromium 和中文字体正常）
-- [ ] `./scripts/daily.sh` 成功，NAS 上出现 `db/*.dump` 和 `media/`
-- [ ] 在另一台电脑或另一个目录按“从备份恢复”演练一次
+- [ ] `./scripts/daily.sh` 成功，NAS 上出现 `db/*.dump.enc` 和 `media/<日期时间>/`，看板显示“上次成功备份”
+- [ ] 拔掉 NAS 跑一次 `./scripts/backup.sh`，群机器人收到失败告警
+- [ ] **请一位非开发同事**在另一台电脑或另一个目录按“从备份恢复”完整演练一次，走不通的地方补进本文档
 - [ ] 断电重启后，登录 Mac，系统能自动恢复服务
 
 ## 更换真实 AI 供应商
@@ -408,7 +512,7 @@ docker compose up -d
    - **声音评价** `rate()`：P5 语调、P6 音色、P7 节奏的主观评分，须是能直接听音频的模型，返回 0–满分的整数；
    - **笑声检测** `detect()`：返回笑声候选片段，是否算“嘻嘻哈哈”由大模型结合上下文判断；
    - 调用失败抛 `ProviderError`，系统会自动重试。
-2. 设 `APP_PROVIDERS=config`，每种能力单独选实现（`APP_ASR`、`APP_LLM`、`APP_VISION`、`APP_VOICE`、`APP_LAUGH`、`APP_SPEECH_EVAL`）。没选的能力视为“未配置”，对应条目缺证据、不出分。已有的实现：本地 SenseVoice 语音识别和 CED 笑声检测（sherpa-onnx）；兼容 OpenAI 接口的大模型、视觉、声音评价（本地 llama-server 上的千问等）；外部判定回放。用法见 [`docs/blind-test/README.md`](docs/blind-test/README.md)。新供应商在 `backend/app/providers/registry.py` 的 `from_env()` 里注册。
+2. 设 `APP_PROVIDERS=config`，每种能力单独选实现（`APP_ASR`、`APP_LLM`、`APP_VISION`、`APP_VOICE`、`APP_LAUGH`、`APP_SPEECH_EVAL`）。没选的能力视为“未配置”，依赖它的条目转评委打分（语音识别除外：没有它不能处理）。已有的实现：本地 SenseVoice 语音识别和 CED 笑声检测（sherpa-onnx）；兼容 OpenAI 接口的大模型、视觉、声音评价（本地 llama-server 上的千问等）；外部判定回放。用法见 [`docs/blind-test/README.md`](docs/blind-test/README.md)。新供应商在 `backend/app/providers/registry.py` 的 `from_env()` 里注册。
 3. 供应商必须是境内服务；密钥通过环境变量传入，不要写进代码。
 4. 换模型或改提示词前，先在金标准集上跑回归，一致率不下降才发布（PRD 第 5 节）。报告会记录供应商、模型版本和提示词版本。
 5. 用固定样本手动验证一次“口头禅保留”：录一段含“那么”“一个”“对不对”的话，确认转写里都在，且 P2 证据逐条列出。

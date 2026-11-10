@@ -30,8 +30,8 @@ export default function CardEditor({ initial, required, onSubmit, submitting }: 
         onSubmit(out);
       }}
     >
-      <Typography.Title level={5}>固定话术（S2 产品讲解）</Typography.Title>
-      <Typography.Paragraph type="secondary">评分表：根据固定话术的完成准确程度打分（满分 50）。没有固定话术和对应的 S2 校准记录时，录像不能提交处理。</Typography.Paragraph>
+      <Typography.Title level={5}>固定话术（销售循环·产品讲解）</Typography.Title>
+      <Typography.Paragraph type="secondary">评分表：根据固定话术的完成准确程度打分（满分 50）。没有固定话术和对应的产品讲解校准记录时，录像不能提交处理。</Typography.Paragraph>
       <Space align="baseline" style={{ display: "flex" }}>
         <Form.Item name={["fixed_script", "version"]} label="话术版本" rules={[{ pattern: /^[A-Za-z0-9_.-]{1,64}$/, message: "英文、数字、点、横线" }]}>
           <Input placeholder="如 script-2026-11" style={{ width: 200 }} />
@@ -40,7 +40,7 @@ export default function CardEditor({ initial, required, onSubmit, submitting }: 
       <Form.Item name={["fixed_script", "text"]} label="话术全文">
         <Input.TextArea rows={6} placeholder="该产品的固定讲解话术" />
       </Form.Item>
-      {calLost && <Alert style={{ marginBottom: 12 }} type="warning" message={`话术版本已改，原 S2 校准记录（${cal?.version}）不再适用，保存后须重新校准`} />}
+      {calLost && <Alert style={{ marginBottom: 12 }} type="warning" message={`话术版本已改，原产品讲解校准记录（${cal?.version}）不再适用，保存后须重新校准`} />}
       <Typography.Title level={5}>必讲要点</Typography.Title>
       {legacy ? (
         <Alert

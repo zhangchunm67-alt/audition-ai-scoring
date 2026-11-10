@@ -20,7 +20,7 @@ function segName(seg: string, segments: RD["media"]["segments"]) {
 function HitTag({ h }: { h: Hit }) {
   const d = h.delta;
   const color = h.issue ? "red" : d && d > 0 ? "green" : "default";
-  const txt = `${h.item_id} ${h.label ?? ""}${d ? `（${d > 0 ? "+" : ""}${d}）` : ""}`;
+  const txt = `${h.item_name} ${h.label ?? ""}${d ? `（${d > 0 ? "+" : ""}${d}）` : ""}`;
   return (
     <Tooltip title={`${h.item_name}：${JUDGE[String(h.judgment)] ?? h.judgment}。${h.reason ?? ""}（置信度 ${h.confidence.toFixed(2)}）`}>
       <Tag color={color} style={{ marginBottom: 4 }}>{txt}</Tag>
@@ -28,7 +28,15 @@ function HitTag({ h }: { h: Hit }) {
   );
 }
 
+/** 按评分表的位置称呼条目，如“人设塑造·普通话标准”。 */
+export function itemLabel(d: RD, itemId: string): string {
+  const it = d.result.items.find((x) => x.item_id === itemId);
+  const dim = d.result.dimensions.find((x) => x.id === it?.dimension);
+  return it ? `${dim?.name ?? it.dimension}·${it.name}` : itemId;
+}
+
 function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
+  const dimName = Object.fromEntries(d.result.dimensions.map((x) => [x.id, x.name]));
   const evByItem = (id: string) => d.evidence.filter((e) => e.item_id === id);
   return (
     <Table<ItemResult>
@@ -49,13 +57,18 @@ function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
         ),
       }}
       columns={[
-        { title: "维度", dataIndex: "dimension", width: 60 },
-        { title: "条目", render: (_, it) => `${it.item_id} ${it.name}` },
+        { title: "维度", dataIndex: "dimension", width: 90, render: (v: string) => dimName[v] ?? v },
+        { title: "条目", render: (_, it) => it.name },
         { title: "得分", width: 90, render: (_, it) => (it.status === "not_applicable" ? "不适用" : `${it.score ?? "—"} / ${it.max}`) },
         { title: "标记", width: 160, render: (_, it) => (
           <Space size={4} wrap>
             {it.low_confidence && <Tooltip title={it.low_confidence_reasons.join("；")}><Tag color="orange">低置信</Tag></Tooltip>}
             {it.status === "missing_evidence" && <Tag color="red">缺证据</Tag>}
+            {it.source === "human" && (
+              <Tooltip title={`评委 ${it.human?.by ?? ""} 打分${it.suggested_score != null ? `，机器建议 ${it.suggested_score}` : ""}${it.human?.note ? `。备注：${it.human.note}` : ""}`}>
+                <Tag color="blue">人工打分</Tag>
+              </Tooltip>
+            )}
           </Space>
         ) },
         { title: "说明", render: (_, it) => <Typography.Text type="secondary">{it.notes.join("；")}</Typography.Text> },
@@ -138,12 +151,12 @@ export default function ReportDetail() {
       </Space>
       <Typography.Paragraph style={{ fontSize: 15 }}>{d.verdict.reason}</Typography.Paragraph>
       {d.superseded_at && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="这是旧修订，已被按新版评分标准重算的版本取代" />}
-      {d.informal && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="非正式报告：使用了草稿版的评分标准或检测配置（含待确认规则和测试占位值），仅供试用，不作录用依据" />}
+      {d.informal && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="非正式报告：使用了草稿版的评分标准或检测配置（含待确认规则和测试占位值），或用了开发测试用的模拟模型，仅供试用，不作录用依据" />}
       {d.critical && (
         <Alert type="info" showIcon style={{ marginBottom: 8 }} message={`临界样本：总档位接近达标线，共 ${d.verdict.rounds.length} 轮取多数，请谨慎使用`}
           description={d.verdict.rounds.map((r) => `第 ${r.round_no} 轮 ${r.total_grade} 档（${r.grade_pass ? "达标" : "不达标"}）`).join("；") + `；报告展示第 ${d.display_round} 轮`} />
       )}
-      {d.result.low_confidence_items.length > 0 && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={`低置信条目：${d.result.low_confidence_items.join("、")}（照常出分，判断把握不足，可点开证据核对）`} />}
+      {d.result.low_confidence_items.length > 0 && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={`低置信条目：${d.result.low_confidence_items.map((i) => itemLabel(d, i)).join("、")}（照常出分，判断把握不足，可点开证据核对）`} />}
       <Row gutter={16}>
         <Col span={16}>
           <Tabs activeKey={tab} onChange={setTab} items={[
@@ -191,7 +204,7 @@ export default function ReportDetail() {
               <Descriptions.Item label="产品">{d.product_name}</Descriptions.Item>
               <Descriptions.Item label="题单">{d.sheet_code}</Descriptions.Item>
               <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[d.audience] ?? d.audience}</Descriptions.Item>
-              <Descriptions.Item label="道具">{d.props_available ? "有（计 P9）" : "无（P9 不适用）"}</Descriptions.Item>
+              <Descriptions.Item label="道具">{d.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）"}</Descriptions.Item>
               <Descriptions.Item label="提交时间">{d.submitted_at ? dayjs(d.submitted_at).format("YYYY-MM-DD HH:mm") : "—"}</Descriptions.Item>
             </Descriptions>
             <Typography.Title level={5}>分段</Typography.Title>

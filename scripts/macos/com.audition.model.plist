@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 本地模型服务开机自启（每个模型一份）。安装方法见 README“在 Mac 上运行本地模型”。
+     __DEPLOY_DIR__ 换成部署目录的绝对路径，__NAME__ 换成 llm、vlm 或 omni。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.audition.model.__NAME__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__DEPLOY_DIR__/scripts/macos/model_server.sh</string>
+    <string>__NAME__</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__DEPLOY_DIR__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__DEPLOY_DIR__/data/logs/model-__NAME__.log</string>
+  <key>StandardErrorPath</key>
+  <string>__DEPLOY_DIR__/data/logs/model-__NAME__.log</string>
+</dict>
+</plist>

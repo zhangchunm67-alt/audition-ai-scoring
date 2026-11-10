@@ -124,13 +124,22 @@ def get_set(sid: uuid.UUID, db: Session = DB, _: User = Manage) -> dict:
     return _set_out(db, _set(db, sid), with_metrics=True)
 
 
+def _has_video(db: Session, rid: uuid.UUID) -> bool:
+    return db.scalar(select(MediaAsset.id).where(MediaAsset.recording_id == rid, MediaAsset.kind == "raw_video",
+                                                 MediaAsset.deleted_at.is_(None)).limit(1)) is not None
+
+
 def _add(db: Session, gs: GoldSet, rec_ids: list[uuid.UUID]) -> int:
     have = {s.recording_id for s in _samples(db, gs)}
     n = 0
     for rid in rec_ids:
         rec = db.get(Recording, rid)
-        if rec is None or rec.status != "done":
-            raise HTTPException(422, "只能加入已出报告的录像")
+        # 上线前校准时 AI 往往还出不了报告：标好分段、视频还在的录像就能加入，校准员照样背对背打分；
+        # 对比时 AI 没有结果的记为“AI 不完整”
+        if rec is None or rec.status in ("uploading", "cancelled") or not rec.segments:
+            raise HTTPException(422, "只能加入已上传并标好分段的录像")
+        if not _has_video(db, rid):
+            raise HTTPException(422, "这条录像的视频已到期删除，校准员没法看，不能加入")
         if rid in have:
             continue
         db.add(GoldSample(gold_set_id=gs.id, recording_id=rid))
@@ -156,7 +165,7 @@ def sample_month(sid: uuid.UUID, body: SampleIn, request: Request, db: Session =
     end = datetime.combine(date(y + (m == 12), m % 12 + 1, 1), time.min, CN)
     have = {s.recording_id for s in _samples(db, gs)}
     pool = [r.id for r in db.scalars(select(Recording).where(Recording.status == "done", Recording.submitted_at >= start, Recording.submitted_at < end))
-            if r.id not in have]
+            if r.id not in have and _has_video(db, r.id)]  # 视频已到期删除的不抽（校准员要看视频）
     picked = _rng.sample(pool, min(body.count, len(pool)))
     n = _add(db, gs, picked)
     _log(db, request, actor, "gold_samples_draw", "gold_set", gs.id, month=body.month, requested=body.count, added=n, pool=len(pool))

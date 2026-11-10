@@ -8,7 +8,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from scoring import config_hash, publish_blockers
+from scoring import config_hash, publish_blockers as _content_blockers, structure_problems
+
+
+def publish_blockers(cfg) -> list[str]:
+    """发布阻碍：待确认标记 + 结构检查（维度满分 100、达标线范围）。"""
+    return _content_blockers(cfg) + structure_problems(cfg)
 
 from ..models.entities import RubricVersion, User
 from ..security.rbac import Perm

@@ -59,7 +59,7 @@ def test_csrf_header_required_for_writes(app, make_user):
 def test_tampered_or_forged_token_rejected(anon):
     import uuid
 
-    anon.c.cookies.set(tokens.COOKIE, tokens.issue(uuid.uuid4(), b"x" * 32, 1))
+    anon.c.cookies.set(tokens.COOKIE, tokens.issue(uuid.uuid4(), b"x" * 32, 1, 0))
     assert anon.get("/api/auth/me").status_code == 401
     anon.c.cookies.set(tokens.COOKIE, "garbage")
     assert anon.get("/api/auth/me").status_code == 401
@@ -69,4 +69,47 @@ def test_login_rate_limited_after_10_failures(anon, make_user):
     make_user("hr")
     for _ in range(10):
         assert anon.post("/api/auth/login", json={"username": "hr1", "password": "wrong-password"}).status_code == 401
+    assert anon.post("/api/auth/login", json={"username": "hr1", "password": PASSWORD}).status_code == 429
+
+
+def test_logout_revokes_stolen_cookie(login):
+    """退出后，之前被截获的登录状态也不能再用。"""
+    api = login("hr")
+    stolen = api.c.cookies.get(tokens.COOKIE)
+    assert api.post("/api/auth/logout").status_code == 204
+    api.c.cookies.set(tokens.COOKIE, stolen)
+    assert api.get("/api/auth/me").status_code == 401
+
+
+def test_admin_set_password_must_be_changed(login, anon):
+    admin = login("admin")
+    r = admin.post("/api/users", json={"username": "newhr", "display_name": "新 HR", "role": "hr", "password": "initial-pass-1"})
+    assert r.status_code == 201
+    hr = anon
+    me = hr.post("/api/auth/login", json={"username": "newhr", "password": "initial-pass-1"}).json()
+    assert me["must_change_password"]
+    assert hr.get("/api/recordings").status_code == 403  # 改密码前只能用登录相关接口
+    assert hr.post("/api/auth/password", json={"old_password": "wrong", "new_password": "brand-new-pass-2"}).status_code == 422
+    assert hr.post("/api/auth/password", json={"old_password": "initial-pass-1", "new_password": "initial-pass-1"}).status_code == 422
+    r = hr.post("/api/auth/password", json={"old_password": "initial-pass-1", "new_password": "brand-new-pass-2"})
+    assert r.status_code == 200 and not r.json()["must_change_password"]
+    assert hr.get("/api/recordings").status_code == 200  # 新签发的登录状态可用
+    # 管理员重置密码：本人旧登录立即失效，再次登录须先改密码
+    uid = r.json()["id"]
+    assert admin.patch(f"/api/users/{uid}", json={"password": "reset-pass-3x"}).status_code == 200
+    assert hr.get("/api/auth/me").status_code == 401
+
+
+def test_unknown_username_not_logged_in_clear(anon, db):
+    from app.models.entities import AuditLog
+
+    anon.post("/api/auth/login", json={"username": "my-secret-password-typed-here", "password": "x"})
+    row = db.query(AuditLog).filter_by(action="login_failed").one()
+    assert row.target_id.startswith("unknown:") and "secret" not in row.target_id
+
+
+def test_login_rate_limited_per_ip(anon, make_user):
+    make_user("hr")
+    for i in range(30):
+        anon.post("/api/auth/login", json={"username": f"guess{i}", "password": "wrong-password"})
     assert anon.post("/api/auth/login", json={"username": "hr1", "password": PASSWORD}).status_code == 429

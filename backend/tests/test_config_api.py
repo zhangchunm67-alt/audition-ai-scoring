@@ -133,10 +133,12 @@ def test_s2_calibration_tied_to_fixed_script_version(login, db):
     assert api.post(f"/api/cards/{card['id']}/publish").status_code == 200
     for bad in ({**cal, "status": "validated", "train_samples": 12, "holdout_samples": 5, "holdout_agreement": 0.9},  # 样本不足
                 {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 0},  # 没有留出验证
+                {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 6, "holdout_agreement": 0.9},  # 留出样本太少
+                {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 12, "holdout_agreement": 0.0},  # 一致率不达标
                 {**cal, "fixed_script_version": "script-0"},
                 {**cal, "anchors": [{"score": 51, "excerpt": "x"}]}):
         assert api.put(f"/api/cards/{card['id']}/s2-calibration", json=bad).status_code == 422, bad
-    ok = {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 6, "holdout_agreement": 0.83,
+    ok = {**cal, "status": "validated", "train_samples": 25, "holdout_samples": 12, "holdout_agreement": 0.88,
           "anchors": [{"score": 45, "excerpt": "按话术讲全了三个好"}]}
     r = api.put(f"/api/cards/{card['id']}/s2-calibration", json=ok)
     assert r.status_code == 200, r.text

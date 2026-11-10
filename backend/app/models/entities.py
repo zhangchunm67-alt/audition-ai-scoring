@@ -61,6 +61,9 @@ class User(Base):
     role: Mapped[str] = mapped_column(ROLE)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 会话版本：退出、改密码、管理员重置密码或改角色时加 1，之前签发的登录状态全部失效
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # 管理员设的密码须本人先改
     created_at: Mapped[datetime] = created_at()
 
 
@@ -257,7 +260,7 @@ class Recording(Base):
     audience: Mapped[str] = mapped_column(String(32))  # 必选适用达标线（C27）
     props_available: Mapped[bool] = mapped_column(Boolean)  # 画面里有无贴片 / KT 板（C26）
     status: Mapped[str] = mapped_column(
-        _enum("uploading", "uploaded", "submitted", "processing", "done", "failed", "cancelled", name="recording_status"),
+        _enum("uploading", "uploaded", "submitted", "processing", "awaiting_human", "done", "failed", "cancelled", name="recording_status"),
         default="uploading",
     )
     # 分段（C28），时间都相对整段视频：[{segment: main | question:<id> | reading, start_ms, end_ms}]
@@ -269,6 +272,8 @@ class Recording(Base):
     processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 出报告或最终失败的时间
     failure_reason: Mapped[str | None] = mapped_column(Text)
+    # 评委打的人工分（decisions.md T39）：{条目: {score, by, at, note}}，各轮共用
+    human_scores: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     uploaded_by: Mapped[uuid.UUID] = fk_uuid("users.id")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
@@ -331,7 +336,7 @@ class PipelineRun(Base):
     recording_id: Mapped[uuid.UUID] = fk_uuid("recordings.id")
     round_no: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(
-        _enum("queued", "running", "completed", "failed", name="run_status"), default="queued"
+        _enum("queued", "running", "awaiting_human", "completed", "failed", name="run_status"), default="queued"
     )
     stage: Mapped[str | None] = mapped_column(String(32))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)

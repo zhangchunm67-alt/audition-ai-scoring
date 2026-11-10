@@ -10,14 +10,16 @@ COOKIE = "session"
 _ALG = "HS256"
 
 
-def issue(user_id: uuid.UUID, key: bytes, hours: int) -> str:
+def issue(user_id: uuid.UUID, key: bytes, hours: int, session_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
-    return jwt.encode({"sub": str(user_id), "iat": now, "exp": now + timedelta(hours=hours), "jti": uuid.uuid4().hex}, key, algorithm=_ALG)
+    return jwt.encode({"sub": str(user_id), "sv": session_version, "iat": now, "exp": now + timedelta(hours=hours), "jti": uuid.uuid4().hex},
+                      key, algorithm=_ALG)
 
 
-def verify(token: str, key: bytes) -> uuid.UUID | None:
+def verify(token: str, key: bytes) -> tuple[uuid.UUID, int] | None:
+    """返回 (用户编号, 会话版本)。会话版本与数据库里的不一致（已退出、改过密码）时由调用方拒绝。"""
     try:
         data = jwt.decode(token, key, algorithms=[_ALG], options={"require": ["sub", "exp"]})
-        return uuid.UUID(data["sub"])
-    except (jwt.PyJWTError, ValueError):
+        return uuid.UUID(data["sub"]), int(data.get("sv", 0))
+    except (jwt.PyJWTError, ValueError, TypeError):
         return None

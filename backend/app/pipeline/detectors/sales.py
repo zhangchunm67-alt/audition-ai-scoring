@@ -93,5 +93,5 @@ def s3(ctx: Ctx):
 def s4(ctx: Ctx):
     """逼单：从众、损失规避、权威认同、价格拆分、沉没成本，各算一次；不合规写法留证据但不计（judgment=not_count）。"""
     r = ctx.ask("s4_closing", {"transcript": ctx.main.text})
-    return [ctx.quote_ev("S4", "instance", x["quote"], label=x["method"], judgment=binary(x["compliant"]), reason=x["reason"],
+    return [ctx.quote_ev("S4", "instance", x["quote"], strict=False, label=x["method"], judgment=binary(x["compliant"]), reason=x["reason"],
                          model_conf=x["confidence"]) for x in r["items"] if x["method"] != "other"]

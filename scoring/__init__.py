@@ -1,11 +1,13 @@
 """主播试镜计分引擎：证据 + 配置 → 分数、档位、结论。不依赖数据库、网络或任何 AI。"""
-from .config import ConfigError, RubricConfig, config_hash, ensure_publishable, load_config, parse_config, publish_blockers
+from .config import ConfigError, RubricConfig, config_hash, ensure_publishable, load_config, parse_config, publish_blockers, structure_problems
 from .engine import EvidenceError, ScoringInputError, round_half_up, score_round
 from .ranking import RankEntry, rank
-from .types import ChecklistPoint, Evidence, FinalVerdict, RoundResult, ScoringContext
+from .types import ChecklistPoint, Evidence, FinalVerdict, HumanScore, RoundResult, ScoringContext
 from .verdict import VerdictError, finalize, rounds_required
 
 __all__ = [
+    "HumanScore",
+    "structure_problems",
     "ChecklistPoint",
     "ConfigError",
     "Evidence",

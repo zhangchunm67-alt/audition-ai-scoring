@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-PATH = Path(__file__).resolve().parents[3] / "config" / "detectors" / "detectors-v2.yaml"
+PATH = Path(__file__).resolve().parents[3] / "config" / "detectors" / "detectors-v3.yaml"
 
 
 class _N(BaseModel):
@@ -58,6 +58,12 @@ class DetectorConfig(_N):
     class Redlines(_N):
         context_chars: int
 
+    class HumanReview(_N):
+        manual: list[str] = Field(default_factory=list)  # 只由评委打分
+        confirm: list[str] = Field(default_factory=list)  # 机器建议分，评委确认
+        confirm_on_deduction: list[str] = Field(default_factory=list)  # 机器判扣分时评委确认
+        fallback: bool = False  # 机器评不出时转评委打分
+
     asr: Asr
     frames: Frames
     p2: P2
@@ -66,6 +72,7 @@ class DetectorConfig(_N):
     p9: P9
     o4: O4
     redlines: Redlines
+    human_review: HumanReview = Field(default_factory=HumanReview)  # v2 及以前没有：全部机器评
 
     def model_post_init(self, _ctx) -> None:
         if self.asr.disfluency_removal or not self.asr.word_timestamps:

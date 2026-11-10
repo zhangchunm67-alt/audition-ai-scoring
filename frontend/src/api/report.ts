@@ -10,6 +10,7 @@ export type ItemResult = {
   item_id: string; name: string; dimension: string; type: string; status: string; score: number | null; max: number;
   low_confidence: boolean; low_confidence_reasons: string[]; missing_reasons: string[];
   contributions: { evidence_id: string; delta: number; note: string }[]; notes: string[];
+  source?: "machine" | "human"; suggested_score?: number | null; human?: { score: number; by?: string | null; note?: string | null } | null;
 };
 export type Dimension = { id: string; name: string; status: string; raw: number | null; applicable_max: number; scaled: number | null; score: number | null; grade: number | null };
 export type RoundSummary = { round_no: number; total_grade: number; grade_pass: boolean; dimension_scores: Record<string, number>; dimension_grades: Record<string, number> };

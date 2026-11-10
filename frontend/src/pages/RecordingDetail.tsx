@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Col, Descriptions, Popconfirm, Progress, Row, Space, Table, Tag, Typography, Upload } from "antd";
+import { Alert, Button, Card, Col, Descriptions, Input, InputNumber, Popconfirm, Progress, Row, Space, Table, Tag, Typography, Upload } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -101,6 +101,61 @@ function Resume({ rec, onDone }: { rec: Rec; onDone: (r: Rec) => void }) {
   );
 }
 
+type Pending = {
+  item_id: string; label: string; max: number; reasons: string[]; suggested: Record<string, number | null>;
+  evidence: { start_ms: number | null; quote: string | null; label: string | null; judgment: unknown; reason: string | null }[];
+};
+type HumanReview = { status: string; items: Pending[]; scores: Record<string, { score: number; by?: string; note?: string }> };
+
+/** 评委打分（T39）：机器评不了或须人工确认的条目。机器建议分只作参考，可以改。可分几次录入。 */
+function HumanScoring({ id, onDone }: { id: string; onDone: () => void }) {
+  const { data, reload } = useFetch<HumanReview>(`/recordings/${id}/human-review`);
+  const [vals, setVals] = useState<Record<string, { score: number | null; note: string }>>({});
+  const act = useAction();
+  useEffect(() => {
+    if (!data) return;
+    const init: Record<string, { score: number | null; note: string }> = {};
+    for (const it of data.items) {
+      const sug = Object.values(it.suggested).find((v) => v != null) ?? null;
+      init[it.item_id] = { score: data.scores[it.item_id]?.score ?? sug, note: data.scores[it.item_id]?.note ?? "" };
+    }
+    setVals(init);
+  }, [data]);
+  if (!data || data.items.length === 0) return null;
+  const filled = Object.entries(vals).filter(([, v]) => v.score != null);
+  const submit = async () => {
+    const scores = Object.fromEntries(filled.map(([k, v]) => [k, { score: v.score, note: v.note || null }]));
+    const r = await act(() => put<HumanReview>(`/recordings/${id}/human-scores`, { scores }), "已保存");
+    if (r) { reload(); if (r.status !== "awaiting_human") onDone(); }
+  };
+  return (
+    <Card title="评委打分" size="small" style={{ marginBottom: 16 }} data-testid="human-scoring"
+      extra={<Button type="primary" disabled={filled.length === 0} onClick={submit}>保存（{filled.length}/{data.items.length}）</Button>}>
+      <Typography.Paragraph type="secondary">
+        以下条目机器评不了，或在校准达标前须由评委确认。请看视频后按评分表打分；有机器建议分的已预填，可以修改。全部填完后自动出报告。
+      </Typography.Paragraph>
+      <Table size="small" pagination={false} rowKey="item_id" dataSource={data.items}
+        expandable={{ rowExpandable: (r) => r.evidence.length > 0, expandedRowRender: (r) => (
+          <ul style={{ margin: 0 }}>{r.evidence.map((e, i) => <li key={i}>{fmtMs(e.start_ms)} {e.quote ?? e.label} {e.reason ? `—— ${e.reason}` : ""}</li>)}</ul>
+        ) }}
+        columns={[
+          { title: "评分表条目", dataIndex: "label", width: 220 },
+          { title: "满分", dataIndex: "max", width: 60 },
+          { title: "为什么要人工", dataIndex: "reasons", render: (v: string[]) => v.join("；") },
+          { title: "机器建议", width: 90, render: (_, r) => Object.values(r.suggested).filter((v) => v != null).join(" / ") || "—" },
+          { title: "评委打分", width: 110, render: (_, r) => (
+            <InputNumber min={0} max={r.max} step={0.5} value={vals[r.item_id]?.score ?? null} data-testid={`human-${r.item_id}`}
+              onChange={(v) => setVals({ ...vals, [r.item_id]: { ...vals[r.item_id], score: v } })} />
+          ) },
+          { title: "备注", width: 200, render: (_, r) => (
+            <Input size="small" maxLength={500} value={vals[r.item_id]?.note ?? ""}
+              onChange={(e) => setVals({ ...vals, [r.item_id]: { ...vals[r.item_id], note: e.target.value } })} />
+          ) },
+        ]} />
+    </Card>
+  );
+}
+
 export default function RecordingDetail() {
   const { id } = useParams();
   const { data, reload } = useFetch<Rec>(`/recordings/${id}`);
@@ -109,6 +164,11 @@ export default function RecordingDetail() {
   const { can } = useAuth();
   const act = useAction();
   useEffect(() => setRec(data), [data]);
+  useEffect(() => {  // 处理中每 15 秒自动刷新一次状态
+    if (!rec || !["submitted", "processing"].includes(rec.status)) return;
+    const t = setInterval(reload, 15000);
+    return () => clearInterval(t);
+  }, [rec?.status]);
   if (!rec) return null;
   const src = localUrlOf(rec.id) ?? (rec.video_asset_id ? `/api/media/${rec.video_asset_id}` : null);
   const editable = can("recording.upload");
@@ -129,10 +189,12 @@ export default function RecordingDetail() {
         )}
       </Space>
       {rec.status === "failed" && (
-        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="处理失败，已通知候选人重录并告警管理员" description={rec.failure_reason}
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="处理失败，已告警管理员。多半是模型或系统问题，排查后可重新处理；确认是录像本身的问题再联系候选人重录" description={rec.failure_reason}
           action={editable && <Button onClick={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); }}>重新处理</Button>} />
       )}
-      {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="正在自动评分，完成后在这里查看结果（目标 30 分钟内）。" action={<Button onClick={reload}>刷新</Button>} />}
+      {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="正在自动评分，页面每 15 秒自动刷新，完成后在这里查看结果（目标 30 分钟内）。" action={<Button onClick={reload}>刷新</Button>} />}
+      {rec.status === "awaiting_human" && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="机器部分已完成，等评委给下面的条目打分" />}
+      {rec.status === "awaiting_human" && can("human.score") && <HumanScoring id={rec.id} onDone={reload} />}
       {rec.status === "done" && (
         <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成"
           action={rec.report_id && <Button type="primary" onClick={() => nav(`/reports/${rec.report_id}`)}>查看报告</Button>} />
@@ -142,7 +204,7 @@ export default function RecordingDetail() {
       <Descriptions size="small" bordered column={3} style={{ marginBottom: 16 }}>
         <Descriptions.Item label="产品">{rec.product_name}</Descriptions.Item>
         <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[rec.audience] ?? rec.audience}</Descriptions.Item>
-        <Descriptions.Item label="道具">{rec.props_available ? "有（计 P9）" : "无（P9 不适用）"}</Descriptions.Item>
+        <Descriptions.Item label="道具">{rec.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）"}</Descriptions.Item>
         <Descriptions.Item label="视频时长">{fmtMs(rec.video_duration_ms)}</Descriptions.Item>
         <Descriptions.Item label="主体段时长">{fmtMs(rec.main_duration_ms)}</Descriptions.Item>
         <Descriptions.Item label="提交时间">{rec.submitted_at ? dayjs(rec.submitted_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
@@ -150,7 +212,7 @@ export default function RecordingDetail() {
       </Descriptions>
       {rec.status === "uploading" && rec.upload && editable && <Resume rec={rec} onDone={(r) => (setRec(r), reload())} />}
       {rec.status === "uploaded" && src && editable && <Marker rec={rec} src={src} onSaved={setRec} />}
-      {["submitted", "processing", "done", "failed"].includes(rec.status) && src && (
+      {["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status) && src && (
         <Row gutter={24}>
           <Col span={12}><video src={src} controls style={{ width: "100%", background: "#000" }} /></Col>
           <Col span={12}>

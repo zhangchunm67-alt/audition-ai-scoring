@@ -374,6 +374,20 @@ def _score_t6(item: T6Item, evs: list[Evidence], ctx: ScoringContext, res: ItemR
     return total
 
 
+def _score_item(it, evs: list[Evidence], ctx: ScoringContext, res: ItemResult) -> Fraction:
+    if isinstance(it, T1Item):
+        return _score_t1(it, evs, ctx, res)
+    if isinstance(it, T2Item):
+        return _score_t2(it, evs, res)
+    if isinstance(it, T3T4Item):
+        return _score_t3t4(it, evs, ctx, res)
+    if isinstance(it, T4Item):
+        return _score_t4(it, evs, res)
+    if isinstance(it, T5Item):
+        return _score_t5(it, evs, res)
+    return _score_t6(it, evs, ctx, res)
+
+
 # ───────────────────────── 维度汇总（流水线计分与金标准共用） ─────────────────────────
 
 
@@ -428,6 +442,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
         for it in dim.items:
             res = ItemResult(item_id=it.id, name=it.name, dimension=dim.id, type=it.type, status="scored", score=None, max=it.max)
             evs = [e for e in by_item.get(it.id, []) if not e.excluded]
+            dropped = [e for e in by_item.get(it.id, []) if e.excluded and e.review.reviewer == "system"]
             res.evidence_ids = [e.evidence_id for e in _order(evs)]
             items.append(res)
             if it.applicable_if == "props_available" and not ctx.props_available:
@@ -435,39 +450,58 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
                 res.notes.append("画面里没有贴片或 KT 板，本条不适用")
                 continue
             app_max += it.max
-            if it.id not in ctx.completed_detectors:
-                res.status = "missing_evidence"
-                res.missing_reasons.append("检测器未成功完成")
-                complete = False
-                continue
-            try:
-                if isinstance(it, T1Item):
-                    score = _score_t1(it, evs, ctx, res)
-                elif isinstance(it, T2Item):
-                    score = _score_t2(it, evs, res)
-                elif isinstance(it, T3T4Item):
-                    score = _score_t3t4(it, evs, ctx, res)
-                elif isinstance(it, T4Item):
-                    score = _score_t4(it, evs, res)
-                elif isinstance(it, T5Item):
-                    score = _score_t5(it, evs, res)
-                else:
-                    score = _score_t6(it, evs, ctx, res)
-            except _Missing as m:
-                res.status = "missing_evidence"
-                res.missing_reasons.append(m.reason)
-                res.contributions.clear()
-                complete = False
-                continue
-            if not 0 <= score <= it.max:
-                raise AssertionError(f"{it.id} 分数 {score} 超出 0–{it.max}")
+            machine: Fraction | None = None
+            why: str | None = None
+            if it.id in ctx.human_only and it.id not in ctx.completed_detectors:
+                why = "本条由评委人工打分"
+            elif it.id not in ctx.completed_detectors:
+                why = "检测器未成功完成"
+            else:
+                try:
+                    machine = _score_item(it, evs, ctx, res)
+                except _Missing as m:
+                    why = m.reason
+                    res.contributions.clear()
+            if machine is not None and not 0 <= machine <= it.max:
+                raise AssertionError(f"{it.id} 分数 {machine} 超出 0–{it.max}")
+            hs = ctx.human_scores.get(it.id)
+            if hs is not None:
+                if hs.score > it.max or Fraction(str(hs.score)) * 2 != int(Fraction(str(hs.score)) * 2):
+                    raise ScoringInputError(f"{it.id}: 人工分 {hs.score:g} 应为 0–{it.max} 之间的整数或半分")
+                score = Fraction(str(hs.score))
+                res.source, res.human = "human", hs
+                res.suggested_score = None if machine is None else _f(machine)
+                res.notes.append(f"人工打分 {hs.score:g}" + (f"（机器建议 {_f(machine):g}）" if machine is not None else ""))
+            else:
+                need = (it.id in ctx.human_only or it.id in ctx.human_confirm
+                        or (it.id in ctx.human_on_deduction and machine is not None and machine < it.max)
+                        or (machine is None and ctx.human_fallback))
+                if need:
+                    res.status, res.score = "awaiting_human", None
+                    res.suggested_score = None if machine is None else _f(machine)
+                    if it.id in ctx.human_only or it.id in ctx.human_confirm:
+                        res.missing_reasons.append("本条须评委人工打分" if machine is None else "机器建议分须评委确认")
+                    elif machine is not None:
+                        res.missing_reasons.append("机器判为扣分，须评委确认")
+                    if why and machine is None:
+                        res.missing_reasons.append(f"机器未评出：{why}")
+                    complete = False
+                    continue
+                if machine is None:
+                    res.status = "missing_evidence"
+                    res.missing_reasons.append(why or "缺少证据")
+                    complete = False
+                    continue
+                score = machine
             res.score = _f(score)
             raw += score
             thr = cfg.low_conf_threshold(it)
             for e in _order(evs):
                 if e.confidence < thr:
                     res.low_confidence_reasons.append(f"证据 {e.evidence_id} 置信度 {e.confidence:.2f} 低于 {thr:.2f}")
-            res.low_confidence = bool(res.low_confidence_reasons)
+            if dropped:  # 机器自己排除的证据（如引用对不上原文）：不计分，但提醒复核
+                res.low_confidence_reasons.append(f"有 {len(dropped)} 条机器证据因{dropped[0].review.note or '无法核对'}")
+            res.low_confidence = bool(res.low_confidence_reasons) and res.source == "machine"
         dims.append(dimension_result(cfg, dim.id, dim.name, raw, app_max, complete))
 
     # 红线
@@ -495,6 +529,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
     threshold = cfg.thresholds[ctx.audience]
     total, grade_pass, critical = total_verdict(cfg, dims, threshold)
     missing = [i.item_id for i in items if i.status == "missing_evidence"]
+    awaiting = [i.item_id for i in items if i.status == "awaiting_human"]
     if not redlines_done:
         missing.append("redlines")
     return RoundResult(
@@ -515,4 +550,5 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
         missing_items=missing,
         low_confidence_items=[i.item_id for i in items if i.low_confidence],
         model_manifest=dict(ctx.model_manifest),
+        awaiting_human_items=awaiting,
     )

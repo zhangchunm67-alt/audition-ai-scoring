@@ -133,6 +133,13 @@ def main(argv: list[str] | None = None) -> None:
     cu.add_argument("--display-name", required=True)
     sub.add_parser("seed-demo")
     sub.add_parser("purge-expired")
+    sub.add_parser("sweep-stuck")
+    bs = sub.add_parser("backup-status", help="备份脚本写入备份结果（管理后台显示）")
+    bs.add_argument("result", choices=["ok", "failed"])
+    bs.add_argument("message")
+    er = sub.add_parser("erase-candidate", help="删除候选人全部资料（不可恢复）")
+    er.add_argument("--id", required=True)
+    er.add_argument("--reason", required=True)
     sub.add_parser("worker")
     args = ap.parse_args(argv)
     if args.cmd == "worker":
@@ -143,6 +150,10 @@ def main(argv: list[str] | None = None) -> None:
         from .settings import get_settings
 
         conn = Redis.from_url(get_settings().redis_url)
+        with Session(get_engine()) as db:  # 启动时先清理上次断电、重启留下的中断任务
+            from .pipeline.orchestrator import sweep_stuck
+
+            sweep_stuck(db)
         Worker([Queue(QUEUE_NAME, connection=conn)], connection=conn).work()
         return
     with Session(get_engine()) as db:
@@ -155,6 +166,24 @@ def main(argv: list[str] | None = None) -> None:
             from .services.storage import get_storage
 
             print(purge_expired(db, get_storage()))
+        elif args.cmd == "erase-candidate":
+            import uuid as _uuid
+
+            from .services.erasure import erase_candidate
+            from .services.storage import get_storage
+
+            print(erase_candidate(db, get_storage(), _uuid.UUID(args.id), actor_id=None, reason=args.reason))
+        elif args.cmd == "backup-status":
+            from .services import audit
+
+            audit.record(db, None, actor_type="system", actor_id=None, action=f"backup_{args.result}", target_type="backup",
+                         target_id="nas", message=args.message[:500])
+            db.commit()
+        elif args.cmd == "sweep-stuck":
+            from .pipeline.orchestrator import sweep_stuck
+
+            ids = sweep_stuck(db)
+            print(f"标为失败（处理中断）的录像：{len(ids)} 条" + ("：" + "、".join(ids) if ids else ""))
         else:
             seed_demo(db)
 

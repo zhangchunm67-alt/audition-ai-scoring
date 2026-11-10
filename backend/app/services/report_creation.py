@@ -10,6 +10,13 @@ from scoring import FinalVerdict, RoundResult
 from ..models.entities import DetectorConfigVersion, RedlineLexiconVersion, Report, RubricVersion
 
 
+MODEL_KEYS = ("asr", "speech_eval", "llm", "vision", "laugh", "voice")
+
+
+def uses_mock(manifest: dict) -> bool:
+    return any(str(manifest.get(k, "")).startswith("mock") for k in MODEL_KEYS)
+
+
 def build_report(
     *,
     recording_id: UUID,
@@ -40,6 +47,8 @@ def build_report(
         informal=(rubric.status != "published" or detector_config.status != "published"
                   or (lexicon is not None and lexicon.status != "published")
                   # S2 校准记录未经验证（CAL-S2-PRODUCT）
-                  or display_result.model_manifest.get("s2_calibration_status", "validated") != "validated"),
+                  or display_result.model_manifest.get("s2_calibration_status", "validated") != "validated"
+                  # 用了 Mock 模型（开发测试），分数不是真实模型给的
+                  or uses_mock(display_result.model_manifest)),
         suggestions=suggestions,
     )

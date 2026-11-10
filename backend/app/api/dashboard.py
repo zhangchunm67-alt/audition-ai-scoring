@@ -100,3 +100,25 @@ def efficiency(request: Request, date_from: date | None = None, date_to: date | 
         "low_confidence": [{"item_id": k, "name": v[2], "rate": round(v[0] / v[1], 4), "count": v[0], "n": v[1]} for k, v in sorted(low.items())],
         "daily": sorted(daily.values(), key=lambda x: x["date"]),
     }
+
+
+@router.get("/ops")
+def ops(db: Session = DB, user: User = Read) -> dict:
+    """运维状态：上次备份结果（scripts/backup.sh 写入）、等待评委打分和处理中的录像数。超过 36 小时没有成功备份即告警。"""
+
+    from sqlalchemy import func
+
+    from ..models.entities import AuditLog
+
+    def last(action: str):
+        row = db.scalar(select(AuditLog).where(AuditLog.action == action).order_by(AuditLog.at.desc()).limit(1))
+        return None if row is None else {"at": row.at, "message": (row.detail or {}).get("message")}
+
+    ok, failed = last("backup_ok"), last("backup_failed")
+    now = datetime.now(timezone.utc)
+    stale = ok is None or now - ok["at"] > timedelta(hours=36)
+    counts = dict(db.execute(select(Recording.status, func.count()).where(Recording.status.in_(("awaiting_human", "processing", "submitted")))
+                             .group_by(Recording.status)).all())
+    return {"backup_ok": ok, "backup_failed": failed if failed and (ok is None or failed["at"] > ok["at"]) else None,
+            "backup_stale": stale, "awaiting_human": counts.get("awaiting_human", 0),
+            "processing": counts.get("processing", 0) + counts.get("submitted", 0)}

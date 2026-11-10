@@ -253,3 +253,17 @@ def test_rank_by_dimension():
     assert [x.report_id for x in rank(entries, by="S")] == ["b", "a", "c", "d"]
     with pytest.raises(ValueError):
         rank(entries, by="X")
+
+
+def test_publish_checks_dimension_total_and_thresholds():
+    from scoring import parse_config, structure_problems as publish_blockers
+
+    from .helpers import raw_config
+
+    d = raw_config()
+    d["dimensions"][0]["items"][0]["max"] = 20  # 人设塑造·形象 10 → 20，维度合计 110
+    d["thresholds"]["new_trial"] = 40
+    blockers = publish_blockers(parse_config(d))
+    assert any("人设塑造" in b and "110" in b for b in blockers)
+    assert any("new_trial" in b and "5–33" in b for b in blockers)
+    assert not any("满分合计" in b or "超出总档位" in b for b in publish_blockers(parse_config(raw_config())))

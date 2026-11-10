@@ -31,11 +31,19 @@
 - 部署方案：公司内网 Mac Studio（M5 Max、64 GB、512 GB）+ NAS 备份，见 README“在 Mac Studio 上部署”和 decisions.md T36。新增 `scripts/backup.sh`、`scripts/daily.sh`、`scripts/macos/com.audition.daily.plist`；媒体目录改为宿主机目录 `MEDIA_DIR`。
 - 已用真实容器验证：MinIO 加密写入、数据库迁移、备份、恢复、缺密钥不可解密。应用镜像在 Apple 芯片上尚未跑过，首次部署按 README 检查清单确认。
 
-## 验证状态（2026-11-06）
+### 2026-11-10（按全面审查报告修复，decisions.md T39–T49）
+- 评委人工打分来源：检测配置 detectors-v3 的 `human_review` 决定哪些条目由评委打分或确认；模型能力没配置的条目自动转评委；新状态“等待评委打分”，录像页有打分表单。
+- 生产环境不用 Mock；引用定位容错；卡住的录像超时转失败可重新处理；并发名额按租期；Redis AOF。
+- 防提示词注入（prompts-v3 + 前置检查）；内网 HTTPS（Caddy）；备份加密、多代快照、异常时拒绝备份并告警；删除候选人全部资料；会话可撤销、首次登录改密码。
+- 校准：发布前检查维度满分和达标线；S2 已验证须 ≥10 份留出样本、一致率 ≥85%；上线门槛 ≥30 条定稿样本；金标准集可加入未出报告的录像；评委分不计入 AI 一致率。
+- 本地模型部署：`scripts/macos/model_server.sh` + launchd 模板，只监听本机并要求 API key。
 
-- `pytest`（计分引擎、流水线、后端接口，PostgreSQL 16）：447 通过，1 跳过（本机没有 Redis 的队列模式测试）。
-- 前端 `npm run typecheck` 通过；`scripts/run_e2e.sh`（Playwright）18 步全部通过。
-- 端到端测试发现并修复一处引擎问题：单部分 T4 条目省略 `ref` 时，校验只认部分名 `main`，导致校准员给 S2 打分被拒。
+## 验证状态（2026-11-10）
+
+- `pytest`（计分引擎、流水线、后端接口，PostgreSQL 16 + Redis）：516 通过，1 跳过（没有 SenseVoice 模型目录）。
+- 前端 `npm run typecheck` 通过；`scripts/run_e2e.sh`（Playwright）19 步全部通过（含评委打分、首次登录改密码）。
+- `scripts/backup.sh` 用模拟的 docker 验证过快照、硬链接、保留代数、空目录和文件数骤降时拒绝备份、加密可解密；没有在真实 Mac 和 NAS 上跑过。
+- 没有验证：真实模型（千问、SenseVoice 以外）、Caddy 证书下发、Apple 芯片上构建镜像。
 
 ## 重要边界（不变）
 
@@ -46,6 +54,8 @@
 - P1 不评相貌，相貌也不用于自动录用结论。
 
 ## 下一步建议
+
+0. 审查报告里需要业务拍板、代码改不了的：培训确认评分表没写明的口径（“每处扣1分0”、逼单“至少三种”、贴片/KT板折算 C26、着装要求 P-P1-DRESS）；法务确认保存期限（P-B12）；真实模型上线前把注入样本加进金标准回归。react-router 仍有 2 个中危公告，只在 v7 修复，本项目不用其受影响的功能，未升大版本。
 
 1. 收集首个产品的 20–30 份人工标注样本，并确认可以用于内部校准。确定 S2 “已验证”的一致率门槛（CAL-S2-PRODUCT），以及主观条目的校准方法（CAL-SUBJECTIVE）。
 2. 选型能直接听音频的声音评价模型（P5、P6、P7），实现 `VoiceRater` 接口并在 `providers/registry.py` 注册。

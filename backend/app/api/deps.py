@@ -16,12 +16,16 @@ DB = Depends(get_db)
 
 def current_user(request: Request, db: Session = DB) -> User:
     token = request.cookies.get(tokens.COOKIE)
-    uid = tokens.verify(token, get_settings().session_key) if token else None
-    if uid is None:
+    got = tokens.verify(token, get_settings().session_key) if token else None
+    if got is None:
         raise HTTPException(401, "请先登录")
-    user = db.get(User, uid)
+    user = db.get(User, got[0])
     if user is None or not user.is_active:
         raise HTTPException(401, "账号不存在或已停用")
+    if got[1] != user.session_version:
+        raise HTTPException(401, "登录已失效，请重新登录")
+    if user.must_change_password and not request.url.path.startswith("/api/auth/"):
+        raise HTTPException(403, "请先修改初始密码")
     return user
 
 

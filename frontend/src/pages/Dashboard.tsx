@@ -1,4 +1,4 @@
-import { Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useState } from "react";
 import { useFetch } from "../components/hooks";
@@ -67,7 +67,7 @@ function EfficiencyTab() {
         <Col span={12}>
           <Card size="small" title="各条目低置信比例">
             <Table size="small" rowKey="item_id" pagination={false} dataSource={[...e.low_confidence].sort((a, b) => b.rate - a.rate)} columns={[
-              { title: "条目", render: (_, r) => `${r.item_id} ${r.name}` },
+              { title: "条目", render: (_, r) => r.name },
               { title: "低置信", render: (_, r) => `${r.count} / ${r.n}` },
               { title: "比例", dataIndex: "rate", render: (v: number) => (v > 0.3 ? <Tag color="orange">{pct(v)}</Tag> : pct(v)) },
             ]} />
@@ -85,10 +85,31 @@ function EfficiencyTab() {
   );
 }
 
+type Ops = {
+  backup_ok: { at: string; message?: string } | null; backup_failed: { at: string; message?: string } | null;
+  backup_stale: boolean; awaiting_human: number; processing: number;
+};
+
+/** 运维状态：备份是否正常（超过 36 小时没有成功备份标红）、等待评委打分的录像数。 */
+function OpsBar() {
+  const { data } = useFetch<Ops>("/dashboard/ops");
+  if (!data) return null;
+  const when = (x: { at: string } | null) => (x ? new Date(x.at).toLocaleString("zh-CN") : "从未");
+  return (
+    <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>
+      {data.backup_failed && <Alert type="error" showIcon message={`备份失败（${when(data.backup_failed)}）：${data.backup_failed.message ?? ""}`} />}
+      <Alert type={data.backup_stale ? "error" : "success"} showIcon
+        message={`上次成功备份：${when(data.backup_ok)}${data.backup_stale ? "（超过 36 小时，请检查 NAS 和每日任务）" : ""}`} />
+      {data.awaiting_human > 0 && <Alert type="warning" showIcon message={`有 ${data.awaiting_human} 条录像等待评委打分`} />}
+    </Space>
+  );
+}
+
 export default function Dashboard() {
   return (
     <>
       <Typography.Title level={4}>看板</Typography.Title>
+      <OpsBar />
       <Tabs items={[{ key: "a", label: "一致率", children: <AgreementTab /> }, { key: "e", label: "效率", children: <EfficiencyTab /> }]} />
     </>
   );

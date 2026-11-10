@@ -35,7 +35,7 @@ def test_list_and_detail(login, seeded, video_file, db):
     d = hr.get(f"/api/reports/{rep.id}").json()
     assert d["candidate_name"] == "张三" and d["label"] == rep.label and d["verdict"]["reason"]
     assert len(d["result"]["items"]) == 23 and len(d["result"]["dimensions"]) == 4 and d["result"]["redlines_enabled"] is False
-    assert d["trace"]["rubric_version"] == "rubric-v0.2" and d["trace"]["detector_config_version"] == "detectors-v2"
+    assert d["trace"]["rubric_version"] == "rubric-v0.2" and d["trace"]["detector_config_version"] == "detectors-v3"
     assert d["trace"]["model_manifest"]["llm"] == "mock-llm@1" and d["media"]["video_asset_id"]
     assert _actions(db, "report_view") and _actions(db, "report_list")
 
@@ -125,8 +125,8 @@ def test_excel_export(login, seeded, video_file, db):
     ws = wb["排名"]
     assert ws["A2"].value == "排名" and ws["B3"].value == "张三" and ws["E3"].value in ("推荐", "待定", "不推荐")
     detail = wb["条目明细"]
-    assert [c.value for c in detail[1]][2:] == ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "S1", "S2", "S3", "S4",
-                                                "L1", "L2", "L3", "L4", "L5", "O1", "O2", "O3", "O4"]
+    heads = [c.value for c in detail[1]][2:]
+    assert len(heads) == 23 and heads[0] == "人设塑造·形象" and heads[2] == "人设塑造·普通话标准" and heads[-1] == "其他·节奏与气氛"
     assert _actions(db, "report_export_excel")[0].detail["count"] == 1
 
 
