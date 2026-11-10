@@ -402,3 +402,68 @@ def test_t6_flexible_none_marked_is_not_applicable(cfg):
 def test_t6_fixed_count_still_enforced_without_flexible(cfg):
     with pytest.raises(ScoringInputError):
         run(cfg, full_marks(), expected_questions={"S3": []})
+
+
+# ───────────── 按每 10 分钟换算（C38）：扣分项、加分项、语速 ─────────────
+
+HOUR = 3_600_000
+
+
+def test_normalize_deduction_items_long_video(cfg):
+    """60 分钟录播：小动作 6 次 = 每 10 分钟 1 次，扣 1 分；嘻嘻哈哈 1 次 ≈ 0.17 次，扣约 0.83 分；演绎错误 3 次 = 0.5 次，扣 5 分。"""
+    b = full_marks()
+    for _ in range(6):
+        b.occ("P8", "touch_face", source="vision")
+    b.occ("P10", "laugh", source="audio")
+    for _ in range(3):
+        b.occ("L3", "deductive_error")
+    r = run(cfg, b, main_duration_ms=HOUR)
+    assert item(r, "P8").score == 4
+    assert item(r, "P10").score == pytest.approx(5 - 5 / 6, abs=0.01)
+    assert item(r, "L3").score == 15
+    ten = run(cfg, b, main_duration_ms=600_000)  # 10 分钟：不换算，和原来一样
+    assert (item(ten, "P8").score, item(ten, "P10").score, item(ten, "L3").score) == (0, 0, 0)
+
+
+def test_normalize_additive_items_long_and_short_video(cfg):
+    """加分项：60 分钟里 2 次结构化表达 = 每 10 分钟 1/3 次，得 3.33 分；12 次才满分。5 分钟里 1 次 = 2 次，满分。"""
+    b = full_marks()
+    r = run(cfg, b, main_duration_ms=HOUR)  # 满分证据是按 10 分钟的量给的
+    assert item(r, "L2").score == pytest.approx(20 / 6, abs=0.01)
+    assert any("超过 10 分钟" in n for n in item(r, "L2").notes)
+    for _ in range(10):
+        b.inst("L2")
+    assert item(run(cfg, b, main_duration_ms=HOUR), "L2").score == 20
+    short = full_marks()
+    short.remove("L2")
+    short.inst("L2")
+    assert item(run(cfg, short, main_duration_ms=300_000), "L2").score == 20
+    assert item(run(cfg, short, main_duration_ms=600_000), "L2").score == 10
+
+
+def test_normalize_props_scaled_before_cap(cfg):
+    b = full_marks()  # 3 次贴片 = 6 分，10 分钟封顶 5
+    assert item(run(cfg, b, main_duration_ms=1_200_000), "P9").score == 3  # 20 分钟：6 ÷ 2 = 3
+
+
+@pytest.mark.parametrize("over,minutes,expected", [(2, 10, 0), (2, 60, 5), (3, 60, 3), (8, 60, 3), (9, 60, 0), (1, 5, 0)])
+def test_normalize_speech_rate_over_minutes(cfg, over, minutes, expected):
+    """语速：超限分钟数按每 10 分钟换算后四舍五入。60 分钟里 2 分钟超限 ≈ 0.33 → 0 段；3 分钟 = 0.5 → 1 段。"""
+    b = full_marks()
+    b.remove("P4")
+    for m in range(minutes):
+        b.metric("P4", "chars_per_min", 450 if m < over else 300, t=m * 60_000)
+    assert item(run(cfg, b, main_duration_ms=minutes * 60_000), "P4").score == expected
+
+
+def test_distinct_items_not_normalized(cfg):
+    """按种类去重的加分项（逼单方法、术语、卖点）不按时长折算，配置里也不允许开。"""
+    from scoring import parse_config
+    from tests.scoring.helpers import item_raw, raw_config
+
+    r = run(cfg, full_marks(), main_duration_ms=HOUR)
+    assert (item(r, "S4").score, item(r, "O1").score, item(r, "O2").score) == (20, 30, 30)
+    d = raw_config()
+    item_raw(d, "S4")["normalize"] = {"enabled": True, "both_ways": True}
+    with pytest.raises(Exception, match="不能按时长换算"):
+        parse_config(d)

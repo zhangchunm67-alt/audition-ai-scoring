@@ -129,6 +129,16 @@ def test_disagreement_needs_adjudication(login, seeded, video_file, make_user, a
     assert r.status_code == 200 and r.json()["status"] == "final" and r.json()["gold"]["items"]["S1"] == 6
 
 
+def _one_round_only(db):
+    """让处理用的评分标准没有临界区间，AI 只跑 1 轮。测试视频主体段只有 8 秒，按每 10 分钟换算（C38）后分数很极端，
+    是否落进临界区间不该影响下面两条测试的前提。"""
+    rv = db.scalar(select(RubricVersion))
+    d = yaml.safe_load(rv.yaml_text)
+    d["critical"]["review_band"] = 0
+    rv.yaml_text = yaml.safe_dump(d, allow_unicode=True)
+    db.commit()
+
+
 def test_incomplete_ai_counts_as_disagreement(login, seeded, video_file, make_user, app, db):
     """C35：AI 结果不完整（这里：按金标准集版本需要更多轮次）计为不一致，不从分母剔除。"""
     from tests.scoring.helpers import raw_config
@@ -136,6 +146,7 @@ def test_incomplete_ai_counts_as_disagreement(login, seeded, video_file, make_us
     d = raw_config()
     d["version"] = "rubric-wide-band"
     d["critical"]["review_band"] = 30  # 所有样本都临界 → 需要 3 轮，AI 只跑了 1 轮
+    _one_round_only(seeded)
     admin, hr, recs, gs, a, b = _setup(login, seeded, video_file, make_user, app, rv_yaml=yaml.safe_dump(d, allow_unicode=True))
     _score(a)
     _score(b)
@@ -149,6 +160,7 @@ def test_below_target_alerts_once(login, seeded, video_file, make_user, app, db)
     d = raw_config()
     d["version"] = "rubric-wide-band-2"
     d["critical"]["review_band"] = 30
+    _one_round_only(seeded)
     admin, hr, recs, gs, a, b = _setup(login, seeded, video_file, make_user, app, rv_yaml=yaml.safe_dump(d, allow_unicode=True))
     _score(a)
     _score(b)

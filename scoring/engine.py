@@ -79,23 +79,27 @@ def _f(x: Fraction | int) -> float:
 # ───────────────────────── 各计分类型 ─────────────────────────
 
 
+def _time_factor(norm, ctx: ScoringContext, res: ItemResult, what: str) -> Fraction:
+    """按时长换算的系数：每 per_minutes 分钟的次数 = 次数 × per_minutes ÷ 实际分钟数。不换算时为 1。"""
+    if not (norm and norm.enabled):
+        return Fraction(1)
+    if ctx.main_duration_ms is None or ctx.main_duration_ms <= 0:
+        raise _Missing("缺少主体段时长，无法按时长换算次数")
+    full_ms = norm.per_minutes * 60_000
+    if ctx.main_duration_ms == full_ms or (ctx.main_duration_ms > full_ms and not norm.both_ways):
+        return Fraction(1)
+    factor = Fraction(full_ms, ctx.main_duration_ms)
+    why = "不足" if ctx.main_duration_ms < full_ms else "超过"
+    res.notes.append(f"主体段{why} {norm.per_minutes} 分钟，按 {what} × {norm.per_minutes} ÷ {ctx.main_duration_ms / 60000:.2f} 分钟换算")
+    return factor
+
+
 def _score_t1(item: T1Item, evs: list[Evidence], ctx: ScoringContext, res: ItemResult) -> Fraction:
     _only_kinds(item.id, evs, {"occurrence"})
     occ = [e for e in _order(evs) if _binary(e)]
     n: Fraction = Fraction(len(occ))
-    factor = Fraction(1)
-    if item.normalize and item.normalize.enabled:
-        if ctx.main_duration_ms is None or ctx.main_duration_ms <= 0:
-            raise _Missing("缺少主体段时长，无法按时长换算次数")
-        full_ms = item.normalize.per_minutes * 60_000
-        if ctx.main_duration_ms < full_ms or (item.normalize.both_ways and ctx.main_duration_ms != full_ms):
-            factor = Fraction(full_ms, ctx.main_duration_ms)
-            n = n * factor
-            why = "不足" if ctx.main_duration_ms < full_ms else "超过"
-            res.notes.append(
-                f"主体段{why} {item.normalize.per_minutes} 分钟，次数按 {len(occ)} × {item.normalize.per_minutes} ÷ "
-                f"{ctx.main_duration_ms / 60000:.2f} 分钟 = {float(n):.2f} 计"
-            )
+    factor = _time_factor(item.normalize, ctx, res, f"{len(occ)} 次")
+    n = n * factor
     over = max(Fraction(0), n - item.free)
     score = max(Fraction(0), item.max - item.per * over)
     # 逐句贡献：按时间顺序，前 free 处不扣（换算时按比例分摊，仅供展示）
@@ -114,9 +118,10 @@ def _score_t1(item: T1Item, evs: list[Evidence], ctx: ScoringContext, res: ItemR
     return score
 
 
-def _score_t2(item: T2Item, evs: list[Evidence], res: ItemResult) -> Fraction:
+def _score_t2(item: T2Item, evs: list[Evidence], ctx: ScoringContext, res: ItemResult) -> Fraction:
     _only_kinds(item.id, evs, {"instance"})
     total = 0
+    raw = 0  # 不封顶的合计，按时长换算时用
     seen: set[str] = set()
     for e in _order(evs):
         if not _binary(e):
@@ -136,11 +141,18 @@ def _score_t2(item: T2Item, evs: list[Evidence], res: ItemResult) -> Fraction:
                 res.contributions.append(Contribution(evidence_id=e.evidence_id, delta=0, note="同一类别已计分"))
                 continue
             seen.add(label)
+        raw += pts
         add = min(pts, item.max - total)
         total += add
         res.contributions.append(
             Contribution(evidence_id=e.evidence_id, delta=add, note="已封顶" if add < pts else f"加 {pts} 分")
         )
+    factor = _time_factor(item.normalize, ctx, res, f"{raw} 分")
+    if factor != 1:  # 先按时长换算再封顶；逐条贡献改为统一说明
+        for c in res.contributions:
+            if c.delta:
+                c.delta, c.note = 0, "按时长换算后统一计分"
+        return min(Fraction(item.max), raw * factor)
     return Fraction(total)
 
 
@@ -310,7 +322,7 @@ def _score_t4(item: T4Item, evs: list[Evidence], res: ItemResult) -> Fraction:
     return Fraction(sum(_part_level(item, p, evs, res) for p in item.parts))
 
 
-def _score_t5(item: T5Item, evs: list[Evidence], res: ItemResult) -> Fraction:
+def _score_t5(item: T5Item, evs: list[Evidence], ctx: ScoringContext, res: ItemResult) -> Fraction:
     _only_kinds(item.id, evs, {"metric"})
     mine = [e for e in _order(evs) if e.label == item.metric]
     if len(mine) != len(evs):
@@ -325,6 +337,10 @@ def _score_t5(item: T5Item, evs: list[Evidence], res: ItemResult) -> Fraction:
             over += 1
             res.contributions.append(Contribution(evidence_id=e.evidence_id, delta=0, note=f"{e.value:g} 超过上限 {item.limit:g}"))
     res.notes.append(f"{len(mine)} 段中 {over} 段超过上限 {item.limit:g}")
+    factor = _time_factor(item.normalize, ctx, res, f"{over} 段")
+    if factor != 1:
+        over = int(over * factor + Fraction(1, 2))  # 换算后四舍五入到整段
+        res.notes.append(f"换算后按 {over} 段超限计")
     return Fraction(item.score_for(over))
 
 
@@ -384,13 +400,13 @@ def _score_item(it, evs: list[Evidence], ctx: ScoringContext, res: ItemResult) -
     if isinstance(it, T1Item):
         return _score_t1(it, evs, ctx, res)
     if isinstance(it, T2Item):
-        return _score_t2(it, evs, res)
+        return _score_t2(it, evs, ctx, res)
     if isinstance(it, T3T4Item):
         return _score_t3t4(it, evs, ctx, res)
     if isinstance(it, T4Item):
         return _score_t4(it, evs, res)
     if isinstance(it, T5Item):
-        return _score_t5(it, evs, res)
+        return _score_t5(it, evs, ctx, res)
     return _score_t6(it, evs, ctx, res)
 
 

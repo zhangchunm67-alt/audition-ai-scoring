@@ -103,7 +103,7 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
       <Col span={12}>
         <video ref={video} src={src} controls style={{ width: "100%", background: "#000" }} data-testid="marker-video" />
         <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-          整段视频都参与评分，不截取 10 分钟，没有朗读段（“普通话标准”由评委听录像打分）。口头禅按每 10 分钟的次数换算后扣分。
+          整段视频都参与评分，不截取 10 分钟，没有朗读段（“普通话标准”由评委听录像打分）。按次计的条目（口头禅、语速、小动作、加分项等）都按每 10 分钟的次数换算后计分。
         </Typography.Paragraph>
       </Col>
       <Col span={12}>

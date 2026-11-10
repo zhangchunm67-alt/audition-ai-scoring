@@ -40,16 +40,16 @@
 
 ### 2026-11-10（录播评估与取消截取 10 分钟，decisions.md C36、C37）
 - 业务确认：试镜和录播都按一段完整视频打分，不截取 10 分钟；老主播、上播 1 个月的主播没有题单，看直播录播评分。
-- **rubric-v0.3**（`config/rubric/rubric-v0.3.yaml`，由 v0.2 改名升版）：只改 P2，整段计次后按每 10 分钟换算（`normalize.both_ways`）。v0.2 不能再用于新的处理；旧配置的哈希不变。已部署的库要导入 v0.3（`python -m app.cli seed-demo` 会补，或在后台上传）。
+- **rubric-v0.3**（`config/rubric/rubric-v0.3.yaml`，由 v0.2 改名升版）：整段评分；按次计的条目都换算成每 10 分钟的次数再计分（C38）——P2、P4、P8、P10、L3、P9、L2、L4、L5、O3 带 `normalize.both_ways`，P4 超限段数换算后四舍五入，加分项先换算再封顶。按种类去重的 S4、O1、O2 不换算（配置校验禁止）。v0.2 不能再用于新的处理；旧配置的哈希不变。已部署的库要导入 v0.3（`python -m app.cli seed-demo` 会补，或在后台上传）。
 - **录播模式**：`recordings.mode = live`，上传时不选题单、选产品；`PUT /api/recordings/{id}/live-marks` 标观众异议（时间 + 原文）和排除时段。内部自动建一条 `audition_sheets.kind = live` 的记录固定评分标准和卖点卡版本，不出现在题单列表。迁移 0008。
 - **计分**：S3 按实际异议条数折算到 20 分（`ScoringContext.flexible_questions`），没有异议时不适用；没有朗读段 P3 转评委；没有异议 O4 转评委；录播的产品缺固定话术或校准记录时 S2 转评委（试镜仍在提交前拦下）。
 - **排除时段**：逐字稿原样保存，检测器只用排除后的文本；笑声候选、停顿统计也跳过排除时段。声音类、画面类条目仍看整段。
 - **报告**：标“录播”；`GET /api/reports?mode=audition|live`，页面默认分开排名。离线盲打分（`scripts/blind_score.py`）默认评到视频结尾，说明文件写 `"mode": "live"` 时异议按实际条数折算。
-- 还没定、需要业务拍板的：P-LIVE-COUNT（P4、P8、P10 和加分项在长视频上是否也按每 10 分钟换算）、P-LIVE-S3-MANY、P-LIVE-PRODUCT；研发侧：P-LIVE-LONG（长视频超模型上下文、内存）、P-LIVE-SPEAKER。
+- 还没定、需要业务拍板的：P-LIVE-DISTINCT（S4、O1、O2 按种类计分，不按时长换算，长录播容易拿满）、P-LIVE-S3-MANY、P-LIVE-PRODUCT；研发侧：P-LIVE-LONG（长视频超模型上下文、内存）、P-LIVE-SPEAKER。
 
 ## 验证状态（2026-11-10）
 
-- `pytest`（计分引擎、流水线、后端接口，PostgreSQL 16 + Redis）：535 通过，1 跳过（没有 SenseVoice 模型目录）。
+- `pytest`（计分引擎、流水线、后端接口，PostgreSQL 16 + Redis）：545 通过，1 跳过（没有 SenseVoice 模型目录）。
 - 前端 `npm run typecheck` 通过；`scripts/run_e2e.sh`（Playwright）20 步全部通过（含评委打分、首次登录改密码、录播上传与标注）。
 - `scripts/backup.sh` 用模拟的 docker 验证过快照、硬链接、保留代数、空目录和文件数骤降时拒绝备份、加密可解密；没有在真实 Mac 和 NAS 上跑过。
 - 没有验证：真实模型（千问、SenseVoice 以外）、Caddy 证书下发、Apple 芯片上构建镜像；录播模式只用 Mock 模型和 17 分钟的合成视频跑过，没有用真实直播录播和真实模型验证。
