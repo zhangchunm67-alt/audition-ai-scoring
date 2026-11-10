@@ -443,6 +443,21 @@ def publish_blockers(cfg: RubricConfig) -> list[str]:
     return out
 
 
+def structure_problems(cfg: RubricConfig) -> list[str]:
+    """发布前的结构检查（全面审查功能性第 7 条）：评分表每个维度满分 100；达标线须落在总档位可能的范围内。
+    只在发布新版本时检查（接口的发布阻碍里），不在解析时检查：已发布的旧版 rubric-v0.1 人设塑造满分 95，仍要能读。"""
+    out = []
+    for d in cfg.dimensions:
+        total = sum(it.max for it in d.items)
+        if total != 100:
+            out.append(f"维度 {d.name} 各条目满分合计 {total}，评分表要求 100")
+    lo, hi = len(cfg.dimensions) + 1, len(cfg.dimensions) * len(cfg.grade_bands) + 1  # 总档位 4–32，“小于 t”有意义的 t 为 5–33
+    for k, t in cfg.thresholds.items():
+        if not lo <= t <= hi:
+            out.append(f"达标线 {k}=小于 {t} 超出总档位范围（应在 {lo}–{hi} 之间）")
+    return out
+
+
 def ensure_publishable(cfg: RubricConfig) -> None:
     blockers = publish_blockers(cfg)
     if blockers:

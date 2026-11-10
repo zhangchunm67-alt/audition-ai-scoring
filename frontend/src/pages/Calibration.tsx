@@ -7,7 +7,7 @@ import { useAction, useFetch } from "../components/hooks";
 
 type Metrics = {
   samples: number; final: number; pending: number; dimension_agreement: number | null; conclusion_agreement: number | null;
-  targets: { dimension: number; conclusion: number; item: number }; gate_passed: boolean;
+  targets: { dimension: number; conclusion: number; item: number }; gate_passed: boolean; min_gate_samples?: number;
   items: { item_id: string; name: string; ok: number; n: number; rate: number | null; alert: boolean }[];
   low_confidence_share: number | null; human_dimension_agreement: number | null; human_conclusion_agreement: number | null;
 };
@@ -33,7 +33,8 @@ export function MetricsCards({ m }: { m: Metrics }) {
       </Row>
       {m.final > 0 && (
         <Alert style={{ marginBottom: 16 }} type={m.gate_passed ? "success" : "error"} showIcon
-          message={m.gate_passed ? "达到上线门槛（PRD 第 1 节）" : "未达到上线门槛：准确度没达标不上线"} />
+          message={m.gate_passed ? "达到上线门槛（PRD 第 1 节）" : (m.final < (m.min_gate_samples ?? 30)
+            ? `未达到上线门槛：定稿样本 ${m.final} 条，至少 ${m.min_gate_samples ?? 30} 条一致率才可信` : "未达到上线门槛：准确度没达标不上线")} />
       )}
     </>
   );
@@ -97,7 +98,7 @@ type SampleDetail = SampleRow & {
   ai_report_id: string | null;
   calibrators: { name: string; status: string; items: Record<string, number | null> | null; total_grade: number | null; note: string | null }[];
   comparison: null | { ai_complete: boolean; ai: { total_grade: number; conclusion: string; label: string; critical: boolean; rounds: number } | null;
-    items: { item_id: string; name: string; ai: number | null; gold: number | null; max: number; agree: boolean; low_confidence: boolean }[];
+    items: { item_id: string; name: string; ai: number | null; gold: number | null; max: number; agree: boolean | null; low_confidence: boolean; human_scored?: boolean; human?: number | null }[];
     dimensions: { id: string; name: string; ai_grade: number; gold_grade: number; agree: boolean }[]; conclusion_agree: boolean };
 };
 
@@ -146,6 +147,7 @@ function SampleDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
         { title: "金标准", render: (_: unknown, r: { id: string }) => (d.gold ? `${d.gold.items[r.id] ?? "—"}${d.adjudication[r.id] ? "（裁决）" : ""}` : "—") },
         { title: "AI", render: (_: unknown, r: { id: string }) => {
           const it = d.comparison?.items.find((x) => x.item_id === r.id);
+          if (it?.human_scored) return <span title="评委打分，不计入 AI 一致率">{it.human ?? "—"}（评委）</span>;
           return it ? <span style={{ color: it.agree ? undefined : "#cf1322" }}>{it.ai ?? "—"}{it.low_confidence ? "（低置信）" : ""}</span> : "—";
         } },
       ]} />

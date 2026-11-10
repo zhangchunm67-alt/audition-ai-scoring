@@ -111,6 +111,8 @@ class CalibrationAnchor(BaseModel):
 
 
 S2_MIN_TRAIN_SAMPLES = 20  # 交接口径：每个产品 20–30 份人工标注样本
+S2_MIN_HOLDOUT = 10  # 留出验证样本下限：太少的一致率没有意义
+S2_MIN_AGREEMENT = 0.85  # 留出样本上 AI 与人工一致的比例下限，与条目级监控线 TARGET_ITEM 相同
 
 
 class S2Calibration(BaseModel):
@@ -131,8 +133,10 @@ class S2Calibration(BaseModel):
         if self.status == "validated":
             if self.train_samples < S2_MIN_TRAIN_SAMPLES:
                 raise ValueError(f"校准样本至少 {S2_MIN_TRAIN_SAMPLES} 份才能标为已验证")
-            if self.holdout_samples < 1 or self.holdout_agreement is None:
-                raise ValueError("标为已验证须有留出验证样本及一致率")
+            if self.holdout_samples < S2_MIN_HOLDOUT or self.holdout_agreement is None:
+                raise ValueError(f"标为已验证须有至少 {S2_MIN_HOLDOUT} 份留出验证样本及一致率")
+            if self.holdout_agreement < S2_MIN_AGREEMENT:
+                raise ValueError(f"留出样本一致率 {self.holdout_agreement:.0%} 低于 {S2_MIN_AGREEMENT:.0%}，不能标为已验证")
         return self
 
 

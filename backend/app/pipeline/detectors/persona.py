@@ -170,6 +170,23 @@ def p9_frames(ctx: Ctx) -> tuple[list, list[int]]:
     return frames, sorted(guides)
 
 
+def _prop_text(t: str) -> str:
+    return re.sub(r"[\s，。、！？!?,.:：;；“”\"'（）()《》<>【】\[\]—-]", "", t or "").lower()
+
+
+def same_prop(a: tuple[str, str], b: tuple[str, str]) -> bool:
+    """是不是同一块贴片 / KT 板：类别相同，且板上文字去掉标点空格后相同、互相包含或相似度 ≥ 0.8。
+    视觉模型每帧读出的文字常有个别字的差异，逐字相等会把同一块板算成多次使用。没读出文字的按类别算同一块。"""
+    from difflib import SequenceMatcher
+
+    if a[0] != b[0]:
+        return False
+    x, y = _prop_text(a[1]), _prop_text(b[1])
+    if not x or not y:
+        return not x and not y
+    return x == y or x in y or y in x or SequenceMatcher(None, x, y, autojunk=False).ratio() >= 0.8
+
+
 def p9(ctx: Ctx):
     """道具使用（评分表：对贴片正确使用 1 次得 2 分，对 KT 板正确使用 1 次得 1 分）。
     v2：直接看画面找“举起 KT 板讲解”“指向屏幕上的贴片”，不再只靠口播引导语（原做法把不出声的举牌、指屏全部漏掉）。
@@ -184,7 +201,7 @@ def p9(ctx: Ctx):
         if f.label not in PROP_LABELS:
             continue
         key = (f.label, (f.detail or "").strip())
-        last = next((e for e in reversed(episodes) if e["key"] == key), None)
+        last = next((e for e in reversed(episodes) if same_prop(e["key"], key)), None)
         if last and f.at_ms - last["end"] <= c.episode_gap_ms:
             last["end"], last["conf"] = max(last["end"], f.end_ms), min(last["conf"], f.confidence)
             continue
@@ -192,10 +209,11 @@ def p9(ctx: Ctx):
     out, counted_at = [], {}
     for e in episodes:
         label, detail = e["key"]
-        prev = counted_at.get(e["key"])
+        seen = next((k for k in counted_at if same_prop(k, e["key"])), None)
+        prev = counted_at.get(seen) if seen else None
         repeat = prev is not None and e["start"] - prev < c.dedupe_within_ms
         if not repeat:
-            counted_at[e["key"]] = e["start"]
+            counted_at[seen or e["key"]] = e["start"]
         what = f"{PROP_LABELS[label]}“{detail}”" if detail else PROP_LABELS[label]
         reason = f"{what}：{e['reason']}" + ("；1 分钟内重复使用同一块内容，不重复计分" if repeat else "")
         out.append(ctx.ev("P9", "instance", label=label, judgment="not_count" if repeat else "count", start=e["start"], end=e["end"],

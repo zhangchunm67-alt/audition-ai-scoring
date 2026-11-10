@@ -263,7 +263,7 @@ def set_segments(rid: uuid.UUID, body: SegmentsIn, request: Request, db: Session
         raise HTTPException(422, "朗读段起点超出视频时长")
     main_len = points[1] - body.main_start_ms  # 主体段到下一段（第一道知识题，没有知识题时为朗读段）起点
     offs = body.objection_offsets_ms
-    if any(b <= a for a, b in zip(offs, offs[1:])) or offs[0] <= 0 or offs[-1] >= main_len:
+    if offs and (any(b <= a for a, b in zip(offs, offs[1:])) or offs[0] <= 0 or offs[-1] >= main_len):  # 题单没有异议时为空
         raise HTTPException(422, "异议时间须落在主体段内并严格递增")
     ends = [*points[1:], rec.video_duration_ms]
     names = ["main", *[f"question:{q['question_id']}" for q in qs], "reading"]

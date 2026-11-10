@@ -279,6 +279,67 @@ def report_md(out: dict) -> str:
 # ───────────── 与金标准对比（金标准到位后用） ─────────────
 
 
+def load_gold_csv(path: str | Path, cfg: RubricConfig) -> tuple[dict[str, dict[str, float]], list[str]]:
+    """读金标准表（视频, 条目, 人工分）。容忍 Excel 另存的 GBK 编码、Tab / 分号分隔；条目可写编号（P3、p3）
+    或评分表名称（普通话标准、人设塑造·普通话标准）。有问题的行逐条报出（行号 + 原因），全部没问题才返回数据。"""
+    import csv
+    import io
+
+    raw = Path(path).read_bytes()
+    for enc in ("utf-8-sig", "gb18030"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError("金标准表编码无法识别，请另存为 UTF-8 或 GBK 编码的 CSV")
+    first = text.splitlines()[0] if text.strip() else ""
+    delim = max(",\t;，", key=first.count)
+    rows = list(csv.reader(io.StringIO(text), delimiter=delim))
+    if not rows:
+        raise ValueError("金标准表是空的")
+    head = [h.strip() for h in rows[0]]
+    need = ("视频", "条目", "人工分")
+    if any(h not in head for h in need):
+        raise ValueError(f"金标准表须有列：{'、'.join(need)}；实际表头：{'、'.join(head) or '（空）'}（分隔符识别为 {delim!r}）")
+    col = {h: head.index(h) for h in need}
+    names: dict[str, str] = {}
+    for d, it in cfg.items():
+        names[it.id.upper()] = it.id
+        names[it.name] = it.id
+        names[f"{d.name}·{it.name}"] = it.id
+    gold: dict[str, dict[str, float]] = {}
+    errors: list[str] = []
+    for n, r in enumerate(rows[1:], start=2):
+        if not any(c.strip() for c in r):
+            continue
+        get = lambda k: r[col[k]].strip() if col[k] < len(r) else ""  # noqa: E731
+        video, item, score = get("视频"), get("条目"), get("人工分")
+        if not score:
+            continue
+        iid = names.get(item.upper()) or names.get(item)
+        if iid is None:
+            errors.append(f"第 {n} 行：条目“{item}”不在评分标准 {cfg.version} 中")
+            continue
+        mx = next(it.max for _, it in cfg.items() if it.id == iid)
+        try:
+            v = float(score)
+        except ValueError:
+            errors.append(f"第 {n} 行：人工分“{score}”不是数字")
+            continue
+        if not 0 <= v <= mx:
+            errors.append(f"第 {n} 行：{item} 的人工分 {v:g} 超出 0–{mx}")
+            continue
+        if iid in gold.setdefault(video, {}):
+            errors.append(f"第 {n} 行：视频“{video}”的 {item} 重复")
+            continue
+        gold[video][iid] = v
+    if errors:
+        raise ValueError("金标准表有问题：\n" + "\n".join(errors))
+    return gold, []
+
+
 def compare_with_gold(results: list[dict], gold: dict[str, dict[str, float]], cfg: RubricConfig) -> dict:
     """results：各视频的离线结果；gold：{视频名: {条目: 人工分}}。
     条目一致 = 相差不超过该条目满分的 10%（I28）；维度一致 = 档位相差 ≤ 1（C34）。AI 未评的条目单独计数，不算一致。"""
@@ -288,6 +349,10 @@ def compare_with_gold(results: list[dict], gold: dict[str, dict[str, float]], cf
 
     items = {it.id: (d, it) for d, it in cfg.items()}
     rows, per_item, dims = [], {i: {"agree": 0, "n": 0, "ai_missing": 0, "abs_err": 0.0} for i in items}, []
+    conclusions = []
+    names = {out["name"] for out in results}
+    warnings = [f"金标准里的视频“{v}”在盲打分结果里找不到（名字须与说明文件里的 name 一致）" for v in sorted(set(gold) - names)]
+    warnings += [f"盲打分结果“{v}”没有金标准" for v in sorted(names - set(gold))]
     for out in results:
         g = gold.get(out["name"])
         if g is None:
@@ -319,8 +384,13 @@ def compare_with_gold(results: list[dict], gold: dict[str, dict[str, float]], cf
                 continue
             dims.append({"video": out["name"], "dimension": d.id, "gold_grade": d.grade, "ai_grade": a.get("grade"),
                          "agree": a.get("grade") is not None and abs(a["grade"] - d.grade) <= 1})
+        if agg.grade_pass is not None:  # 结论一致（上线门槛要求 ≥ 95%）：AI 没出总档位的记为不一致
+            ai_pass = out["result"].get("grade_pass")
+            conclusions.append({"video": out["name"], "gold_pass": agg.grade_pass, "gold_total": agg.total_grade,
+                                "ai_pass": ai_pass, "ai_total": out["result"].get("total_grade"), "agree": ai_pass == agg.grade_pass})
     summary = {iid: {**st, "agree_rate": round(st["agree"] / st["n"], 3) if st["n"] else None,
                      "mae": round(st["abs_err"] / (st["n"] - st["ai_missing"]), 2) if st["n"] > st["ai_missing"] else None}
                for iid, st in per_item.items() if st["n"]}
-    return {"rows": rows, "items": summary, "dimensions": dims,
-            "dimension_agree_rate": round(sum(d["agree"] for d in dims) / len(dims), 3) if dims else None}
+    return {"rows": rows, "items": summary, "dimensions": dims, "conclusions": conclusions, "warnings": warnings,
+            "dimension_agree_rate": round(sum(d["agree"] for d in dims) / len(dims), 3) if dims else None,
+            "conclusion_agree_rate": round(sum(c["agree"] for c in conclusions) / len(conclusions), 3) if conclusions else None}

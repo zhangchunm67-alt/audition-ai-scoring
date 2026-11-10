@@ -132,3 +132,14 @@ def test_unlocatable_quote_dropped_not_failed():
         ctx.quote_ev("S1", "level", "编造的一句话完全不在原文", judgment=5, model_conf=0.9)
     ok = ctx.quote_ev("S4", "instance", "这款产品很好大家都再买", strict=False, label="herd", judgment="count", model_conf=0.9)
     assert ok is not None and not ok.excluded
+
+
+def test_same_prop_tolerates_ocr_differences():
+    from app.pipeline.detectors.persona import same_prop
+
+    assert same_prop(("kt_board", "最高赔100万"), ("kt_board", "最高赔 100 万！"))
+    assert same_prop(("kt_board", "确诊重疾最高赔付100万"), ("kt_board", "确诊重疾最高赔100万"))
+    assert same_prop(("sticker", "160种重疾"), ("sticker", "保160种重疾"))
+    assert not same_prop(("kt_board", "最高赔100万"), ("sticker", "最高赔100万"))
+    assert not same_prop(("kt_board", "最高赔100万"), ("kt_board", "投保送30天保障"))
+    assert same_prop(("kt_board", ""), ("kt_board", "")) and not same_prop(("kt_board", ""), ("kt_board", "最高赔100万"))
