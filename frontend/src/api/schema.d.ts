@@ -712,6 +712,7 @@ export interface paths {
         /**
          * Reprocess
          * @description 处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。
+         *     卡在“已提交 / 处理中”超过设定时长的（断电、重启中断）也可以重新处理。
          */
         post: operations["reprocess_api_recordings__rid__reprocess_post"];
         delete?: never;
@@ -734,6 +735,40 @@ export interface paths {
          * @description 取消：删除已上传的视频，题单恢复为未使用。
          */
         post: operations["cancel_api_recordings__rid__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/human-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Human Review */
+        get: operations["human_review_api_recordings__rid__human_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/human-scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Human Scores */
+        put: operations["human_scores_api_recordings__rid__human_scores_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1512,6 +1547,35 @@ export interface components {
         HiringIn: {
             /** Hiring Status */
             hiring_status: string;
+        };
+        /** HumanReviewOut */
+        HumanReviewOut: {
+            /** Status */
+            status: string;
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Scores */
+            scores: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** HumanScoreIn */
+        HumanScoreIn: {
+            /** Score */
+            score: number;
+            /** Note */
+            note?: string | null;
+        };
+        /** HumanScoresIn */
+        HumanScoresIn: {
+            /** Scores */
+            scores: {
+                [key: string]: components["schemas"]["HumanScoreIn"];
+            };
         };
         /** ItemRow */
         ItemRow: {
@@ -3820,6 +3884,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    human_review_api_recordings__rid__human_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    human_scores_api_recordings__rid__human_scores_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HumanScoresIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HumanReviewOut"];
                 };
             };
             /** @description Validation Error */

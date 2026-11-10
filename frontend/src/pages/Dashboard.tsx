@@ -67,7 +67,7 @@ function EfficiencyTab() {
         <Col span={12}>
           <Card size="small" title="各条目低置信比例">
             <Table size="small" rowKey="item_id" pagination={false} dataSource={[...e.low_confidence].sort((a, b) => b.rate - a.rate)} columns={[
-              { title: "条目", render: (_, r) => `${r.item_id} ${r.name}` },
+              { title: "条目", render: (_, r) => r.name },
               { title: "低置信", render: (_, r) => `${r.count} / ${r.n}` },
               { title: "比例", dataIndex: "rate", render: (v: number) => (v > 0.3 ? <Tag color="orange">{pct(v)}</Tag> : pct(v)) },
             ]} />

@@ -14,8 +14,10 @@ from sqlalchemy.orm import Session
 
 from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, PipelineRun, Product, Recording, Report, RubricVersion, UploadSession, User
 from ..pipeline import orchestrator, readiness
+from ..providers.registry import get_providers
 from ..security.rbac import Perm
 from ..services import audit
+from ..services import human_review as human
 from ..services.media import ProbeError, probe
 from ..services.rubrics import load
 from ..services.storage import Part, get_storage
@@ -277,7 +279,7 @@ def set_segments(rid: uuid.UUID, body: SegmentsIn, request: Request, db: Session
 
 
 def _ready(db: Session, rec: Recording) -> None:
-    problems = readiness.blockers(db, db.get(AuditionSheet, rec.sheet_id))
+    problems = readiness.blockers(db, db.get(AuditionSheet, rec.sheet_id), get_providers())
     if problems:
         raise HTTPException(422, "暂不能处理：" + "；".join(problems))
 
@@ -303,10 +305,14 @@ def submit(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
 
 @router.post("/recordings/{rid}/reprocess", response_model=RecordingOut)
 def reprocess(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Write) -> RecordingOut:
-    """处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。"""
+    """处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。
+    卡在“已提交 / 处理中”超过设定时长的（断电、重启中断）也可以重新处理。"""
     rec = _get(db, rid)
-    if rec.status != "failed":
-        raise HTTPException(409, "只有处理失败的录像可以重新处理")
+    started = rec.processing_started_at or rec.submitted_at
+    stuck = (rec.status in ("submitted", "processing") and started is not None
+             and _now() - started > timedelta(minutes=get_settings().stuck_after_min))
+    if rec.status != "failed" and not stuck:
+        raise HTTPException(409, "只有处理失败或处理中断（超时）的录像可以重新处理")
     _ready(db, rec)
     for run in db.scalars(select(PipelineRun).where(PipelineRun.recording_id == rec.id)):
         db.delete(run)
@@ -331,6 +337,49 @@ def cancel(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
     _log(db, request, actor, "recording_cancel", "recording", rec.id)
     db.commit()
     return _out(db, rec)
+
+
+# ───────────── 评委人工打分（T39） ─────────────
+
+
+class HumanScoreIn(BaseModel):
+    score: float
+    note: str | None = Field(default=None, max_length=500)
+
+
+class HumanScoresIn(BaseModel):
+    scores: dict[str, HumanScoreIn]
+
+
+class HumanReviewOut(BaseModel):
+    status: str
+    items: list[dict]
+    scores: dict[str, dict]
+
+
+HumanWrite = Depends(require(Perm.human_score))
+
+
+@router.get("/recordings/{rid}/human-review", response_model=HumanReviewOut)
+def human_review(rid: uuid.UUID, db: Session = DB, _: User = HumanWrite) -> HumanReviewOut:
+    rec = _get(db, rid)
+    return HumanReviewOut(status=rec.status, items=human.pending_items(db, rec) if rec.status == "awaiting_human" else [],
+                          scores=rec.human_scores or {})
+
+
+@router.put("/recordings/{rid}/human-scores", response_model=HumanReviewOut)
+def human_scores(rid: uuid.UUID, body: HumanScoresIn, request: Request, db: Session = DB, actor: User = HumanWrite) -> HumanReviewOut:
+    rec = db.scalar(select(Recording).where(Recording.id == rid).with_for_update())
+    if rec is None:
+        raise HTTPException(404, "录像不存在")
+    ready = human.submit(db, rec, {k: v.model_dump() for k, v in body.scores.items()}, actor)
+    _log(db, request, actor, "human_scores", "recording", rec.id,
+         **{"items": {k: v.score for k, v in body.scores.items()}, "rounds_completed": ready})
+    db.commit()
+    if rec.status == "processing":
+        orchestrator.after_round(str(rec.id))
+    db.refresh(rec)
+    return human_review(rid, db, actor)
 
 
 # ───────────── 分片上传 ─────────────

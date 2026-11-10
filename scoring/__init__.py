@@ -2,10 +2,11 @@
 from .config import ConfigError, RubricConfig, config_hash, ensure_publishable, load_config, parse_config, publish_blockers
 from .engine import EvidenceError, ScoringInputError, round_half_up, score_round
 from .ranking import RankEntry, rank
-from .types import ChecklistPoint, Evidence, FinalVerdict, RoundResult, ScoringContext
+from .types import ChecklistPoint, Evidence, FinalVerdict, HumanScore, RoundResult, ScoringContext
 from .verdict import VerdictError, finalize, rounds_required
 
 __all__ = [
+    "HumanScore",
     "ChecklistPoint",
     "ConfigError",
     "Evidence",

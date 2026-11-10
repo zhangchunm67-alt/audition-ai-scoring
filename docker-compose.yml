@@ -38,6 +38,7 @@ services:
 
   redis:
     image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]  # 队列持久化：断电重启后排队中的任务不丢
     volumes: [redisdata:/data]
     restart: unless-stopped
 

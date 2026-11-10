@@ -23,6 +23,19 @@ def set_providers(p: Providers | None) -> None:
 def get_providers() -> Providers:
     if _override is not None:
         return _override
+    return production_guard(_build(), os.environ)
+
+
+def production_guard(p: Providers, env) -> Providers:
+    """生产环境（APP_ENV=production）不使用 Mock：Mock 的能力一律视为未配置，依赖它的条目转评委打分，
+    绝不出现用假数据算出的分数。"""
+    if env.get("APP_ENV", "development") != "production":
+        return p
+    caps = ("asr", "speech_eval", "llm", "vision", "laugh", "voice")
+    return Providers(*[Unavailable(c) if getattr(p, c).name.startswith("mock") else getattr(p, c) for c in caps])
+
+
+def _build() -> Providers:
     kind = os.environ.get("APP_PROVIDERS", "mock")
     if kind == "mock":
         from .mock import MockASR, MockLaugh, MockLLM, MockSpeechEval, MockVision, MockVoice
@@ -116,21 +129,34 @@ def from_env(env) -> Providers:
     return Providers(built["ASR"], built["SPEECH_EVAL"], built["LLM"], built["VISION"], built["LAUGH"], built["VOICE"])
 
 
-# ───────────── 并发限流：多个 worker 共用同一个上限（Redis 计数），没有 Redis 时退回进程内计数 ─────────────
+# ───────────── 并发限流：多个 worker 共用同一个上限，没有 Redis 时退回进程内计数 ─────────────
+# Redis 里用有序集合记每个占用的名额（成员 = 令牌，分值 = 到期时间）。每个名额单独到期：
+# worker 在调用中途被杀，它占的名额到期后自动归还，不会越积越多把所有处理卡死。
 
 _local_counts: dict[str, int] = {}
+_ACQUIRE = """
+local now = tonumber(ARGV[1])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
+if redis.call('ZCARD', KEYS[1]) < tonumber(ARGV[2]) then
+  redis.call('ZADD', KEYS[1], now + tonumber(ARGV[3]), ARGV[4])
+  redis.call('EXPIRE', KEYS[1], math.ceil(tonumber(ARGV[3])) + 60)
+  return 1
+end
+return 0
+"""
 
 
 @contextmanager
-def limit(kind: str, max_concurrent: int, redis_conn=None, poll_s: float = 0.05, ttl_s: int = 600):
-    key = f"audition:limit:{kind}"
+def limit(kind: str, max_concurrent: int, redis_conn=None, poll_s: float = 0.05, ttl_s: int = 900):
+    """ttl_s：单个名额的租期，须长于单次模型调用的超时（APP_OPENAI_TIMEOUT_S 默认 600 秒）。"""
+    import uuid
+
+    key = f"audition:lease:{kind}"
+    token = uuid.uuid4().hex
     while True:
         if redis_conn is not None:
-            n = redis_conn.incr(key)
-            redis_conn.expire(key, ttl_s)
-            if n <= max_concurrent:
+            if redis_conn.eval(_ACQUIRE, 1, key, time.time(), max_concurrent, ttl_s, token):
                 break
-            redis_conn.decr(key)
         else:
             with _lock:
                 if _local_counts.get(key, 0) < max_concurrent:
@@ -141,7 +167,7 @@ def limit(kind: str, max_concurrent: int, redis_conn=None, poll_s: float = 0.05,
         yield
     finally:
         if redis_conn is not None:
-            redis_conn.decr(key)
+            redis_conn.zrem(key, token)
         else:
             with _lock:
                 _local_counts[key] -= 1

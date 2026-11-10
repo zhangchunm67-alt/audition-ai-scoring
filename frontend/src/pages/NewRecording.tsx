@@ -93,7 +93,7 @@ export default function NewRecording() {
             </Radio.Group>
           </Form.Item>
           <Form.Item name="props_available" label="画面里有没有贴片或 KT 板" rules={[{ required: true, message: "请选择" }]}
-            extra="有：计 P9 道具使用，人设塑造满分 95；没有：P9 不适用，满分 90。">
+            extra="有：计“人设塑造·肢体语言（贴片/KT板）”，人设塑造满分 100；没有：该条不适用，人设塑造按 95 分折算。">
             <Radio.Group>
               <Radio.Button value={true}>有</Radio.Button>
               <Radio.Button value={false}>没有</Radio.Button>

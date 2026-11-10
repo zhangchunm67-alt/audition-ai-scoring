@@ -42,7 +42,7 @@ export function MetricsCards({ m }: { m: Metrics }) {
 export function ItemRates({ m }: { m: Metrics }) {
   return (
     <Table size="small" rowKey="item_id" pagination={false} dataSource={m.items} columns={[
-      { title: "条目", render: (_, r) => `${r.item_id} ${r.name}` },
+      { title: "条目", render: (_, r) => r.name },
       { title: "一致（AI 与金标准相差 ≤ 满分 10%）", render: (_, r) => `${r.ok} / ${r.n}` },
       { title: "一致率", dataIndex: "rate", render: (v, r) => <span style={{ color: r.alert ? "#cf1322" : undefined }}>{pct(v)}</span> },
       { title: "", render: (_, r) => (r.alert ? <Tag color="red">低于 {pct(m.targets.item)}，先改该条规则或提示词</Tag> : null) },

@@ -122,10 +122,19 @@ def anon(app) -> Api:
 
 
 @pytest.fixture
-def seeded(db):
+def seeded(db, request):
+    """演示数据。默认关掉检测配置里的人工打分分工（老测试按全部机器评写）；
+    标了 @pytest.mark.human_review 的测试保留检测配置原样。"""
+    from sqlalchemy import select
+
     from app.cli import seed_demo
+    from app.models.entities import DetectorConfigVersion
 
     seed_demo(db)
+    if request.node.get_closest_marker("human_review") is None:
+        for row in db.scalars(select(DetectorConfigVersion)):
+            row.content = {**row.content, "human_review": {"manual": [], "confirm": [], "confirm_on_deduction": [], "fallback": False}}
+        db.commit()
     return db
 
 

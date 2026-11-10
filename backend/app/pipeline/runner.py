@@ -12,7 +12,7 @@ import yaml
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from scoring import ChecklistPoint, RoundResult, ScoringContext, parse_config, score_round
+from scoring import ChecklistPoint, HumanScore, RoundResult, ScoringContext, parse_config, score_round
 
 from ..models.convert import evidence_to_row
 from ..models.entities import (
@@ -25,7 +25,7 @@ from ..services.storage import Storage
 from ..settings import get_settings
 from . import acoustic, prompts, readiness
 from .detector_config import DetectorConfig, parse as parse_detector_cfg
-from .detectors import DETECTORS, NEEDS_PROPS
+from .detectors import DETECTORS, NEEDS_PROPS, human_plan
 from .detectors.common import Ctx
 from .media import materialize
 from .text import SegmentText
@@ -49,8 +49,13 @@ def detector_config(db: Session) -> tuple[DetectorConfigVersion, DetectorConfig]
 
 def scoring_context(rec: Recording, sheet: AuditionSheet, card: dict, completed: set[str], manifest: dict) -> ScoringContext:
     """计分上下文。流水线每轮和“按新版重算”共用，保证同一份证据算出同样的结果。
-    卖点卡要点（checklist）和知识题（O5）只给旧版 rubric-v0.1 的报告重算用；新版配置不读取它们。"""
+    卖点卡要点（checklist）和知识题（O5）只给旧版 rubric-v0.1 的报告重算用；新版配置不读取它们。
+    人工打分分工取自该轮的模型清单（human_review），已录入的人工分取自录像。"""
+    plan = manifest.get("human_review") or {}
     return ScoringContext(
+        human_scores={k: HumanScore(**v) for k, v in (rec.human_scores or {}).items()},
+        human_only=set(plan.get("manual", [])), human_confirm=set(plan.get("confirm", [])),
+        human_on_deduction=set(plan.get("confirm_on_deduction", [])), human_fallback=bool(plan.get("fallback_applied")),
         props_available=rec.props_available, audience=rec.audience, completed_detectors=completed,
         checklist=[ChecklistPoint(**{k: p[k] for k in ("id", "name", "points", "compliance_required") if k in p}) for p in card.get("checklist", [])],
         expected_questions={"S3": [o["objection_id"] for o in rec.objection_times], "O5": [q["question_id"] for q in sheet.questions]},
@@ -63,9 +68,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Providers, storage: Storage, redis_conn=None) -> RoundResult:
+def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Providers, storage: Storage, redis_conn=None,
+              last_attempt: bool = False) -> RoundResult:
+    """last_attempt：本轮最后一次尝试。检测配置允许时，机器仍评不出的条目转评委打分，而不是整轮失败。
+    返回的结果 awaiting_human_items 非空时，本轮等评委打分（run.status = awaiting_human）。"""
     s = get_settings()
     manifest = providers.manifest()
+    raw_providers = providers
     providers = resilient(providers, limits={"llm": s.limit_llm, "asr": s.limit_asr}, redis_conn=redis_conn, backoff=s.call_retry_backoff_s)
     rec = db.get(Recording, recording_id)
     sheet = db.get(AuditionSheet, rec.sheet_id)
@@ -83,7 +92,7 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
     db.commit()
 
     card = db.get(ProductCard, sheet.product_card_id).content
-    problems = readiness.blockers(db, sheet)
+    problems = readiness.blockers(db, sheet, raw_providers)
     if problems:
         raise RoundIncomplete("暂不能处理：" + "；".join(problems))
     lexicon = db.get(RedlineLexiconVersion, sheet.redline_lexicon_version_id).content if sheet.redline_lexicon_version_id else {}
@@ -130,8 +139,11 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
                   reading_text=sheet.reading_text, card=card, lexicon=lexicon, cfg=dcfg, texts=texts, acoustic=feats, media=media,
                   providers=providers)
         item_ids = {it.id for _, it in cfg.items()}
+        plan = human_plan(dcfg, raw_providers, item_ids)
+        plan["fallback_applied"] = bool(plan["fallback"] and last_attempt)
         todo = {k: fn for k, fn in DETECTORS.items()
-                if (k in item_ids or (k == "redlines" and cfg.redlines.enabled)) and not (k in NEEDS_PROPS and not rec.props_available)}
+                if (k in item_ids or (k == "redlines" and cfg.redlines.enabled)) and not (k in NEEDS_PROPS and not rec.props_available)
+                and k not in plan["manual"]}
 
         def one(item: str):
             try:
@@ -153,11 +165,16 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         run.stage = "scoring"
         sctx = scoring_context(rec, sheet, card, completed,
                                {**manifest, **readiness.s2_manifest(card), "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
-                                "temperature": "0", "asr_disfluency_removal": "false"})
+                                "temperature": "0", "asr_disfluency_removal": "false", "human_review": plan})
         result = score_round(evidence, cfg, sctx)
         db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=result.config_hash, result=result.model_dump(mode="json")))
         run.model_manifest = result.model_manifest
         failed = [i for i, _, e in results if e]
+        if result.status != "complete" and not result.missing_items:  # 只差评委打分
+            run.status, run.stage, run.finished_at = "awaiting_human", "human", _now()
+            run.error = "等评委打分：" + "、".join(result.awaiting_human_items) + (f"；失败的检测器：{'、'.join(failed)}" if failed else "")
+            db.commit()
+            return result
         if result.status != "complete":
             run.status, run.error, run.finished_at = "failed", f"缺少必需证据：{'、'.join(result.missing_items)}；失败的检测器：{'、'.join(failed) or '无'}", _now()
             db.commit()

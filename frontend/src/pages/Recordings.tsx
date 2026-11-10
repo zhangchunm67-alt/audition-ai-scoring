@@ -11,6 +11,7 @@ export const REC_STATUS: Record<string, [string, string]> = {
   uploaded: ["待标分段", "orange"],
   submitted: ["已提交，待处理", "blue"],
   processing: ["处理中", "blue"],
+  awaiting_human: ["等待评委打分", "gold"],
   done: ["已出报告", "green"],
   failed: ["处理失败", "red"],
   cancelled: ["已取消", "default"],

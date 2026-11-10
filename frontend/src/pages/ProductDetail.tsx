@@ -46,10 +46,10 @@ function Cards({ pid }: { pid: string }) {
               {c.content.fixed_script ? `话术 ${c.content.fixed_script.version}` : <Tag color="red">没有固定话术</Tag>}
               {c.content.s2_calibration ? (
                 <Tag color={c.content.s2_calibration.status === "validated" ? "green" : "orange"}>
-                  S2 校准 {c.content.s2_calibration.version}（{c.content.s2_calibration.status === "validated" ? "已验证" : "草稿"}）
+                  产品讲解校准 {c.content.s2_calibration.version}（{c.content.s2_calibration.status === "validated" ? "已验证" : "草稿"}）
                 </Tag>
               ) : (
-                <Tag color="red">S2 未校准</Tag>
+                <Tag color="red">产品讲解未校准</Tag>
               )}
             </Space>
           ),
@@ -90,7 +90,7 @@ function Calibration({ card, onSaved }: { card: Card; onSaved: () => void }) {
   const cur = card.content.s2_calibration;
   const script = card.content.fixed_script!;
   return (
-    <Card size="small" title="S2 校准记录" style={{ marginBottom: 12 }}>
+    <Card size="small" title="销售循环·产品讲解 校准记录" style={{ marginBottom: 12 }}>
       <Form
         form={form}
         layout="inline"

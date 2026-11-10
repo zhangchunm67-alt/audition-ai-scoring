@@ -23,7 +23,7 @@ def _founds(ctx: Ctx, task: str, item: str, kind: str, payload: dict | None = No
     r = ctx.ask(task, payload or {"transcript": ctx.main.text})
     out = []
     for x in r["items"]:
-        out.append(ctx.quote_ev(item, kind, x["quote"], label=label(x) if label else (x.get("label") or None),
+        out.append(ctx.quote_ev(item, kind, x["quote"], strict=False, label=label(x) if label else (x.get("label") or None),
                                 judgment=judge(x) if judge else binary(x["valid"]), reason=x["reason"], model_conf=x["confidence"]))
     return out
 

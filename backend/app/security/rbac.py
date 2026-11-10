@@ -28,6 +28,7 @@ class Perm(str, Enum):
     calibration_manage = "calibration.manage"  # 建金标准集、分配校准员、裁决分歧
     calibration_score = "calibration.score"  # 给分到自己的样本背对背打分
     dashboard_read = "dashboard.read"  # 一致率看板、效率看板
+    human_score = "human.score"  # 评委给机器评不了或须人工确认的条目打分（T39）
 
 
 R = Role
@@ -47,6 +48,7 @@ MATRIX: dict[Perm, frozenset[Role]] = {
     Perm.calibration_manage: frozenset({R.admin}),
     Perm.calibration_score: frozenset({R.calibrator}),
     Perm.dashboard_read: frozenset({R.admin}),  # PRD 第 3 节：管理员看准确度看板
+    Perm.human_score: frozenset({R.admin, R.hr}),  # 评委打分：HR 本就能看全部内容（C19）
 }
 
 

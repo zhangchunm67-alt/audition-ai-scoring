@@ -19,7 +19,7 @@ export default function ReadingScripts() {
   return (
     <>
       <Typography.Title level={4}>朗读稿</Typography.Title>
-      <Typography.Paragraph type="secondary">约 250 字的标准文稿，建议 ≥ 3 篇轮换；P3 普通话评测以此为参考文本。</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">约 250 字的标准文稿，建议 ≥ 3 篇轮换；“人设塑造·普通话标准”以此为参考文本。</Typography.Paragraph>
       {can("config.write") && (
         <Button type="primary" style={{ marginBottom: 16 }} onClick={() => open()}>
           新增朗读稿

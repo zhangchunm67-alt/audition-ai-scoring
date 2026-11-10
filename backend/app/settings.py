@@ -50,6 +50,7 @@ class Settings:
     limit_llm: int = 8  # 同时调用大模型的上限（所有 worker 合计）；压测表明 ≥ 8 才能在最坏情况下 30 分钟内出报告
     limit_asr: int = 3
     detector_workers: int = 6  # 一轮内并行跑检测器的线程数
+    stuck_after_min: int = 180  # 已提交 / 处理中超过这么久没完成，视为中断（断电、重启）
 
 
 @lru_cache
@@ -82,4 +83,5 @@ def get_settings() -> Settings:
         limit_llm=int(os.environ.get("APP_LIMIT_LLM", "8")),
         limit_asr=int(os.environ.get("APP_LIMIT_ASR", "3")),
         detector_workers=int(os.environ.get("APP_DETECTOR_WORKERS", "6")),
+        stuck_after_min=int(os.environ.get("APP_STUCK_AFTER_MIN", "180")),
     )

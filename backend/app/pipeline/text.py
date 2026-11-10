@@ -101,6 +101,40 @@ def locate_chars(st: SegmentText, quote: str, *, after_ms: int | None = None) ->
     return None
 
 
+FUZZY_MIN = 0.85  # 容错匹配的最低相似度：模型多写、少写或改了个别字时仍能定位
+
+
+def locate_fuzzy(st: SegmentText, quote: str, *, after_ms: int | None = None, min_ratio: float = FUZZY_MIN
+                 ) -> tuple[int, int, float] | None:
+    """精确匹配失败时的容错定位：以引用中的三字片段在原文里的位置为锚点，比较同长度附近的窗口，
+    取相似度最高且不低于 min_ratio 的一处。返回原文字符区间和相似度。"""
+    from difflib import SequenceMatcher
+
+    q = _norm(quote or "")
+    if len(q) < 4:
+        return None
+    text = st.text
+    idx_map = [k for k, ch in enumerate(text) if ch not in PUNCT]
+    plain = "".join(text[k] for k in idx_map)
+    starts: set[int] = set()
+    for o in range(len(q) - 2):
+        g, pos = q[o: o + 3], plain.find(q[o: o + 3])
+        while pos != -1 and len(starts) < 2000:
+            starts.add(max(0, pos - o))
+            pos = plain.find(g, pos + 1)
+    best: tuple[float, int, int] | None = None
+    for s0 in sorted(starts):
+        for ln in {len(q) - 2, len(q) - 1, len(q), len(q) + 1, len(q) + 2}:
+            if ln <= 0 or s0 + ln > len(plain):
+                continue
+            r = SequenceMatcher(None, plain[s0: s0 + ln], q, autojunk=False).ratio()
+            if r >= min_ratio and (best is None or r > best[0]):
+                i, j = idx_map[s0], idx_map[s0 + ln - 1] + 1
+                if after_ms is None or st.span(i, j)[0] >= after_ms:
+                    best = (r, i, j)
+    return None if best is None else (best[1], best[2], round(best[0], 3))
+
+
 # ───────────── 字数（数字按读出的字数计，P4） ─────────────
 
 _DIG = "零一二三四五六七八九"

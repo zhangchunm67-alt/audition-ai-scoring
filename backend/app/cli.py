@@ -133,6 +133,7 @@ def main(argv: list[str] | None = None) -> None:
     cu.add_argument("--display-name", required=True)
     sub.add_parser("seed-demo")
     sub.add_parser("purge-expired")
+    sub.add_parser("sweep-stuck")
     sub.add_parser("worker")
     args = ap.parse_args(argv)
     if args.cmd == "worker":
@@ -143,6 +144,10 @@ def main(argv: list[str] | None = None) -> None:
         from .settings import get_settings
 
         conn = Redis.from_url(get_settings().redis_url)
+        with Session(get_engine()) as db:  # 启动时先清理上次断电、重启留下的中断任务
+            from .pipeline.orchestrator import sweep_stuck
+
+            sweep_stuck(db)
         Worker([Queue(QUEUE_NAME, connection=conn)], connection=conn).work()
         return
     with Session(get_engine()) as db:
@@ -155,6 +160,11 @@ def main(argv: list[str] | None = None) -> None:
             from .services.storage import get_storage
 
             print(purge_expired(db, get_storage()))
+        elif args.cmd == "sweep-stuck":
+            from .pipeline.orchestrator import sweep_stuck
+
+            ids = sweep_stuck(db)
+            print(f"标为失败（处理中断）的录像：{len(ids)} 条" + ("：" + "、".join(ids) if ids else ""))
         else:
             seed_demo(db)
 

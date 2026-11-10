@@ -75,6 +75,17 @@ class ChecklistPoint(BaseModel):
     compliance_required: bool = False
 
 
+class HumanScore(BaseModel):
+    """评委在系统里给某条目打的分（人工打分来源）。优先于机器结果，各轮共用。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    score: float = Field(ge=0)
+    by: str | None = None  # 打分人
+    at: str | None = None
+    note: str | None = None
+
+
 class ScoringContext(BaseModel):
     """一次计分需要的录制上下文。由流水线根据批次和录制记录填好。"""
 
@@ -87,6 +98,12 @@ class ScoringContext(BaseModel):
     expected_questions: dict[str, list[str]] = Field(default_factory=dict)  # {"S3": [异议 id], "O5": [题目 id]}
     main_duration_ms: int | None = None
     model_manifest: dict[str, Any] = Field(default_factory=dict)  # 模型版本清单，原样写入结果
+    # —— 人工打分（见 docs/decisions.md T39）——
+    human_scores: dict[str, HumanScore] = Field(default_factory=dict)  # 已录入的人工分
+    human_only: set[str] = Field(default_factory=set)  # 只由人工打分的条目（机器评不了）
+    human_confirm: set[str] = Field(default_factory=set)  # 机器给建议分，须人工确认
+    human_on_deduction: set[str] = Field(default_factory=set)  # 机器判扣分时须人工确认
+    human_fallback: bool = False  # 机器评不出（检测器失败、缺证据）的条目转人工，而不是整轮失败
 
 
 class Contribution(BaseModel):
@@ -102,9 +119,12 @@ class ItemResult(BaseModel):
     name: str
     dimension: str
     type: str
-    status: Literal["scored", "not_applicable", "missing_evidence"]
+    status: Literal["scored", "not_applicable", "missing_evidence", "awaiting_human"]
     score: float | None
     max: int
+    source: Literal["machine", "human"] = "machine"
+    suggested_score: float | None = None  # 机器建议分（待人工确认或已被人工分取代时保留）
+    human: HumanScore | None = None
     low_confidence: bool = False
     low_confidence_reasons: list[str] = Field(default_factory=list)
     missing_reasons: list[str] = Field(default_factory=list)
@@ -155,6 +175,7 @@ class RoundResult(BaseModel):
     missing_items: list[str]
     low_confidence_items: list[str]
     model_manifest: dict[str, Any]
+    awaiting_human_items: list[str] = Field(default_factory=list)  # 等评委打分的条目
 
     @property
     def conclusion_pass(self) -> bool | None:

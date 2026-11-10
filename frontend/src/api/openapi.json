@@ -2199,7 +2199,7 @@
      "录像"
     ],
     "summary": "Reprocess",
-    "description": "处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。",
+    "description": "处理失败的录像重新处理（例如供应商故障恢复后）。清掉各轮结果，从媒体准备开始。\n卡在“已提交 / 处理中”超过设定时长的（断电、重启中断）也可以重新处理。",
     "operationId": "reprocess_api_recordings__rid__reprocess_post",
     "parameters": [
      {
@@ -2264,6 +2264,102 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/RecordingOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}/human-review": {
+   "get": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Human Review",
+    "operationId": "human_review_api_recordings__rid__human_review_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HumanReviewOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recordings/{rid}/human-scores": {
+   "put": {
+    "tags": [
+     "录像"
+    ],
+    "summary": "Human Scores",
+    "operationId": "human_scores_api_recordings__rid__human_scores_put",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HumanScoresIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HumanReviewOut"
         }
        }
       }
@@ -4542,6 +4638,78 @@
      "hiring_status"
     ],
     "title": "HiringIn"
+   },
+   "HumanReviewOut": {
+    "properties": {
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "items": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "scores": {
+      "additionalProperties": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "object",
+      "title": "Scores"
+     }
+    },
+    "type": "object",
+    "required": [
+     "status",
+     "items",
+     "scores"
+    ],
+    "title": "HumanReviewOut"
+   },
+   "HumanScoreIn": {
+    "properties": {
+     "score": {
+      "type": "number",
+      "title": "Score"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "score"
+    ],
+    "title": "HumanScoreIn"
+   },
+   "HumanScoresIn": {
+    "properties": {
+     "scores": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/HumanScoreIn"
+      },
+      "type": "object",
+      "title": "Scores"
+     }
+    },
+    "type": "object",
+    "required": [
+     "scores"
+    ],
+    "title": "HumanScoresIn"
    },
    "ItemRow": {
     "properties": {

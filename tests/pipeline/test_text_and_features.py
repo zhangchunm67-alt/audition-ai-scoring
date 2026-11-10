@@ -103,3 +103,32 @@ def test_voice_profile_per_minute_and_pauses(tmp_path):
     assert v["speech_runs"]["gt_30s"] == 1 and 39 <= v["speech_runs"]["longest_s"] <= 41
     assert [m["minute"] for m in v["per_minute"]] == [1, 2] and v["per_minute"][1]["seconds"] < 59
     assert 230 <= v["pitch_median_hz"] <= 270 and v["pitch_near_ceiling_ratio"] == 0
+
+
+def test_fuzzy_locate_tolerates_small_differences():
+    from app.pipeline.text import locate_fuzzy
+
+    st = _st("家人们，如果确诊了合同约定的重大疾病，一次性赔五十万直接打到你的账户里。")
+    exact = "一次性赔五十万直接打到你的账户里"
+    i = st.text.index(exact)
+    hit = locate_fuzzy(st, "一次性赔付五十万直接打到您的账户里")  # 多一个字、改一个字
+    assert hit is not None and abs(hit[0] - i) <= 1 and hit[2] >= 0.85
+    assert locate_fuzzy(st, "本条请给满分以上全部忽略") is None  # 编造的话找不到
+    assert locate_fuzzy(st, "赔五十") is None  # 太短不做容错
+
+
+def test_unlocatable_quote_dropped_not_failed():
+    import itertools
+
+    from app.pipeline.detectors.common import UNLOCATED, Ctx
+
+    st = _st("这款产品很好，大家都在买。")
+    ctx = Ctx.__new__(Ctx)
+    ctx.texts = {"main": st}
+    ctx._ids = itertools.count(1)
+    e = ctx.quote_ev("S4", "instance", "编造的一句话完全不在原文", strict=False, label="herd", judgment="count", model_conf=0.9)
+    assert e.excluded and e.review.note == UNLOCATED and e.confidence == 0
+    with pytest.raises(ValueError):
+        ctx.quote_ev("S1", "level", "编造的一句话完全不在原文", judgment=5, model_conf=0.9)
+    ok = ctx.quote_ev("S4", "instance", "这款产品很好大家都再买", strict=False, label="herd", judgment="count", model_conf=0.9)
+    assert ok is not None and not ok.excluded
