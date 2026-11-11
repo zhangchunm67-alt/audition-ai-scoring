@@ -196,3 +196,13 @@ def test_xlsx_formula_injection_escaped():
     ws = wb["排名"]
     assert ws["B3"].value.startswith("'=") and ws["F3"].value == "'+1" and ws["B3"].data_type == "s"
     assert wb["条目明细"]["C1"].value == "人设塑造·普通话标准"
+
+
+def test_init_config_imports_only_rules(db):
+    from app.cli import main
+    from app.models.entities import DetectorConfigVersion, Product, RubricVersion
+
+    main(["init-config"])
+    main(["init-config"])  # 重复执行不报错、不重复导入
+    assert db.query(RubricVersion).count() == 1 and db.query(DetectorConfigVersion).count() == 1
+    assert db.query(Product).count() == 0
