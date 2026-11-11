@@ -85,6 +85,18 @@ def seed_detector_config(db: Session) -> None:
         db.add(DetectorConfigVersion(version=cfg.version, status="draft", content=data, content_hash=content_hash(data)))
 
 
+def init_config(db: Session) -> None:
+    """正式环境首次部署用：导入仓库里的评分标准（rubric-v0.2）和检测配置（detectors-v3），都是草稿。已存在则跳过。
+    产品、卖点卡、固定话术、异议、朗读稿由管理员在页面上录入。"""
+    seed_detector_config(db)
+    text = RUBRIC_PATH.read_text("utf-8")
+    cfg = parse_config(yaml.safe_load(text))
+    if not db.scalar(select(RubricVersion).where(RubricVersion.version == cfg.version)):
+        db.add(RubricVersion(version=cfg.version, status="draft", yaml_text=text, config_hash=config_hash(cfg)))
+    db.commit()
+    print(f"已导入评分标准 {cfg.version} 和检测配置（草稿）；产品、话术、异议、朗读稿请在页面上录入")
+
+
 def seed_demo(db: Session) -> None:
     seed_detector_config(db)
     text = RUBRIC_PATH.read_text("utf-8")
@@ -132,6 +144,7 @@ def main(argv: list[str] | None = None) -> None:
     cu.add_argument("--role", required=True, choices=[r.value for r in Role])
     cu.add_argument("--display-name", required=True)
     sub.add_parser("seed-demo")
+    sub.add_parser("init-config", help="正式环境首次部署：只导入评分标准和检测配置（草稿），不导入演示产品")
     sub.add_parser("purge-expired")
     sub.add_parser("sweep-stuck")
     bs = sub.add_parser("backup-status", help="备份脚本写入备份结果（管理后台显示）")
@@ -166,6 +179,8 @@ def main(argv: list[str] | None = None) -> None:
             from .services.storage import get_storage
 
             print(purge_expired(db, get_storage()))
+        elif args.cmd == "init-config":
+            init_config(db)
         elif args.cmd == "erase-candidate":
             import uuid as _uuid
 

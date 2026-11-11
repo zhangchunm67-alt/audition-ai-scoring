@@ -322,6 +322,8 @@ docker compose exec api python -m app.cli create-user --username admin --role ad
 
 ## 在 Mac Studio 上部署（公司内网，NAS 做备份）
 
+按步骤执行的部署方案、验收清单和日常运维 SOP 见 [`docs/deploy-sop.md`](docs/deploy-sop.md)。正式环境用 `python -m app.cli init-config` 只导入评分标准和检测配置，不要用 `seed-demo`（会导入演示产品）。
+
 适用于：Apple 芯片的 Mac（如 M5 Max、64 GB 内存、512 GB 硬盘），每月约 100 条试镜录像，只在公司内网使用。所用镜像都有 linux/arm64 版本（python、node、postgres、redis、bitnamilegacy/minio 已逐一核对），不需要改代码。
 
 ### 存储怎么分
