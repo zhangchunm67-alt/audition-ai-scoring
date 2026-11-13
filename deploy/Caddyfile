@@ -4,6 +4,9 @@
 	# 内网用，不向公网申请证书
 	local_certs
 	skip_install_trust
+	# APP_HOST 填 IP 时必须有这一行：浏览器、curl 按 IP 访问不带 SNI，Caddy 会改用连接的本地地址选证书，
+	# 而容器里看到的是容器自己的地址（172.x），找不到证书，握手直接失败（internal_error）。
+	default_sni {$APP_HOST}
 }
 
 {$APP_HOST} {
