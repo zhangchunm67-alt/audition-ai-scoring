@@ -53,7 +53,8 @@ def _enqueue(fn, *args) -> None:
     if get_settings().queue == "rq":
         from rq import Queue
 
-        Queue(QUEUE_NAME, connection=_redis(), default_timeout=3600).enqueue(fn, *args, job_timeout=3600)
+        t = get_settings().job_timeout_s  # 超时后任务被强制结束，录像要等 APP_STUCK_AFTER_MIN 才转失败，所以两者要一起调
+        Queue(QUEUE_NAME, connection=_redis(), default_timeout=t).enqueue(fn, *args, job_timeout=t)
     else:
         fn(*args)
 

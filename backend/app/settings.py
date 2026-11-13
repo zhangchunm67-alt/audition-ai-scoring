@@ -51,6 +51,7 @@ class Settings:
     limit_asr: int = 3
     detector_workers: int = 6  # 一轮内并行跑检测器的线程数
     stuck_after_min: int = 180  # 已提交 / 处理中超过这么久没完成，视为中断（断电、重启）
+    job_timeout_s: int = 3600  # 单个处理任务（一轮，含自动重试）的时限；整段长录播用真实视觉模型时要调大（P-LIVE-LONG）
 
 
 @lru_cache
@@ -84,4 +85,5 @@ def get_settings() -> Settings:
         limit_asr=int(os.environ.get("APP_LIMIT_ASR", "3")),
         detector_workers=int(os.environ.get("APP_DETECTOR_WORKERS", "6")),
         stuck_after_min=int(os.environ.get("APP_STUCK_AFTER_MIN", "180")),
+        job_timeout_s=int(os.environ.get("APP_JOB_TIMEOUT_S", "3600")),
     )

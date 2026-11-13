@@ -55,7 +55,7 @@ dump="$BACKUP_DIR/db/audition-$ts.dump.enc"
 BACKUP_KEY="$BACKUP_KEY" openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_KEY -in "$tmp/db.dump" -out "$dump.part"
 mv "$dump.part" "$dump"
 rm -f "$tmp/db.dump"
-log "数据库已加密备份：$dump（$(du -h "$dump" | cut -f1)）"
+log "数据库已加密备份：${dump}（$(du -h "$dump" | cut -f1)）"
 find "$BACKUP_DIR/db" -name 'audition-*.dump*' -mtime +"$KEEP_DAYS" -print -delete | sed 's/^/删除过期备份 /'
 find "$BACKUP_DIR/db" -name '*.part' -mtime +1 -delete
 
@@ -64,7 +64,7 @@ count=$(find "$MEDIA_DIR" -type f ! -name '.root_user' ! -name '.root_password' 
 last=$(cat "$BACKUP_DIR/media/.file-count" 2>/dev/null || echo 0)
 [ "$count" -gt 0 ] || [ "$last" -eq 0 ] || fail "媒体目录 $MEDIA_DIR 是空的（上次备份时有 $last 个文件），本机数据可能已损坏，拒绝备份；请先排查" 4
 if [ "$last" -gt 20 ] && [ $((count * 2)) -lt "$last" ]; then
-  fail "媒体文件数从 $last 骤降到 $count，拒绝备份（防止把本机损坏的数据同步到 NAS）；确认无误后删除 $BACKUP_DIR/media/.file-count 再运行" 4
+  fail "媒体文件数从 $last 骤降到 ${count}，拒绝备份（防止把本机损坏的数据同步到 NAS）；确认无误后删除 $BACKUP_DIR/media/.file-count 再运行" 4
 fi
 prev=$(ls -1d "$BACKUP_DIR"/media/20*/ 2>/dev/null | tail -n 1 || true)
 snap="$BACKUP_DIR/media/$ts"
@@ -72,7 +72,7 @@ snap="$BACKUP_DIR/media/$ts"
 rsync -a --exclude=/.root_user --exclude=/.root_password ${prev:+--link-dest="$prev"} "$MEDIA_DIR/" "$snap.part/"
 mv "$snap.part" "$snap"
 echo "$count" > "$BACKUP_DIR/media/.file-count"
-log "媒体快照：$snap（$count 个文件）"
+log "媒体快照：${snap}（$count 个文件）"
 ls -1d "$BACKUP_DIR"/media/20*/ 2>/dev/null | awk -v k="$MEDIA_KEEP" '{a[NR]=$0} END {for (i = 1; i <= NR - k; i++) print a[i]}' | while read -r old; do rm -rf "$old"; log "删除过期媒体快照 $old"; done
 find "$BACKUP_DIR/media" -maxdepth 1 -name '*.part' -mtime +1 -exec rm -rf {} +
 

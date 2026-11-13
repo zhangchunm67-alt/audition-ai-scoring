@@ -87,6 +87,7 @@ Dockerfile、docker-compose.yml  单机部署（见“用 Docker 部署”，未
    | `APP_REDIS_URL` | 默认 `redis://localhost:6379/0` |
    | `APP_PROVIDERS` | AI 供应商实现，目前只有 `mock`；接入真实供应商见下文 |
    | `APP_LIMIT_LLM`、`APP_LIMIT_ASR` | 同时调用大模型、语音识别的上限（所有 worker 合计），默认 8、3；按供应商的并发配额设 |
+   | `APP_JOB_TIMEOUT_S` | 一轮处理（含自动重试）的时限，默认 3600 秒，超时任务被强制结束。整段长录播用本地视觉模型逐帧判断时会超过 1 小时，要调大，并让 `APP_STUCK_AFTER_MIN` 比它长 |
    | `APP_RETRY_BACKOFF_S` | 一轮处理失败后重试的等待秒数，默认 `5,20`（即重试 2 次） |
    | `APP_CALL_RETRY_BACKOFF_S` | 单次供应商调用失败后重试的等待秒数，默认 `1,3` |
    | `APP_CHROMIUM` | 导出 PDF 用的 Chromium 路径（不设则自动查找） |

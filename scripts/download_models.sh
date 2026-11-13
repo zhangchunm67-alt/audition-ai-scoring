@@ -14,7 +14,7 @@ get_tar asr-models sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
 get_tar audio-tagging-models sherpa-onnx-ced-mini-audio-tagging-2024-04-19
 [ -f silero_vad.onnx ] || curl -fL --retry 3 -o silero_vad.onnx "$BASE/asr-models/silero_vad.onnx"
 cat <<EOT
-已下载到 $DIR。在 .env 里加（容器内路径为 /models/...；直接在本机跑脚本时用本机路径）：
+已下载到 ${DIR}。在 .env 里加（容器内路径为 /models/...；直接在本机跑脚本时用本机路径）：
 APP_ASR=sherpa
 APP_SENSEVOICE_DIR=/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
 APP_VAD_MODEL=/models/silero_vad.onnx

@@ -1,4 +1,4 @@
-# 主播评分规则校准交接（更新于 2026-11-10）
+# 主播评分规则校准交接（更新于 2026-11-13）
 
 ## 当前目标
 
@@ -46,6 +46,10 @@
 - **排除时段**：逐字稿原样保存，检测器只用排除后的文本；笑声候选、停顿统计也跳过排除时段。声音类、画面类条目仍看整段。
 - **报告**：标“录播”；`GET /api/reports?mode=audition|live`，页面默认分开排名。离线盲打分（`scripts/blind_score.py`）默认评到视频结尾，说明文件写 `"mode": "live"` 时异议按实际条数折算。
 - 还没定、需要业务拍板的：P-LIVE-DISTINCT（S4、O1、O2 按种类计分，不按时长换算，长录播容易拿满）、P-LIVE-S3-MANY、P-LIVE-PRODUCT；研发侧：P-LIVE-LONG（长视频超模型上下文、内存）、P-LIVE-SPEAKER。
+
+### 2026-11-13（Mac Studio 首次部署反馈）
+- `deploy/Caddyfile` 加 `default_sni {$APP_HOST}`：`APP_HOST` 填 IP 时客户端不带 SNI，容器里的 Caddy 选不到证书，握手报 `internal_error`。没有在真实 Caddy 上验证，更新后要在 Mac 上重建 caddy 容器再测。
+- `scripts/download_models.sh`、`scripts/backup.sh`：变量后紧跟中文标点的 4 处改成 `${名字}`。macOS 自带的 bash 3.2 会把后面的字节读进变量名，`set -u` 下报 unbound variable 退出（`backup.sh` 会停在数据库备份之后，不做媒体快照，也不上报）。`tests/test_shell_scripts.py` 防止再出现。
 
 ## 验证状态（2026-11-10）
 
