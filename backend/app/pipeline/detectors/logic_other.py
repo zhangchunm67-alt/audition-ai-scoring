@@ -47,11 +47,11 @@ def l5(ctx: Ctx):
 
 
 def o1(ctx: Ctx):
-    return _founds(ctx, "o1_terms", "O1", "instance", {"transcript": ctx.main.text, "glossary": ctx.card.get("glossary", [])})
+    return _founds(ctx, "o1_terms", "O1", "instance", {"transcript": ctx.main.text, "glossary": ctx.card.get("glossary", []), "reference_script": (ctx.card.get("fixed_script") or {}).get("text", "")})
 
 
 def o2(ctx: Ctx):
-    return _founds(ctx, "o2_targeted", "O2", "instance", {"transcript": ctx.main.text, "targeted_points": ctx.card.get("targeted_points", [])})
+    return _founds(ctx, "o2_targeted", "O2", "instance", {"transcript": ctx.main.text, "targeted_points": ctx.card.get("targeted_points", []), "reference_script": (ctx.card.get("fixed_script") or {}).get("text", "")})
 
 
 def o3(ctx: Ctx):

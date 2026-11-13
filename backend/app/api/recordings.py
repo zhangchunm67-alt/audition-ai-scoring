@@ -235,7 +235,7 @@ def create_recording(body: RecordingIn, request: Request, db: Session = DB, acto
         raise HTTPException(422, "请先为该候选人登记书面同意，未登记不能上传（C30）")
     ext = _check_file(body)
     if body.mode == "live":
-        sheet = create_live_sheet(db, body.product_id, body.rubric_version_id or reference(db).id, actor)
+        sheet = create_live_sheet(db, body.product_id, body.rubric_version_id or reference(db, for_processing=True).id, actor)
     else:
         sheet = db.get(AuditionSheet, body.sheet_id)
         if sheet is None or sheet.kind != "audition":

@@ -43,6 +43,10 @@ export default function RubricDetail() {
           ))}
         </Descriptions.Item>
       </Descriptions>
+      {!data.processing_supported && (
+        <Alert type="warning" style={{ marginBottom: 16 }} message="此版本与当前检测器不兼容，仅供历史追溯。新评分请导入并选择现行配置。"
+          description={data.processing_blockers.join("、")} />
+      )}
       {data.blockers.length > 0 && (
         <Alert
           type="warning"

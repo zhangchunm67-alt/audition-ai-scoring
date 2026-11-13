@@ -162,6 +162,9 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         item_ids = {it.id for _, it in cfg.items()}
         plan = human_plan(dcfg, raw_providers, item_ids)
         by_hand = set()
+        from ..providers.registry import allow_mock_scoring
+        if not allow_mock_scoring():
+            by_hand.update(readiness.material_review_items(card))
         if not any(s["segment"] == "reading" for s in rec.segments):
             by_hand.add("P3")  # 没有朗读段（录播）：做不了带参考文本的普通话评测，评委听录像打分
         if live and not objections:

@@ -122,8 +122,8 @@ TASKS: dict[str, tuple[str, type[BaseModel]]] = {
                      "只有 2 点、5 点以上或要点重叠的 valid=false。", Founds),
     "l5_facts": ("找出所有具体事实和数字陈述，对照卖点卡关键数字核对：具体、可核验、与条款一致的 valid=true；"
                  "与条款不符或无法核验的统计 valid=false。label 填事实名称。", Founds),
-    "o1_terms": ("对照术语表，找出讲到术语时紧跟白话解释且解释准确的地方，label 填术语；只说术语不解释或解释错误的 valid=false。", Founds),
-    "o2_targeted": ("对照针对性卖点，找出针对目标人群具体痛点讲出本产品具体解决点的地方，label 填卖点；泛泛而谈的 valid=false。", Founds),
+    "o1_terms": ("从真实逐字稿识别专业术语紧跟日常白话解释的片段，label 填术语。术语表和 reference_script 仅作参考，不是匹配词白名单；术语表为空也须依据原文识别，不得因此返回空结果。只说术语不解释或解释错误的 valid=false，不编造原文没有的片段。", Founds),
+    "o2_targeted": ("结合 reference_script 识别针对本产品目标人群具体痛点讲出具体解决点的片段，label 填卖点。targeted_points 仅作参考，列表为空也须分析逐字稿；不能固定匹配儿童医院等其他产品的示例词。泛泛而谈的 valid=false，缺乏可靠依据时不宣称条款已核实。", Founds),
     "o3_scene": ("找出描绘具体使用场景的地方（有具体的人、地点或动作）；抽象说法 valid=false。", Founds),
     "o4_control": ("评分表 O4 节奏与气氛（满分 20，根据主观打分）：主播对直播间的掌控，包括节奏掌控（讲品还是回答问题）、是否有热情。"
                    "输入是每条异议之后的讲话和测得的参考指标（回应时长、未回应条数、冷场次数、音量和音高起伏）。"

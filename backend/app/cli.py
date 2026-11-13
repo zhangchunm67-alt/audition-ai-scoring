@@ -2,6 +2,7 @@
 
   python -m app.cli create-user --username admin --role admin --display-name 管理员   # 密码从环境变量 NEW_USER_PASSWORD 或交互输入
   python -m app.cli seed-demo                                                          # 导入评分标准 v0.3、检测配置 v1 和一套演示数据
+  python -m app.cli sync-rubric                                                        # 仅补导入现行评分配置（草稿），保留历史版本
   python -m app.cli purge-expired                                                      # 删除到期媒体（每天由定时任务执行）
   python -m app.cli worker                                                             # 启动处理队列 worker（APP_QUEUE=rq）
 
@@ -13,21 +14,15 @@ import argparse
 import getpass
 import os
 import sys
-from pathlib import Path
 
-import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from scoring import config_hash, parse_config
-
 from .db import get_engine
-from .models.entities import DetectorConfigVersion, DrawRule, Objection, Product, ProductCard, Question, ReadingScript, RedlineLexiconVersion, RubricVersion, User
+from .models.entities import DetectorConfigVersion, DrawRule, Objection, Product, ProductCard, Question, ReadingScript, RedlineLexiconVersion, User
 from .security.passwords import hash_password
 from .security.rbac import Role
-
-ROOT = Path(__file__).resolve().parents[2]
-RUBRIC_PATH = ROOT / "config" / "rubric" / "rubric-v0.3.yaml"
+from .services.rubrics import sync_bundled
 
 DEMO_CHECKLIST = [
     ("coverage", "保障范围", 5, False), ("deductible", "免赔额", 4, True), ("ratio", "报销比例", 3, False),
@@ -86,23 +81,17 @@ def seed_detector_config(db: Session) -> None:
 
 
 def init_config(db: Session) -> None:
-    """正式环境首次部署用：导入仓库里的评分标准（rubric-v0.2）和检测配置（detectors-v3），都是草稿。已存在则跳过。
+    """正式环境首次部署用：导入仓库里的评分标准（rubric-v0.3）和检测配置（detectors-v3），都是草稿。已存在则跳过。
     产品、卖点卡、固定话术、异议、朗读稿由管理员在页面上录入。"""
     seed_detector_config(db)
-    text = RUBRIC_PATH.read_text("utf-8")
-    cfg = parse_config(yaml.safe_load(text))
-    if not db.scalar(select(RubricVersion).where(RubricVersion.version == cfg.version)):
-        db.add(RubricVersion(version=cfg.version, status="draft", yaml_text=text, config_hash=config_hash(cfg)))
+    rv = sync_bundled(db)
     db.commit()
-    print(f"已导入评分标准 {cfg.version} 和检测配置（草稿）；产品、话术、异议、朗读稿请在页面上录入")
+    print(f"已导入评分标准 {rv.version} 和检测配置（草稿）；产品、话术、异议、朗读稿请在页面上录入")
 
 
 def seed_demo(db: Session) -> None:
     seed_detector_config(db)
-    text = RUBRIC_PATH.read_text("utf-8")
-    cfg = parse_config(yaml.safe_load(text))
-    if not db.scalar(select(RubricVersion).where(RubricVersion.version == cfg.version)):
-        db.add(RubricVersion(version=cfg.version, status="draft", yaml_text=text, config_hash=config_hash(cfg)))
+    sync_bundled(db)
     if db.scalar(select(Product).where(Product.code == "demo-kids-medical")):
         db.commit()
         print("演示产品已存在，跳过")
@@ -144,7 +133,8 @@ def main(argv: list[str] | None = None) -> None:
     cu.add_argument("--role", required=True, choices=[r.value for r in Role])
     cu.add_argument("--display-name", required=True)
     sub.add_parser("seed-demo")
-    sub.add_parser("init-config", help="正式环境首次部署：只导入评分标准和检测配置（草稿），不导入演示产品")
+    sub.add_parser("init-config", help="只导入评分标准和检测配置，不导入演示产品")
+    sub.add_parser("sync-rubric")
     sub.add_parser("purge-expired")
     sub.add_parser("sweep-stuck")
     bs = sub.add_parser("backup-status", help="备份脚本写入备份结果（管理后台显示）")
@@ -199,6 +189,10 @@ def main(argv: list[str] | None = None) -> None:
 
             ids = sweep_stuck(db)
             print(f"标为失败（处理中断）的录像：{len(ids)} 条" + ("：" + "、".join(ids) if ids else ""))
+        elif args.cmd == "sync-rubric":
+            rv = sync_bundled(db)
+            db.commit()
+            print(f"评分标准 {rv.version} 已同步（{rv.status}）；历史版本保持原样")
         else:
             seed_demo(db)
 

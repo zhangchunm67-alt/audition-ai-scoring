@@ -14,3 +14,6 @@ node_modules/
 /var/
 /uv.lock
 /models.env
+/.local/
+/deliverables/
+/docs/source/*直播脚本*.md

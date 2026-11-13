@@ -151,6 +151,7 @@ export default function ReportDetail() {
       </Space>
       <Typography.Paragraph style={{ fontSize: 15 }}>{d.verdict.reason}</Typography.Paragraph>
       {d.superseded_at && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="这是旧修订，已被按新版评分标准重算的版本取代" />}
+      {Object.values(d.trace.model_manifest).some((v) => String(v).startsWith("mock")) && <Alert type="error" showIcon style={{ marginBottom: 8 }} message="模拟流程结果：本报告含 Mock 测试模型输出，不是该主播的真实综合得分，不进入默认真实排名。" />}
       {d.informal && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="非正式报告：使用了草稿版的评分标准或检测配置（含待确认规则和测试占位值），或用了开发测试用的模拟模型，仅供试用，不作录用依据" />}
       {d.critical && (
         <Alert type="info" showIcon style={{ marginBottom: 8 }} message={`临界样本：总档位接近达标线，共 ${d.verdict.rounds.length} 轮取多数，请谨慎使用`}

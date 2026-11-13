@@ -51,9 +51,10 @@ CAPABILITIES = {
 
 
 def unavailable_capabilities(providers) -> set[str]:
-    from ...providers.registry import Unavailable
+    from ...providers.registry import Unavailable, allow_mock_scoring, mock_capabilities
 
-    return {c for c in ("asr", "speech_eval", "llm", "vision", "laugh", "voice") if isinstance(getattr(providers, c), Unavailable)}
+    missing = {c for c in ("asr", "speech_eval", "llm", "vision", "laugh", "voice") if isinstance(getattr(providers, c), Unavailable)}
+    return missing if allow_mock_scoring() else missing | mock_capabilities(providers)
 
 
 def human_plan(dcfg, providers, item_ids: set[str]) -> dict:

@@ -16,6 +16,7 @@ def publish_blockers(cfg) -> list[str]:
     return _content_blockers(cfg) + structure_problems(cfg)
 
 from ..models.entities import RubricVersion, User
+from ..pipeline.detectors import unsupported_items
 from ..security.rbac import Perm
 from ..services import audit
 from ..services.rubrics import checklist_max, load, parse_yaml, reference
@@ -38,6 +39,8 @@ class RubricSummary(BaseModel):
     created_at: datetime
     published_at: datetime | None
     blocker_count: int
+    processing_supported: bool
+    processing_blockers: list[str]
 
 
 class ItemRow(BaseModel):
@@ -57,8 +60,11 @@ class RubricDetail(RubricSummary):
 
 
 def _summary(rv: RubricVersion) -> RubricSummary:
+    cfg = load(rv)
+    bad = unsupported_items(cfg)
     return RubricSummary(id=rv.id, version=rv.version, status=rv.status, config_hash=rv.config_hash, created_at=rv.created_at,
-                         published_at=rv.published_at, blocker_count=len(publish_blockers(load(rv))))
+                         published_at=rv.published_at, blocker_count=len(publish_blockers(cfg)),
+                         processing_supported=not bad, processing_blockers=bad)
 
 
 def _detail(rv: RubricVersion) -> RubricDetail:
@@ -71,8 +77,9 @@ def _detail(rv: RubricVersion) -> RubricDetail:
 
 
 @router.get("", response_model=list[RubricSummary])
-def list_rubrics(db: Session = DB, _: User = Read) -> list[RubricSummary]:
-    return [_summary(rv) for rv in db.scalars(select(RubricVersion).order_by(RubricVersion.created_at.desc()))]
+def list_rubrics(for_processing: bool = False, db: Session = DB, _: User = Read) -> list[RubricSummary]:
+    rows = [_summary(rv) for rv in db.scalars(select(RubricVersion).order_by(RubricVersion.created_at.desc()))]
+    return [r for r in rows if r.status != "retired" and r.processing_supported] if for_processing else rows
 
 
 @router.post("", response_model=RubricDetail, status_code=201)
@@ -90,9 +97,9 @@ def import_rubric(body: RubricIn, request: Request, db: Session = DB, actor: Use
 
 
 @router.get("/reference", response_model=RubricDetail)
-def get_reference(db: Session = DB, _: User = Read) -> RubricDetail:
-    """校验卖点卡等内容时参照的版本：最新已发布，没有则最新草稿。"""
-    return _detail(reference(db))
+def get_reference(for_processing: bool = False, db: Session = DB, _: User = Read) -> RubricDetail:
+    """默认供历史内容校验；新评分须指定 for_processing，排除旧证据协议。"""
+    return _detail(reference(db, for_processing=for_processing))
 
 
 def _get(db: Session, rid: uuid.UUID) -> RubricVersion:

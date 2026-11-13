@@ -16,6 +16,7 @@ import SheetPrint from "./pages/SheetPrint";
 import Login from "./pages/Login";
 import { ChangePasswordButton, ForcePasswordChange } from "./pages/ChangePassword";
 import ProductDetail from "./pages/ProductDetail";
+import ProductAuditionSettings from "./pages/ProductAuditionSettings";
 import Products from "./pages/Products";
 import ReadingScripts from "./pages/ReadingScripts";
 import Redlines from "./pages/Redlines";
@@ -46,7 +47,7 @@ const SECTIONS: NavSection[] = [
   {
     key: "materials", label: "培训资料", pages: [
       { key: "/rubrics", label: "评分标准", perm: "config.read" },
-      { key: "/products", label: "产品与题库", perm: "config.read" },
+      { key: "/products", label: "产品资料", perm: "config.read" },
       { key: "/reading-scripts", label: "朗读稿", perm: "config.read" },
       { key: "/redlines", label: "红线词表", perm: "redline.read" },
     ],
@@ -143,6 +144,7 @@ export default function App() {
             <Route path="/rubrics/:id" element={<RubricDetail />} />
             <Route path="/products" element={<Products />} />
             <Route path="/products/:id" element={<ProductDetail />} />
+            <Route path="/sheets/products/:id/settings" element={<ProductAuditionSettings />} />
             <Route path="/reading-scripts" element={<ReadingScripts />} />
             <Route path="/redlines" element={<Redlines />} />
             <Route path="/sheets" element={<Sheets />} />

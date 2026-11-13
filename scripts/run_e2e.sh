@@ -7,6 +7,7 @@ PY="$ROOT/.venv/bin/python"
 DB_ADMIN_URL="${E2E_ADMIN_URL:-postgresql://audition:audition@localhost/postgres}"
 DB_NAME="audition_e2e"
 PORT="${E2E_PORT:-8765}"
+export APP_ALLOW_MOCK_SCORING=true  # 隔离测试库，不能用于真实录像
 export E2E_PASSWORD="e2e-password-123"
 export DATABASE_URL="postgresql+psycopg://audition:audition@localhost/${DB_NAME}"
 for k in APP_SESSION_KEY APP_DATA_KEY APP_HASH_KEY; do export "$k=$("$PY" -c 'import base64,os;print(base64.b64encode(os.urandom(32)).decode())')"; done

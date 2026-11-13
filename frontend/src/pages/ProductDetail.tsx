@@ -1,84 +1,148 @@
-import { Button, Card, Collapse, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Card, Collapse, Descriptions, Empty, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import dayjs from "dayjs";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
-import { msToClock, STATUS_ZH, useAction, useFetch } from "../components/hooks";
+import { STATUS_ZH, useAction, useFetch } from "../components/hooks";
 import CardEditor from "./CardEditor";
 
 type Card = S<"CardOut">;
 
-function Cards({ pid }: { pid: string }) {
-  const { data, reload } = useFetch<Card[]>(`/products/${pid}/cards`);
+function calibrationState(card: Card) {
+  const { fixed_script: script, s2_calibration: cal } = card.content;
+  if (!script) return "缺少参考脚本";
+  if (!cal || cal.fixed_script_version !== script.version) return "未校准";
+  return cal.status === "validated" ? "已验证" : "草稿待验证";
+}
+
+function CalibrationTag({ card }: { card: Card }) {
+  const label = calibrationState(card);
+  return <Tag color={label === "已验证" ? "green" : "orange"}>{label}</Tag>;
+}
+
+function AdditionalReferences({ card }: { card: Card }) {
+  const c = card.content;
+  const rows = [
+    { name: "必讲要点", values: (c.checklist ?? []).map((p) => `${p.name}（${p.points} 分，仅旧版计分使用）`) },
+    { name: "针对性卖点", values: c.targeted_points ?? [] },
+    { name: "使用场景", values: c.scenarios ?? [] },
+    { name: "术语白话对照", values: (c.glossary ?? []).map((g) => `${g.term}：${g.plain}`) },
+    { name: "关键数字", values: (c.key_numbers ?? []).map((n) => `${n.name}：${n.value}`) },
+    { name: "禁用说法", values: c.banned_phrases ?? [] },
+  ].filter((r) => r.values.length > 0);
+  return rows.length ? <Collapse style={{ marginTop: 16 }} items={[{
+    key: "extra", label: "附加评分参考",
+    children: <Descriptions column={1} size="small">{rows.map((r) => <Descriptions.Item key={r.name} label={r.name}>{r.values.join("；")}</Descriptions.Item>)}</Descriptions>,
+  }]} /> : null;
+}
+
+function ProductMaterials({ pid }: { pid: string }) {
+  const product = useFetch<S<"ProductOut">>(`/products/${pid}`);
+  const { data, loading, error, reload } = useFetch<Card[]>(`/products/${pid}/cards`);
   const ref = useFetch<S<"RubricDetail">>("/rubrics/reference");
   const { can } = useAuth();
   const act = useAction();
+  const [tab, setTab] = useState("script");
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
+  const [calibrating, setCalibrating] = useState(false);
   const latest = data?.[0];
+  const published = data?.find((c) => c.status === "published");
+  const current = published ?? data?.find((c) => c.status === "draft") ?? latest;
+  const viewing = data?.find((c) => c.id === viewId);
+  const cal = current?.content.s2_calibration;
+  const script = current?.content.fixed_script;
+
   return (
     <>
-      {can("config.write") && !editing && (
-        <Button type="primary" style={{ marginBottom: 16 }} onClick={() => setEditing(true)} disabled={!ref.data}>
-          {latest ? "基于最新版本修改" : "新建卖点卡"}
-        </Button>
-      )}
-      {ref.error && <Typography.Paragraph type="danger">{ref.error}（请先导入评分标准）</Typography.Paragraph>}
-      {editing && ref.data && (
-        <Card title="编辑卖点卡" style={{ marginBottom: 16 }} extra={<Button onClick={() => setEditing(false)}>取消</Button>}>
-          <CardEditor
-            initial={latest?.content}
-            required={ref.data.checklist_max}
-            onSubmit={async (c) => {
-              if (await act(() => post(`/products/${pid}/cards`, c), "已保存为新版本")) {
-                setEditing(false);
-                reload();
-              }
-            }}
-          />
-        </Card>
-      )}
-      <Collapse
-        items={(data ?? []).map((c) => ({
-          key: c.id,
-          label: (
-            <Space>
-              第 {c.version} 版<Tag color={c.status === "published" ? "green" : c.status === "draft" ? "orange" : "default"}>{STATUS_ZH[c.status]}</Tag>
-              {c.content.fixed_script ? `话术 ${c.content.fixed_script.version}` : <Tag color="red">没有固定话术</Tag>}
-              {c.content.s2_calibration ? (
-                <Tag color={c.content.s2_calibration.status === "validated" ? "green" : "orange"}>
-                  产品讲解校准 {c.content.s2_calibration.version}（{c.content.s2_calibration.status === "validated" ? "已验证" : "草稿"}）
-                </Tag>
-              ) : (
-                <Tag color="red">产品讲解未校准</Tag>
-              )}
-            </Space>
-          ),
-          extra:
-            can("config.write") && c.status === "draft" ? (
-              <Button size="small" onClick={async (e) => (e.stopPropagation(), (await act(() => post(`/cards/${c.id}/publish`), "已发布")) && reload())}>
-                发布
-              </Button>
-            ) : null,
-          children: (
-            <>
-              <Typography.Paragraph style={{ whiteSpace: "pre-wrap" }}>{c.content.fixed_script?.text ?? "（没有固定话术）"}</Typography.Paragraph>
-              {can("config.write") && c.status !== "retired" && c.content.fixed_script && <Calibration card={c} onSaved={reload} />}
-              <Table
-                size="small"
-                rowKey="id"
-                pagination={false}
-                dataSource={c.content.checklist ?? []}
-                columns={[
-                  { title: "编号", dataIndex: "id" },
-                  { title: "要点", dataIndex: "name" },
-                  { title: "分值（仅旧版评分标准）", dataIndex: "points" },
-                  { title: "合规必讲", dataIndex: "compliance_required", render: (v) => (v ? "是" : "—") },
-                ]}
-              />
-            </>
-          ),
-        }))}
-      />
+      <Typography.Title level={4}>{product.data?.name ?? "产品资料"}</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        录播按参考脚本评估产品讲解；资料按版本保存，校准状态单独查看。实际观众异议在每条录像中标注。
+      </Typography.Paragraph>
+      {(error || product.error) && <Alert type="error" message={error || product.error} style={{ marginBottom: 16 }} />}
+      <div data-testid="product-material-tabs">
+        <Tabs activeKey={tab} onChange={setTab} items={[
+          { key: "script", label: "参考脚本", children: <>
+            {ref.error && <Alert type="error" message={ref.error} style={{ marginBottom: 16 }} />}
+            {can("config.write") && !editing && <Button type="primary" style={{ marginBottom: 16 }} disabled={loading || !ref.data}
+              onClick={() => setEditing(true)}>{latest ? "编辑参考脚本" : "添加参考脚本"}</Button>}
+            {editing && ref.data ? (
+              <Card title="编辑参考脚本" extra={<Button disabled={saving} onClick={() => setEditing(false)}>取消</Button>}>
+                <Typography.Paragraph type="secondary">保存会新增一个资料草稿版本；发布后才切换录播使用的资料。修改话术版本后需要重新校准。</Typography.Paragraph>
+                <CardEditor initial={latest?.content} required={ref.data.checklist_max} scriptOnly submitting={saving} onSubmit={async (content) => {
+                  setSaving(true);
+                  try {
+                    if (await act(() => post(`/products/${pid}/cards`, content), "已保存为新版本")) {
+                      setEditing(false);
+                      setTab("versions");
+                      reload();
+                    }
+                  } finally { setSaving(false); }
+                }} />
+              </Card>
+            ) : current ? (
+              <Card loading={loading} title={<Space wrap>
+                <Typography.Text>{published ? "当前使用" : "资料预览"}：第 {current.version} 版</Typography.Text>
+                <Tag color={current.status === "published" ? "green" : "orange"}>{STATUS_ZH[current.status]}</Tag>
+                {script && <Typography.Text type="secondary">话术 {script.version}</Typography.Text>}
+              </Space>}>
+                {!published && <Alert type="info" message="尚未发布可用于录播的资料版本，请在“资料版本”中发布。" style={{ marginBottom: 16 }} />}
+                {script ? <div data-testid="reference-script" style={{ whiteSpace: "pre-wrap", lineHeight: 1.8, maxHeight: "60vh", overflowY: "auto" }}>{script.text}</div>
+                  : <Empty description="此版本尚无参考脚本，请添加产品的讲解话术。" />}
+              </Card>
+            ) : <Card loading={loading}><Empty description="尚无参考脚本，添加后保存为资料版本。" /></Card>}
+          </> },
+          { key: "versions", label: "资料版本", children: <>
+            <Typography.Paragraph type="secondary">新增版本保留原资料和已有报告。当前录播使用已发布版本，草稿不会自动替换。</Typography.Paragraph>
+            <Table<Card> rowKey="id" size="small" scroll={{ x: 980 }} loading={loading} dataSource={data} pagination={false} columns={[
+              { title: "资料版本", width: 170, render: (_, c) => <Space style={{ whiteSpace: "nowrap" }}>第 {c.version} 版{published?.id === c.id && <Tag color="green">当前使用</Tag>}</Space> },
+              { title: "状态", width: 90, dataIndex: "status", render: (st) => <Tag color={st === "published" ? "green" : "default"}>{STATUS_ZH[st]}</Tag> },
+              { title: "话术版本", width: 240, render: (_, c) => <Typography.Text style={{ whiteSpace: "nowrap" }}>{c.content.fixed_script?.version ?? "未登记"}</Typography.Text> },
+              { title: "校准状态", width: 110, render: (_, c) => <CalibrationTag card={c} /> },
+              { title: "创建时间", width: 180, dataIndex: "created_at", render: (t) => <Typography.Text style={{ whiteSpace: "nowrap" }}>{dayjs(t).format("YYYY-MM-DD HH:mm")}</Typography.Text> },
+              { title: "操作", width: 190, render: (_, c) => <Space>
+                <Button size="small" onClick={() => setViewId(c.id)}>查看版本</Button>
+                {can("config.write") && c.status === "draft" && <Button size="small" onClick={async () => {
+                  if (await act(() => post(`/cards/${c.id}/publish`), "已发布")) reload();
+                }}>发布</Button>}
+              </Space> },
+            ]} />
+          </> },
+          { key: "calibration", label: "校准状态", children: current ? <>
+            <Card title={<Space>产品讲解校准<CalibrationTag card={current} /></Space>}>
+              <Descriptions column={2} size="small">
+                <Descriptions.Item label="对应资料">第 {current.version} 版（{STATUS_ZH[current.status]}）</Descriptions.Item>
+                <Descriptions.Item label="话术版本">{script?.version ?? "未登记"}</Descriptions.Item>
+                <Descriptions.Item label="训练样本">{cal ? `${cal.train_samples} 份` : "未登记"}</Descriptions.Item>
+                <Descriptions.Item label="独立验证样本">{cal ? `${cal.holdout_samples} 份` : "未登记"}</Descriptions.Item>
+                <Descriptions.Item label="验证一致率">{cal?.holdout_agreement != null ? `${(cal.holdout_agreement * 100).toFixed(1)}%` : "未登记"}</Descriptions.Item>
+              </Descriptions>
+              {cal && <Typography.Paragraph>产品讲解校准 {cal.version}（{cal.status === "validated" ? "已验证" : "草稿"}）</Typography.Paragraph>}
+              {calibrationState(current) !== "已验证" && <Alert type="info" showIcon style={{ marginBottom: 16 }}
+                message={!cal ? "尚无校准记录，录播的“产品讲解”由评委打分。" : "校准尚未验证，不能作为正式自动评分依据。"}
+                description="没有人工标注样本时无需填写校准表。后续准备训练和独立验证样本，再登记真实的校准结果。" />}
+              {can("config.write") && script && current.status !== "retired" && <Button onClick={() => setCalibrating(true)}>{cal ? "更新校准记录" : "登记校准结果"}</Button>}
+            </Card>
+          </> : <Empty description="添加参考脚本后，可查看对应资料的校准状态。" /> },
+        ]} />
+      </div>
+      <Modal title={viewing ? `资料第 ${viewing.version} 版` : "资料版本"} open={!!viewing} width={900} onCancel={() => setViewId(null)}
+        footer={<Button onClick={() => setViewId(null)}>关闭</Button>}>
+        {viewing && <>
+          <Descriptions size="small" column={2}>
+            <Descriptions.Item label="状态">{STATUS_ZH[viewing.status]}</Descriptions.Item>
+            <Descriptions.Item label="话术版本">{viewing.content.fixed_script?.version ?? "未登记"}</Descriptions.Item>
+            <Descriptions.Item label="校准状态"><CalibrationTag card={viewing} /></Descriptions.Item>
+          </Descriptions>
+          <Typography.Paragraph style={{ whiteSpace: "pre-wrap", maxHeight: "55vh", overflowY: "auto" }}>{viewing.content.fixed_script?.text ?? "（没有参考脚本）"}</Typography.Paragraph>
+          <AdditionalReferences card={viewing} />
+        </>}
+      </Modal>
+      <Modal title="登记产品讲解校准结果" open={calibrating} onCancel={() => setCalibrating(false)} footer={null} width={1100} destroyOnClose>
+        {calibrating && current?.content.fixed_script && <Calibration card={current} onSaved={() => { setCalibrating(false); reload(); }} />}
+      </Modal>
     </>
   );
 }
@@ -120,157 +184,13 @@ function Calibration({ card, onSaved }: { card: Card; onSaved: () => void }) {
         </Form.Item>
         <Button htmlType="submit">保存</Button>
       </Form>
-      <Typography.Text type="secondary">对应固定话术 {script.version}。标为“已验证”须至少 20 份校准样本并有留出验证结果；草稿状态出的报告标“非正式”。</Typography.Text>
+      <Typography.Text type="secondary">对应固定话术 {script.version}。标为“已验证”须至少 20 份训练样本、10 份独立验证样本，验证一致率不低于 85%。未验证时继续由评委复核。</Typography.Text>
     </Card>
   );
 }
 
-function Bank({ pid, kind }: { pid: string; kind: "objections" | "questions" }) {
-  const { data, loading, reload } = useFetch<(S<"ObjectionOut"> | S<"QuestionOut">)[]>(`/products/${pid}/${kind}?include_inactive=true`);
-  const { can } = useAuth();
-  const act = useAction();
-  const [edit, setEdit] = useState<Record<string, unknown> | null>(null);
-  const [form] = Form.useForm();
-  const isObj = kind === "objections";
-  const open = (row?: Record<string, unknown>) => {
-    form.setFieldsValue(row ?? { active: true });
-    setEdit(row ?? {});
-  };
-  return (
-    <>
-      {can("config.write") && (
-        <Button type="primary" style={{ marginBottom: 16 }} onClick={() => open()}>
-          {isObj ? "新增异议" : "新增知识题"}
-        </Button>
-      )}
-      <Table
-        rowKey="id"
-        size="small"
-        loading={loading}
-        dataSource={data}
-        columns={[
-          { title: isObj ? "弹幕原文" : "题目", dataIndex: "text" },
-          { title: isObj ? "正确答案要点" : "满分要点", render: (_, r) => ((isObj ? (r as S<"ObjectionOut">).answer_points : (r as S<"QuestionOut">).full_points) ?? []).join("；") },
-          { title: "启用", dataIndex: "active", render: (a) => (a ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>) },
-          ...(can("config.write") ? [{ title: "", render: (_: unknown, r: object) => <Button size="small" onClick={() => open(r as Record<string, unknown>)}>编辑</Button> }] : []),
-        ]}
-      />
-      <Modal
-        title={edit && "id" in edit ? "编辑" : "新增"}
-        open={!!edit}
-        width={640}
-        onCancel={() => setEdit(null)}
-        onOk={async () => {
-          const v = await form.validateFields();
-          const id = edit && "id" in edit ? String(edit.id) : null;
-          const ok = await act(() => (id ? put(`/${kind}/${id}`, v) : post(`/products/${pid}/${kind}`, v)), "已保存");
-          if (ok) {
-            setEdit(null);
-            reload();
-          }
-        }}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="text" label={isObj ? "弹幕原文" : "题目"} rules={[{ required: true }]}>
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name={isObj ? "answer_points" : "full_points"} label={isObj ? "正确答案要点（按条款）" : "满分要点"} rules={isObj ? [] : [{ required: true }]}>
-            <Select mode="tags" open={false} placeholder="输入后回车添加" />
-          </Form.Item>
-          {isObj ? (
-            <>
-              <Form.Item name="advantages" label="可强调的优势">
-                <Select mode="tags" open={false} placeholder="输入后回车添加" />
-              </Form.Item>
-              <Form.Item name="closing" label="合适的收尾">
-                <Input />
-              </Form.Item>
-            </>
-          ) : (
-            <Form.Item name="partial_rule" label="部分分条件">
-              <Input />
-            </Form.Item>
-          )}
-          <Form.Item name="active" label="启用" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </>
-  );
-}
-
-function DrawRule({ pid }: { pid: string }) {
-  const { data, reload } = useFetch<S<"DrawRuleOut"> | null>(`/products/${pid}/draw-rule`);
-  const { can } = useAuth();
-  const act = useAction();
-  const [form] = Form.useForm();
-  if (data === undefined) return null;
-  const init = data ? { ...data, objection_times: (data.objection_times_ms ?? []).map(msToClock).join(", ") } : { objection_count: 4, question_count: 0, objection_times: "04:00, 05:30, 07:00, 08:00", prep_seconds: 900, question_seconds: 60, main_seconds: 600 };
-  return (
-    <Form
-      form={form}
-      layout="vertical"
-      initialValues={init}
-      disabled={!can("config.write")}
-      style={{ maxWidth: 520 }}
-      onFinish={async (v) => {
-        const times = String(v.objection_times)
-          .split(/[,，\s]+/)
-          .filter(Boolean)
-          .map((t: string) => {
-            const [m, s] = t.split(":").map(Number);
-            return (m * 60 + (s || 0)) * 1000;
-          });
-        const body = { ...v, objection_times_ms: times };
-        delete body.objection_times;
-        if (await act(() => put(`/products/${pid}/draw-rule`, body), "已保存")) reload();
-      }}
-    >
-      <Typography.Paragraph type="secondary">准备时间和异议弹出时间点按 rubric Q3 默认值，待培训确认后可在此修改。</Typography.Paragraph>
-      <Space>
-        <Form.Item name="objection_count" label="异议条数">
-          <InputNumber min={1} />
-        </Form.Item>
-        <Form.Item name="question_count" label="知识题数" extra="评分表 20261105 已删除保险知识（O5），新版评分标准填 0">
-          <InputNumber min={0} />
-        </Form.Item>
-      </Space>
-      <Form.Item name="objection_times" label="异议弹出时间点（分:秒，逗号分隔）" rules={[{ required: true }]}>
-        <Input />
-      </Form.Item>
-      <Space>
-        <Form.Item name="prep_seconds" label="准备时间（秒）">
-          <InputNumber min={0} />
-        </Form.Item>
-        <Form.Item name="main_seconds" label="主体段（秒）">
-          <InputNumber min={60} />
-        </Form.Item>
-        <Form.Item name="question_seconds" label="每题（秒）">
-          <InputNumber min={1} />
-        </Form.Item>
-      </Space>
-      <Button type="primary" htmlType="submit">
-        保存
-      </Button>
-    </Form>
-  );
-}
 
 export default function ProductDetail() {
   const { id = "" } = useParams();
-  const { data } = useFetch<S<"ProductOut">>(`/products/${id}`);
-  return (
-    <>
-      <Typography.Title level={4}>{data?.name}</Typography.Title>
-      <Tabs
-        items={[
-          { key: "card", label: "卖点卡", children: <Cards pid={id} /> },
-          { key: "obj", label: "异议库", children: <Bank pid={id} kind="objections" /> },
-          { key: "q", label: "知识题库", children: <Bank pid={id} kind="questions" /> },
-          { key: "rule", label: "抽题规则", children: <DrawRule pid={id} /> },
-        ]}
-      />
-    </>
-  );
+  return <ProductMaterials key={id} pid={id} />;
 }

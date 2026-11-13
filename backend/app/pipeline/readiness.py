@@ -10,6 +10,7 @@ from scoring import parse_config
 from ..models.entities import AuditionSheet, ProductCard, RubricVersion
 from .detectors import unavailable_capabilities, unsupported_items
 from .detectors.sales import S2NotCalibrated, s2_material
+from ..providers.registry import allow_mock_scoring, mock_capabilities
 
 
 def blockers(db: Session, sheet: AuditionSheet, providers=None, *, live: bool = False) -> list[str]:
@@ -20,12 +21,24 @@ def blockers(db: Session, sheet: AuditionSheet, providers=None, *, live: bool = 
     out = [f"评分标准 {cfg.version} 与当前检测器不匹配：" + "、".join(bad)] if (bad := unsupported_items(cfg)) else []
     if providers is not None and "asr" in unavailable_capabilities(providers):
         out.append("语音识别模型没有配置（APP_ASR），录像无法处理；生产环境不能使用 Mock")
+    if providers is not None and not allow_mock_scoring() and "asr" in mock_capabilities(providers):
+        out.append("当前为 Mock 模拟语音识别，不能评估真实录像；请先接入真实语音识别。演示测试须在隔离环境显式启用 APP_ALLOW_MOCK_SCORING")
     if not live and any(it.id == "S2" for _, it in cfg.items()):
         try:
             s2_material(db.get(ProductCard, sheet.product_card_id).content)
         except S2NotCalibrated as exc:
             out.append(str(exc))
     return out
+
+
+def material_review_items(card: dict) -> set[str]:
+    """无法依据现有资料核验的项目留待人工，不按空结果记零。"""
+    manual = set()
+    if not card.get("key_numbers"):
+        manual.add("L5")
+    if not card.get("targeted_points") and not str((card.get("fixed_script") or {}).get("text") or "").strip():
+        manual.add("O2")
+    return manual
 
 
 def s2_ready(card: dict) -> bool:

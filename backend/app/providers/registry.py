@@ -15,6 +15,16 @@ _override: Providers | None = None
 _lock = threading.Lock()
 
 
+def allow_mock_scoring() -> bool:
+    """仅隔离演示/测试环境可显式启用，生产环境始终禁止。"""
+    return os.environ.get("APP_ENV", "development") != "production" and os.environ.get("APP_ALLOW_MOCK_SCORING", "false").lower() == "true"
+
+
+def mock_capabilities(p: Providers) -> set[str]:
+    return {k for k in ("asr", "speech_eval", "llm", "vision", "laugh", "voice")
+            if str(getattr(getattr(p, k), "name", "")).startswith("mock")}
+
+
 def set_providers(p: Providers | None) -> None:
     global _override
     _override = p

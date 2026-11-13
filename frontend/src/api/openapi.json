@@ -274,17 +274,39 @@
     ],
     "summary": "List Rubrics",
     "operationId": "list_rubrics_api_rubrics_get",
+    "parameters": [
+     {
+      "name": "for_processing",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "For Processing"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
       "content": {
        "application/json": {
         "schema": {
+         "type": "array",
          "items": {
           "$ref": "#/components/schemas/RubricSummary"
          },
-         "type": "array",
          "title": "Response List Rubrics Api Rubrics Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -298,14 +320,14 @@
     "summary": "Import Rubric",
     "operationId": "import_rubric_api_rubrics_post",
     "requestBody": {
+     "required": true,
      "content": {
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/RubricIn"
        }
       }
-     },
-     "required": true
+     }
     },
     "responses": {
      "201": {
@@ -337,8 +359,20 @@
      "评分标准"
     ],
     "summary": "Get Reference",
-    "description": "校验卖点卡等内容时参照的版本：最新已发布，没有则最新草稿。",
+    "description": "默认供历史内容校验；新评分须指定 for_processing，排除旧证据协议。",
     "operationId": "get_reference_api_rubrics_reference_get",
+    "parameters": [
+     {
+      "name": "for_processing",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "For Processing"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -346,6 +380,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/RubricDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -6035,6 +6079,17 @@
       "type": "integer",
       "title": "Blocker Count"
      },
+     "processing_supported": {
+      "type": "boolean",
+      "title": "Processing Supported"
+     },
+     "processing_blockers": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Processing Blockers"
+     },
      "yaml_text": {
       "type": "string",
       "title": "Yaml Text"
@@ -6081,6 +6136,8 @@
      "created_at",
      "published_at",
      "blocker_count",
+     "processing_supported",
+     "processing_blockers",
      "yaml_text",
      "blockers",
      "items",
@@ -6141,6 +6198,17 @@
      "blocker_count": {
       "type": "integer",
       "title": "Blocker Count"
+     },
+     "processing_supported": {
+      "type": "boolean",
+      "title": "Processing Supported"
+     },
+     "processing_blockers": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Processing Blockers"
      }
     },
     "type": "object",
@@ -6151,7 +6219,9 @@
      "config_hash",
      "created_at",
      "published_at",
-     "blocker_count"
+     "blocker_count",
+     "processing_supported",
+     "processing_blockers"
     ],
     "title": "RubricSummary"
    },

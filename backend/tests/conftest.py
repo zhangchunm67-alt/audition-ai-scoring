@@ -14,6 +14,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 PASSWORD = "correct-horse-battery"
 
 if URL:
+    os.environ["APP_ALLOW_MOCK_SCORING"] = "true"  # 隔离测试库的显式演示模式
     os.environ["DATABASE_URL"] = URL
     for k in ("APP_SESSION_KEY", "APP_DATA_KEY", "APP_HASH_KEY"):
         os.environ.setdefault(k, base64.b64encode(os.urandom(32)).decode())

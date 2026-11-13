@@ -160,7 +160,7 @@ export interface paths {
         };
         /**
          * Get Reference
-         * @description 校验卖点卡等内容时参照的版本：最新已发布，没有则最新草稿。
+         * @description 默认供历史内容校验；新评分须指定 for_processing，排除旧证据协议。
          */
         get: operations["get_reference_api_rubrics_reference_get"];
         put?: never;
@@ -2102,6 +2102,10 @@ export interface components {
             published_at: string | null;
             /** Blocker Count */
             blocker_count: number;
+            /** Processing Supported */
+            processing_supported: boolean;
+            /** Processing Blockers */
+            processing_blockers: string[];
             /** Yaml Text */
             yaml_text: string;
             /** Blockers */
@@ -2142,6 +2146,10 @@ export interface components {
             published_at: string | null;
             /** Blocker Count */
             blocker_count: number;
+            /** Processing Supported */
+            processing_supported: boolean;
+            /** Processing Blockers */
+            processing_blockers: string[];
         };
         /**
          * S2Calibration
@@ -2633,7 +2641,9 @@ export interface operations {
     };
     list_rubrics_api_rubrics_get: {
         parameters: {
-            query?: never;
+            query?: {
+                for_processing?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2647,6 +2657,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RubricSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2686,7 +2705,9 @@ export interface operations {
     };
     get_reference_api_rubrics_reference_get: {
         parameters: {
-            query?: never;
+            query?: {
+                for_processing?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2700,6 +2721,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RubricDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -37,6 +37,7 @@ export default function Rubrics() {
         columns={[
           { title: "版本", dataIndex: "version", render: (v, r) => <Link to={`/rubrics/${r.id}`}>{v}</Link> },
           { title: "状态", dataIndex: "status", render: (s) => <Tag color={s === "published" ? "green" : s === "draft" ? "orange" : "default"}>{STATUS_ZH[s]}</Tag> },
+          { title: "新评分", render: (_, r) => <Tag color={r.status !== "retired" && r.processing_supported ? "green" : "default"}>{r.status === "retired" ? "已停用" : r.processing_supported ? "可用" : "仅供历史追溯"}</Tag> },
           { title: "发布阻碍", dataIndex: "blocker_count", render: (n: number) => (n ? <Tag color="red">{n} 项</Tag> : <Tag color="green">无</Tag>) },
           { title: "配置哈希", dataIndex: "config_hash", render: (h: string) => <Typography.Text code>{h.slice(7, 19)}</Typography.Text> },
           { title: "导入时间", dataIndex: "created_at", render: (t) => dayjs(t).format("YYYY-MM-DD HH:mm") },

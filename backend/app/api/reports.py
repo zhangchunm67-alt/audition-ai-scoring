@@ -19,6 +19,8 @@ from ..security.rbac import Perm, allowed
 from ..services import audit
 from ..services.export import PdfError, html_to_pdf, ranking_xlsx, report_html
 from ..services.report_view import detail, score_result
+from ..services.report_creation import uses_mock
+from ..providers.registry import allow_mock_scoring
 from ..services.rescore import rescore
 from .candidates import name_of
 from .deps import DB, current_user, require
@@ -86,6 +88,8 @@ def _rows(db: Session, user: User, date_from: date | None, date_to: date | None,
         q = q.join(Candidate, Recording.candidate_id == Candidate.id).where(Candidate.linked_user_id == user.id)
     out = []
     for rep, rec in db.execute(q).all():
+        if uses_mock(rep.model_manifest) and not allow_mock_scoring():
+            continue  # 历史模拟报告仍可直接查看，默认不进入真实排名/导出。
         out.append((rep, rec, score_result(db, rep.display_run_id, rep.rubric_version_id)))
     return out
 

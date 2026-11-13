@@ -5,11 +5,11 @@ type Content = S<"CardContent">;
 
 /** 卖点卡编辑。S2 产品讲解按固定话术的完成准确程度打分（评分表 20261105）：固定话术带版本号，改话术须换版本，
  *  原来的 S2 校准记录随之失效、须重新校准。required 只在旧版评分标准（卖点卡要点 + 结构）下有值：要点分值合计须等于它（C25）。 */
-export default function CardEditor({ initial, required, onSubmit, submitting }: { initial?: Content; required: number | null; onSubmit: (c: Content) => void; submitting?: boolean }) {
+export default function CardEditor({ initial, required, onSubmit, submitting, scriptOnly = false }: { initial?: Content; required: number | null; onSubmit: (c: Content) => void; submitting?: boolean; scriptOnly?: boolean }) {
   const [form] = Form.useForm<Content>();
   const checklist = Form.useWatch("checklist", form) as Content["checklist"] | undefined;
   const scriptVersion = Form.useWatch(["fixed_script", "version"], form) as string | undefined;
-  const total = (checklist ?? []).reduce((s, p) => s + (Number(p?.points) || 0), 0);
+  const total = (checklist ?? initial?.checklist ?? []).reduce((s, p) => s + (Number(p?.points) || 0), 0);
   const legacy = required !== null;
   const ok = !legacy || total === required;
   const cal = initial?.s2_calibration;
@@ -25,13 +25,13 @@ export default function CardEditor({ initial, required, onSubmit, submitting }: 
       layout="vertical"
       initialValues={initial ?? { checklist: [] }}
       onFinish={(c) => {
-        const out = { ...c, s2_calibration: calLost ? null : cal ?? null };
+        const out = { ...initial, ...c, s2_calibration: calLost ? null : cal ?? null };
         if (!out.fixed_script?.version && !out.fixed_script?.text) out.fixed_script = null;
         onSubmit(out);
       }}
     >
       <Typography.Title level={5}>固定话术（销售循环·产品讲解）</Typography.Title>
-      <Typography.Paragraph type="secondary">评分表：根据固定话术的完成准确程度打分（满分 50）。没有固定话术和对应的产品讲解校准记录时，录像不能提交处理。</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">评分表：根据固定话术的完成准确程度打分（满分 50）。试镜缺少固定话术或对应校准记录时不能提交处理；录播缺少这些资料时，“产品讲解”由评委打分。</Typography.Paragraph>
       <Space align="baseline" style={{ display: "flex" }}>
         <Form.Item name={["fixed_script", "version"]} label="话术版本" rules={[{ pattern: /^[A-Za-z0-9_.-]{1,64}$/, message: "英文、数字、点、横线" }]}>
           <Input placeholder="如 script-2026-11" style={{ width: 200 }} />
@@ -41,6 +41,8 @@ export default function CardEditor({ initial, required, onSubmit, submitting }: 
         <Input.TextArea rows={6} placeholder="该产品的固定讲解话术" />
       </Form.Item>
       {calLost && <Alert style={{ marginBottom: 12 }} type="warning" message={`话术版本已改，原产品讲解校准记录（${cal?.version}）不再适用，保存后须重新校准`} />}
+      {scriptOnly && !ok && <Alert type="warning" style={{ marginBottom: 12 }} message="参照的旧版评分标准需要完整要点资料，请先导入并使用现行评分配置。" />}
+      {!scriptOnly && <>
       <Typography.Title level={5}>必讲要点</Typography.Title>
       {legacy ? (
         <Alert
@@ -121,6 +123,7 @@ export default function CardEditor({ initial, required, onSubmit, submitting }: 
           )}
         </Form.List>
       </Form.Item>
+      </>}
       <Button type="primary" htmlType="submit" disabled={!ok} loading={submitting}>
         保存为新版本（草稿）
       </Button>

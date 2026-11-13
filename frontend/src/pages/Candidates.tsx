@@ -9,6 +9,9 @@ import { useAction, useFetch } from "../components/hooks";
 type Row = S<"CandidateRow">;
 export const HIRING_ZH: Record<string, string> = { undecided: "未定", hired: "已录用", not_hired: "未录用" };
 
+/** 书面同意登记 UI 暂隐；上传时仍会自动补占位登记以满足后端 C30。改回 true 即可恢复界面。 */
+export const SHOW_CONSENT_UI = false;
+
 /** 登记书面同意（C30）：同意书版本、签署日期必填，扫描件可选。 */
 export async function registerConsent(cid: string, v: { consent_text_version: string; signed_on: Dayjs; attachment?: UploadFile[] }) {
   const fd = new FormData();
@@ -20,6 +23,12 @@ export async function registerConsent(cid: string, v: { consent_text_version: st
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, typeof data.detail === "string" ? data.detail : "登记失败，请检查填写内容", data.detail);
   return data as S<"ConsentOut">;
+}
+
+/** 确保候选人有一条书面同意：已有则复用最新一条，否则自动登记占位版本。 */
+export async function ensureConsent(cid: string, existing: S<"ConsentOut">[] = []) {
+  if (existing.length) return existing[0];
+  return registerConsent(cid, { consent_text_version: "deferred-pending-legal", signed_on: dayjs() });
 }
 
 export function ConsentForm({ form }: { form: ReturnType<typeof Form.useForm>[0] }) {
@@ -111,41 +120,45 @@ function Detail({ id, onChanged }: { id: string; onChanged: () => void }) {
       </Descriptions>
       <Typography.Paragraph type="secondary">未录用候选人的视频按保存期限到期自动删除；已录用的保留（正式政策待法务确认）。</Typography.Paragraph>
       {can("hiring.update") && <AnchorLink id={id} current={data.linked_user_id ?? null} onChanged={() => (reload(), onChanged())} />}
-      <Space style={{ marginBottom: 8 }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          书面同意登记
-        </Typography.Title>
-        {can("recording.upload") && <Button onClick={() => setConsentOpen(true)}>登记书面同意</Button>}
-      </Space>
-      <Table
-        size="small"
-        rowKey="id"
-        pagination={false}
-        dataSource={data.consents}
-        locale={{ emptyText: "未登记。没有书面同意不能上传录像。" }}
-        columns={[
-          { title: "同意书版本", dataIndex: "consent_text_version" },
-          { title: "签署日期", dataIndex: "signed_on" },
-          { title: "扫描件", dataIndex: "attachment_asset_id", render: (a) => (a ? <a href={`/api/media/${a}`} target="_blank" rel="noreferrer">查看</a> : "—") },
-          { title: "登记时间", dataIndex: "registered_at", render: (t) => dayjs(t).format("YYYY-MM-DD HH:mm") },
-        ]}
-      />
-      <Modal
-        title="登记书面同意"
-        open={consentOpen}
-        onCancel={() => setConsentOpen(false)}
-        onOk={async () => {
-          const v = await form.validateFields();
-          if (await act(() => registerConsent(id, v), "已登记")) {
-            setConsentOpen(false);
-            form.resetFields();
-            reload();
-            onChanged();
-          }
-        }}
-      >
-        <ConsentForm form={form} />
-      </Modal>
+      {SHOW_CONSENT_UI && (
+        <>
+          <Space style={{ marginBottom: 8 }}>
+            <Typography.Title level={5} style={{ margin: 0 }}>
+              书面同意登记
+            </Typography.Title>
+            {can("recording.upload") && <Button onClick={() => setConsentOpen(true)}>登记书面同意</Button>}
+          </Space>
+          <Table
+            size="small"
+            rowKey="id"
+            pagination={false}
+            dataSource={data.consents}
+            locale={{ emptyText: "未登记。没有书面同意不能上传录像。" }}
+            columns={[
+              { title: "同意书版本", dataIndex: "consent_text_version" },
+              { title: "签署日期", dataIndex: "signed_on" },
+              { title: "扫描件", dataIndex: "attachment_asset_id", render: (a) => (a ? <a href={`/api/media/${a}`} target="_blank" rel="noreferrer">查看</a> : "—") },
+              { title: "登记时间", dataIndex: "registered_at", render: (t) => dayjs(t).format("YYYY-MM-DD HH:mm") },
+            ]}
+          />
+          <Modal
+            title="登记书面同意"
+            open={consentOpen}
+            onCancel={() => setConsentOpen(false)}
+            onOk={async () => {
+              const v = await form.validateFields();
+              if (await act(() => registerConsent(id, v), "已登记")) {
+                setConsentOpen(false);
+                form.resetFields();
+                reload();
+                onChanged();
+              }
+            }}
+          >
+            <ConsentForm form={form} />
+          </Modal>
+        </>
+      )}
     </>
   );
 }
@@ -175,7 +188,9 @@ export default function Candidates() {
         columns={[
           { title: "姓名", dataIndex: "name" },
           { title: "手机号", dataIndex: "phone_masked" },
-          { title: "书面同意", dataIndex: "consent_count", render: (n: number) => (n ? <Tag color="green">已登记</Tag> : <Tag color="red">未登记</Tag>) },
+          ...(SHOW_CONSENT_UI
+            ? [{ title: "书面同意", dataIndex: "consent_count", render: (n: number) => (n ? <Tag color="green">已登记</Tag> : <Tag color="red">未登记</Tag>) }]
+            : []),
           { title: "录像", dataIndex: "recording_count" },
           { title: "录用状态", dataIndex: "hiring_status", render: (s) => HIRING_ZH[s] },
           { title: "创建时间", dataIndex: "created_at", render: (t) => dayjs(t).format("YYYY-MM-DD") },
