@@ -19,12 +19,23 @@ def l1(ctx: Ctx):
     return [ctx.quote_ev("L1", "level", r["quote"], st=opening, judgment=level, reason=r["reason"], model_conf=r["confidence"])]
 
 
+def _same_place(a, b) -> bool:
+    """两条证据是否指向原文同一处：时间区间的重叠超过较短一条的一半。"""
+    if None in (a.start_ms, a.end_ms, b.start_ms, b.end_ms):
+        return False
+    overlap = min(a.end_ms, b.end_ms) - max(a.start_ms, b.start_ms)
+    return overlap * 2 > min(a.end_ms - a.start_ms, b.end_ms - b.start_ms)
+
+
 def _founds(ctx: Ctx, task: str, item: str, kind: str, payload: dict | None = None, label=None, judge=None):
+    """模型有时把同一句话重复列出（甚至自己注明“与上一条重复”）。同一处、同一标签的只留第一条，否则逐次计的条目会重复扣分或加分。"""
     r = ctx.ask(task, payload or {"transcript": ctx.main.text})
     out = []
     for x in r["items"]:
-        out.append(ctx.quote_ev(item, kind, x["quote"], strict=False, label=label(x) if label else (x.get("label") or None),
-                                judgment=judge(x) if judge else binary(x["valid"]), reason=x["reason"], model_conf=x["confidence"]))
+        e = ctx.quote_ev(item, kind, x["quote"], strict=False, label=label(x) if label else (x.get("label") or None),
+                         judgment=judge(x) if judge else binary(x["valid"]), reason=x["reason"], model_conf=x["confidence"])
+        if not any(_same_place(e, prev) and e.label == prev.label for prev in out):  # 同一句里讲了两个术语、两个事实的不算重复
+            out.append(e)
     return out
 
 

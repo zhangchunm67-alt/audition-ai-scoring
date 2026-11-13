@@ -54,6 +54,22 @@ def evidence_dicts(db: Session, run_id, result: dict) -> list[dict]:
     return out
 
 
+def _sentence_index(sents, start_ms: int, end_ms: int | None) -> int | None:
+    """这条证据归到哪一句：取时间重叠最长的一句；只有一个时间点的，取包含它的那句。
+    语音识别的逐字时间戳首尾相接（上一句句号的结束时间 = 下一句第一个字的开始时间），
+    所以句子按左闭右开 [start, end) 比较，否则引用整句的证据会被挂到上一句。"""
+    end = end_ms if end_ms is not None and end_ms > start_ms else start_ms + 1
+    best, best_overlap = None, 0
+    for k, s in enumerate(sents):
+        overlap = min(end, s.end_ms) - max(start_ms, s.start_ms)
+        if overlap > best_overlap:
+            best, best_overlap = k, overlap
+    if best is not None:
+        return best
+    # 落在句间空隙里的（抽帧时间点等）：归到 200 毫秒内紧接着开始的那句
+    return next((k for k, s in enumerate(sents) if s.start_ms - 200 <= start_ms < s.start_ms), None)
+
+
 def sentence_view(db: Session, rec: Recording, run_id, evidence: list[dict], suggestions: list[dict]) -> list[dict]:
     """逐句评分：每句标出命中的条目、加扣分和原因；定位不到具体句子的证据挂在分段上。"""
     order = {s["segment"]: i for i, s in enumerate(rec.segments)}
@@ -65,11 +81,17 @@ def sentence_view(db: Session, rec: Recording, run_id, evidence: list[dict], sug
     for tr in sorted(db.scalars(select(Transcript).where(Transcript.run_id == run_id)), key=lambda t: order.get(t.segment, 99)):
         st = SegmentText(tr.segment, [Word(w[0], w[1], w[2], w[3]) for w in tr.words])
         evs = sorted(by_seg.get(tr.segment, []), key=lambda e: (e["start_ms"] is None, e["start_ms"] or 0))
+        sents = sentences(st)
+        hits_of: dict[int, list[dict]] = {}
         used: set[str] = set()
+        for e in evs:
+            k = _sentence_index(sents, e["start_ms"], e["end_ms"]) if e["start_ms"] is not None else None
+            if k is not None:
+                hits_of.setdefault(k, []).append(e)
+                used.add(e["evidence_id"])
         rows = []
-        for s in sentences(st):
-            hits = [e for e in evs if e["start_ms"] is not None and s.start_ms - 200 <= e["start_ms"] <= s.end_ms and e["evidence_id"] not in used]
-            used.update(e["evidence_id"] for e in hits)
+        for k, s in enumerate(sents):
+            hits = hits_of.get(k, [])
             rows.append({"segment": tr.segment, "start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text, "hits": hits,
                          "issue": any(h["issue"] for h in hits), "suggestion": sugg.get((tr.segment, s.start_ms))})
         rows.sort(key=lambda r: r["start_ms"])

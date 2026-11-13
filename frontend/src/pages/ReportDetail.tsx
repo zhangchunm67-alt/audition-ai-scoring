@@ -59,7 +59,7 @@ function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
       columns={[
         { title: "维度", dataIndex: "dimension", width: 90, render: (v: string) => dimName[v] ?? v },
         { title: "条目", render: (_, it) => it.name },
-        { title: "得分", width: 90, render: (_, it) => (it.status === "not_applicable" ? "不适用" : `${it.score ?? "—"} / ${it.max}`) },
+        { title: "得分", width: 90, render: (_, it) => (it.status === "not_applicable" ? "不适用" : `${it.score == null ? "—" : Math.round(it.score * 10) / 10} / ${it.max}`) },
         { title: "标记", width: 160, render: (_, it) => (
           <Space size={4} wrap>
             {it.low_confidence && <Tooltip title={it.low_confidence_reasons.join("；")}><Tag color="orange">低置信</Tag></Tooltip>}
