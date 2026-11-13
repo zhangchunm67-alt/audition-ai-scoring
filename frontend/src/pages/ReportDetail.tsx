@@ -180,7 +180,10 @@ export default function ReportDetail() {
                   <Descriptions.Item label="配置哈希"><Typography.Text code copyable>{d.trace.config_hash}</Typography.Text></Descriptions.Item>
                   <Descriptions.Item label="检测配置">{d.trace.detector_config_version}（{STATUS_ZH[d.trace.detector_config_status]}）</Descriptions.Item>
                   <Descriptions.Item label="红线">{d.result.redlines_enabled ? `启用（词表 ${d.trace.redline_lexicon_version}）` : "试镜不做红线（C33）"}</Descriptions.Item>
-                  {Object.entries(d.trace.model_manifest).map(([k, v]) => <Descriptions.Item key={k} label={k}>{v}</Descriptions.Item>)}
+                  {/* 模型清单里有对象（人工打分分工 human_review），直接渲染会让整页白屏 */}
+                  {Object.entries(d.trace.model_manifest as Record<string, unknown>).map(([k, v]) => (
+                    <Descriptions.Item key={k} label={k}>{v !== null && typeof v === "object" ? JSON.stringify(v) : String(v)}</Descriptions.Item>
+                  ))}
                   <Descriptions.Item label="报告生成">{dayjs(d.created_at).format("YYYY-MM-DD HH:mm:ss")}，第 {d.revision} 版</Descriptions.Item>
                 </Descriptions>
                 <Typography.Title level={5} style={{ marginTop: 16 }}>修订历史</Typography.Title>
