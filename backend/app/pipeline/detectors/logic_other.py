@@ -54,7 +54,8 @@ def l4(ctx: Ctx):
 
 
 def l5(ctx: Ctx):
-    return _founds(ctx, "l5_facts", "L5", "instance", {"transcript": ctx.main.text, "key_facts": ctx.card.get("key_numbers", [])})
+    return _founds(ctx, "l5_facts", "L5", "instance", {"transcript": ctx.main.text, "key_facts": ctx.card.get("key_numbers", []),
+                                                       "reference_script": (ctx.card.get("fixed_script") or {}).get("text", "")})
 
 
 def o1(ctx: Ctx):
@@ -86,17 +87,20 @@ def o4(ctx: Ctx):
             latencies.append((first.start_ms - o["video_ms"]) / 1000)
         segs.append({"objection": o["text"], "text": after.text})
     f = ctx.acoustic["main"]
+    # 自动识别的观众问题只有主播回应过的，时间点是主播开始回应的时刻：回应时长恒为 0、未回应恒为 0，没有意义，不交给模型
+    auto = any(o.get("auto") for o in ctx.objections)
     measured = {
-        "max_response_latency_s": max(latencies) if latencies else None,
-        "unanswered_objections": unanswered,
+        "max_response_latency_s": None if auto else (max(latencies) if latencies else None),
+        "unanswered_objections": None if auto else unanswered,
         "dead_air_count": sum(1 for a, b in f["silences_ms"] if b - a >= ctx.cfg.o4.dead_air_ms),
         "loudness_range_db": f["loudness_range_db"],
         "pitch_range_st": f["pitch_range_st"],
     }
-    r = ctx.ask("o4_control", {"segments_after_objection": segs, "measured": measured})
+    r = ctx.ask("o4_control", {"segments_after_objection": segs, "measured": measured, "objections_source": "auto" if auto else "manual"})
     level = check_level("O4", r["level"], 20)
     lat = "无" if measured["max_response_latency_s"] is None else f"{measured['max_response_latency_s']:.1f} 秒"
-    reason = (f"{r['reason']}（参考：最长回应 {lat}、未回应 {unanswered} 条、冷场 {measured['dead_air_count']} 次、"
+    responded = "观众问题由逐字稿自动识别，回应时长和未回应条数没有测量" if auto else f"最长回应 {lat}、未回应 {unanswered} 条"
+    reason = (f"{r['reason']}（参考：{responded}、冷场 {measured['dead_air_count']} 次、"
               f"音量起伏 {f['loudness_range_db']:.1f} dB、音高起伏 {f['pitch_range_st']:.1f} 半音）")
     return [ctx.ev("O4", "level", judgment=level, reason=reason, confidence=r["confidence"], source="llm",
                    start=main["start_ms"], end=main["end_ms"])]

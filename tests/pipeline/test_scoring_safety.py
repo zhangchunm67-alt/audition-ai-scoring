@@ -6,7 +6,10 @@ from app.pipeline.readiness import material_review_items
 
 def test_missing_material_is_not_a_zero_and_script_is_sufficient_for_targeting():
     assert material_review_items({}) == {"L5", "O2"}
-    assert material_review_items({"fixed_script": {"text": "产品参考话术"}}) == {"L5"}
+    # 产品页面只录参考脚本，没有单独的关键数字表：有脚本时事实运用对照脚本核对，不再转人工
+    assert material_review_items({"fixed_script": {"text": "产品参考话术"}}) == set()
+    assert material_review_items({"fixed_script": {"text": "  "}}) == {"L5", "O2"}
+    assert material_review_items({"targeted_points": ["目标人群"]}) == {"L5"}
     assert material_review_items({"targeted_points": ["目标人群"], "key_numbers": [{"name": "核实过的参数", "value": "1"}]}) == set()
 
 

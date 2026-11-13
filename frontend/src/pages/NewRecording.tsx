@@ -90,7 +90,7 @@ export default function NewRecording() {
         <Form form={form} layout="vertical" disabled={busy} initialValues={{ mode: "audition" }}>
           <Form.Item name="mode" label="录像类型" rules={[{ required: true }]}
             extra={mode === "live"
-              ? "直播录播：没有题单，整段视频评分。上传后标出主播回应过的观众问题，以及副播等其他人讲话的时段。"
+              ? "直播录播：没有题单，整段视频评分。上传完可以直接提交，观众问题从逐字稿自动识别；有副播等其他人讲话的时段可以在提交前排除。"
               : "按题单录制的试镜：上传后标出主体段、朗读段的起点和异议时间。"}>
             <Radio.Group onChange={() => form.setFieldsValue({ sheet_id: undefined, product_id: undefined })}>
               <Radio.Button value="audition">试镜（按题单录制）</Radio.Button>

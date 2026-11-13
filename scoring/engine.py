@@ -473,7 +473,7 @@ def score_round(evidence: list[Evidence], cfg: RubricConfig, ctx: ScoringContext
                 continue
             if it.id in ctx.flexible_questions and not ctx.expected_questions.get(it.id):
                 res.status = "not_applicable"
-                res.notes.append("整段视频里没有标出观众异议，本条不适用，维度按其余条目折算")
+                res.notes.append("整段视频里没有观众异议（没有人工标注，逐字稿里也没有识别到主播回应观众提问），本条不适用，维度按其余条目折算")
                 continue
             app_max += it.max
             machine: Fraction | None = None

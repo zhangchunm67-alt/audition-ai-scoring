@@ -1,9 +1,11 @@
 """录播评估（C37）：老主播、上播 1 个月的主播没有题单，上传直播录播，整段视频评分。
-不截取 10 分钟（C36）；观众异议由员工标出、按实际条数折算；副播插话等时段排除后不参与评分。"""
+不截取 10 分钟（C36）；观众异议从逐字稿自动识别（也可以由员工标出）、按实际条数折算；副播插话等时段排除后不参与评分。"""
 import pytest
 from sqlalchemy import select
 
 from app.models.entities import AuditionSheet, EvidenceRow, Objection, PipelineRun, Product, ProductCard, Recording, Report, RubricVersion, ScoreResultRow
+from app.providers import mock
+from app.providers.base import Providers
 from app.providers.registry import set_providers
 from test_recordings_api import SEG, _candidate, _consent, _send_parts
 
@@ -100,7 +102,9 @@ def test_live_marks_validation(login, seeded, full_video, db):
     rec = _uploaded_live(api, seeded, full_video)
     rid, total = rec["id"], rec["video_duration_ms"]
     assert api.put(f"/api/recordings/{rid}/segments", json=SEG).status_code == 409  # 录播没有分段
-    assert api.post(f"/api/recordings/{rid}/submit").status_code == 422  # 还没标注（确认）过
+    # 上传完整段视频就是主体段，不标注也能提交；标注是可选的
+    assert rec["segments"] == [{"segment": "main", "start_ms": 0, "end_ms": total}] and rec["main_duration_ms"] == total
+    assert rec["objection_times"] == [] and rec["exclusions"] == []
 
     def put(objections=(), exclusions=()):
         return api.put(f"/api/recordings/{rid}/live-marks", json={"objections": list(objections), "exclusions": list(exclusions)})
@@ -224,3 +228,95 @@ def test_live_product_without_s2_calibration_goes_to_judge(login, seeded, full_v
     pending = sorted(i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"])
     assert pending == ["O4", "P3", "S2"]
     assert "s2_calibration" not in _result(db, rid)["model_manifest"]
+
+
+# ───────────── 不标注：观众异议从逐字稿自动识别 ─────────────
+
+
+def _with_llm(overrides) -> None:
+    set_providers(Providers(asr=mock.MockASR(), speech_eval=mock.MockSpeechEval(), llm=mock.MockLLM(round_overrides=overrides),
+                            vision=mock.MockVision(), laugh=mock.MockLaugh(), voice=mock.MockVoice()))
+
+
+def _two_answers(payload):
+    """模型在逐字稿里找到两处主播回应观众的话，外加一条引用不在原文里的（要被丢掉）和一条把握不足的。"""
+    sents = mock._sents(payload["transcript"])
+    a, b = sents[len(sents) // 3], sents[2 * len(sents) // 3]
+    return {"items": [
+        {"question": "等待期多久", "quote": b, "reason": "主播念出了问题", "confidence": 0.9},
+        {"question": "有医保还要买吗", "quote": a, "reason": "主播在回答观众", "confidence": 0.8},
+        {"question": "编出来的问题", "quote": "逐字稿里根本没有这句话也没有类似的话", "reason": "", "confidence": 0.9},
+        {"question": "拿不准的", "quote": sents[1], "reason": "", "confidence": 0.2},
+    ]}
+
+
+def test_live_submits_without_marks_and_detects_objections_from_transcript(login, seeded, full_video, db):
+    _with_llm({(1, "live_objections"): _two_answers})
+    api = login("hr")
+    rec = _uploaded_live(api, seeded, full_video)
+    rid = rec["id"]
+    r = api.post(f"/api/recordings/{rid}/submit")  # 没有调用过 live-marks
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "awaiting_human"
+    assert [o["text"] for o in out["sheet_objections"]] == ["有医保还要买吗", "等待期多久"]  # 按时间排序，定位不到和把握不足的不要
+    assert all(o["source"] == "auto" for o in out["objection_times"]) and len(out["objection_times"]) == 2
+    res = _result(db, rid)
+    assert res["model_manifest"]["live_objections"] == "auto:2"
+    s3 = _item(res, "S3")
+    assert s3["status"] == "scored" and any("实际 2 条" in n for n in s3["notes"])
+    pending = [i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"]]
+    assert pending == ["P3"]  # 识别到了异议，节奏与气氛由机器评
+    run = db.scalar(select(PipelineRun).where(PipelineRun.recording_id == rid))
+    o4 = db.scalar(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == "O4"))
+    assert "自动识别" in o4.reason and "未回应 0 条" not in o4.reason  # 回应时长、未回应条数没有测量，不写成 0
+    assert _finish(api, db, rid).status == "done"
+
+
+def test_live_without_marks_and_nothing_detected_is_like_no_objections(login, seeded, full_video, db):
+    api = login("hr")
+    rec = _uploaded_live(api, seeded, full_video)
+    rid = rec["id"]
+    assert any("自动识别" in w for w in rec["warnings"])
+    assert api.post(f"/api/recordings/{rid}/submit").json()["status"] == "awaiting_human"
+    res = _result(db, rid)
+    assert res["model_manifest"]["live_objections"] == "none:0"
+    assert _item(res, "S3")["status"] == "not_applicable"
+    assert sorted(i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"]) == ["O4", "P3"]
+
+
+def test_detection_failure_does_not_fail_the_recording(login, seeded, full_video, db):
+    def boom(payload):
+        raise mock.ProviderError("模型服务不可用")
+
+    _with_llm({(1, "live_objections"): boom})
+    api = login("hr")
+    rid = _uploaded_live(api, seeded, full_video)["id"]
+    assert api.post(f"/api/recordings/{rid}/submit").json()["status"] == "awaiting_human"
+    assert _item(_result(db, rid), "S3")["status"] == "not_applicable"
+
+
+def test_manual_marks_take_precedence_over_detection(login, seeded, full_video, db):
+    _with_llm({(1, "live_objections"): _two_answers})
+    api = login("hr")
+    rid = _uploaded_live(api, seeded, full_video)["id"]
+    (t1,) = _texts(db, 1)
+    assert api.put(f"/api/recordings/{rid}/live-marks", json={"objections": [{"text": t1, "video_ms": 300000}], "exclusions": []}).status_code == 200
+    out = api.post(f"/api/recordings/{rid}/submit").json()
+    assert [o["text"] for o in out["sheet_objections"]] == [t1] and "source" not in out["objection_times"][0]
+    assert _result(db, rid)["model_manifest"]["live_objections"] == "manual:1"
+
+
+def test_reprocess_detects_again(login, seeded, full_video, db):
+    _with_llm({(1, "live_objections"): _two_answers})
+    api = login("hr")
+    rid = _uploaded_live(api, seeded, full_video)["id"]
+    assert api.post(f"/api/recordings/{rid}/submit").status_code == 200
+    rec = db.get(Recording, rid)
+    first = [o["objection_id"] for o in rec.objection_times]
+    rec.status = "failed"
+    db.commit()
+    assert api.post(f"/api/recordings/{rid}/reprocess").status_code == 200
+    db.expire_all()
+    again = [o["objection_id"] for o in db.get(Recording, rid).objection_times]
+    assert len(again) == 2 and set(again).isdisjoint(first)  # 清掉重新识别，不是沿用上次的

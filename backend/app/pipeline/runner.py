@@ -23,9 +23,9 @@ from ..providers.base import Providers, SegmentHint, Word
 from ..providers.resilient import resilient
 from ..services.storage import Storage
 from ..settings import get_settings
-from . import acoustic, injection, prompts, readiness
+from . import acoustic, injection, live_objections, prompts, readiness
 from .detector_config import DetectorConfig, parse as parse_detector_cfg
-from .detectors import CAPABILITIES, DETECTORS, NEEDS_PROPS, human_plan
+from .detectors import CAPABILITIES, DETECTORS, NEEDS_PROPS, human_plan, unavailable_capabilities
 from .detectors.common import Ctx
 from .media import materialize
 from .text import SegmentText
@@ -86,6 +86,26 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _auto_objections(db: Session, rec: Recording, sheet: AuditionSheet, raw_providers: Providers, providers: Providers,
+                     main, round_no: int) -> list[dict]:
+    """录播没有人工标注观众异议时，从逐字稿自动识别。识别不了（没有大模型、调用失败、一条都没找到）就按没有异议处理：
+    S3 不适用、O4 转评委，和以前“确认没有要标的”结果一样，不让整条录像失败。"""
+    if "llm" in unavailable_capabilities(raw_providers):
+        return []
+    try:
+        found = live_objections.detect(providers.llm, main, round_no=round_no)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("录像 %s：自动识别观众异议失败，按没有异议处理：%s", rec.id, str(exc)[:200])
+        return []
+    if not found:
+        return []
+    sheet.objections, rec.objection_times = live_objections.as_records(found)
+    db.flush()
+    log.info("录像 %s：从逐字稿识别到 %d 条观众异议", rec.id, len(found))
+    return [{"objection_id": o["objection_id"], "text": s["text"], "video_ms": o["video_ms"], "at_ms": o["at_ms"], "answer_points": [], "auto": True}
+            for o, s in zip(rec.objection_times, sheet.objections)]
+
+
 def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Providers, storage: Storage, redis_conn=None,
               last_attempt: bool = False) -> RoundResult:
     """last_attempt：本轮最后一次尝试。检测配置允许时，机器仍评不出的条目转评委打分，而不是整轮失败。
@@ -119,7 +139,8 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
     objs = {str(o.id): o for o in db.scalars(select(Objection).where(Objection.id.in_([uuid.UUID(x["objection_id"]) for x in sheet.objections])))}
     qs = {str(q.id): q for q in db.scalars(select(Question).where(Question.id.in_([uuid.UUID(x["question_id"]) for x in sheet.questions])))}
     objections = [{"objection_id": o["objection_id"], "text": next(x["text"] for x in sheet.objections if x["objection_id"] == o["objection_id"]),
-                   "video_ms": o["video_ms"], "at_ms": o["at_ms"], "answer_points": objs[o["objection_id"]].answer_points if o["objection_id"] in objs else []}
+                   "video_ms": o["video_ms"], "at_ms": o["at_ms"], "answer_points": objs[o["objection_id"]].answer_points if o["objection_id"] in objs else [],
+                   "auto": o.get("source") == "auto"}
                   for o in rec.objection_times]
     questions = [{"question_id": q["question_id"], "text": q["text"], "full_points": qs[q["question_id"]].full_points if q["question_id"] in qs else []}
                  for q in sheet.questions]
@@ -146,6 +167,11 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
             texts[name] = drop_excluded(SegmentText(name, words), exclusions) if name == "main" else SegmentText(name, words)
             db.add(Transcript(run_id=run.id, segment=name, text=tr.text, provider=tr.provider, model_version=tr.model_version,
                               disfluency_removal=False, words=[[w.text, w.start_ms, w.end_ms, round(w.confidence, 3)] for w in words]))
+        objections_source = "manual" if objections and not objections[0]["auto"] else "auto" if objections else "none"
+        if live and not objections:
+            # 没有人工标注：从逐字稿识别主播回应过的观众问题，存到录像上，之后各轮、评委打分、重算都用同一份
+            objections = _auto_objections(db, rec, sheet, raw_providers, providers, texts["main"], round_no)
+            objections_source = "auto" if objections else "none"
         run.stage = "acoustic"
         feats = {}
         for name in ("main",):
@@ -203,7 +229,7 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
 
         run.stage = "scoring"
         sctx = scoring_context(rec, sheet, card, completed,
-                               {**manifest, **({} if "S2" in plan["manual"] else readiness.s2_manifest(card)), "recording_mode": rec.mode, "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
+                               {**manifest, **({} if "S2" in plan["manual"] else readiness.s2_manifest(card)), "recording_mode": rec.mode, **({"live_objections": f"{objections_source}:{len(objections)}"} if live else {}), "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
                                 "temperature": "0", "asr_disfluency_removal": "false", "human_review": plan})
         result = score_round(evidence, cfg, sctx)
         db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=result.config_hash, result=result.model_dump(mode="json")))
