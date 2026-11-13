@@ -338,11 +338,20 @@ class MockLLM:
     def _o4_control(self, p):
         m = p["measured"]
         returned = sum(1 for x in p["segments_after_objection"] if x["text"].strip())
-        level = 20 - 3 * int(m["unanswered_objections"]) - 2 * int(m["dead_air_count"]) - (len(p["segments_after_objection"]) - returned)
+        level = 20 - 3 * int(m["unanswered_objections"] or 0) - 2 * int(m["dead_air_count"]) - (len(p["segments_after_objection"]) - returned)
         if m["loudness_range_db"] < 5:
             level -= 3
         return {"level": max(0, min(20, level)), "quote": "", "reason": f"回到主线 {returned}/{len(p['segments_after_objection'])}",
                 "confidence": 0.75}
+
+    def _live_objections(self, p):
+        """主播念出观众问题的句子：“有朋友问……”“有人问……”。问题取“问”字之后的部分。"""
+        items = []
+        for s in _sents(p["transcript"]):
+            m = re.search(r"(?:有朋友|有人|有家人)问[，：:]?(.+)", s)
+            if m:
+                items.append({"question": m.group(1).strip("。？?！!，, "), "quote": s, "reason": "主播念出了观众的问题", "confidence": 0.8})
+        return {"items": items}
 
     def _rewrite(self, p):
         s = p["sentence"]

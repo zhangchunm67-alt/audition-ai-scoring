@@ -171,7 +171,7 @@ def test_full_length_critical_three_rounds_and_traceability(login, seeded, full_
     # 可追溯
     m = rep.model_manifest
     assert m["asr"] == "mock-asr@1" and m["llm"] == "mock-llm@1" and m["temperature"] == "0" and m["asr_disfluency_removal"] == "false"
-    assert m["prompts"].startswith("prompts-v4:") and m["detector_config"] == "detectors-v3"
+    assert m["prompts"].startswith("prompts-v5:") and m["detector_config"] == "detectors-v3"
     assert rep.config_hash.startswith("sha256:") and rep.rubric_version_id and rep.detector_config_version_id
     # 口头禅保留：转写里有“那么”“一个”，P2 证据逐条记了原句和时间
     tr = db.scalar(select(Transcript).where(Transcript.run_id == runs[0].id, Transcript.segment == "main"))

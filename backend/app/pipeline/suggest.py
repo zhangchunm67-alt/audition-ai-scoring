@@ -14,8 +14,9 @@ from .text import _norm
 
 log = logging.getLogger("audition.pipeline")
 MAX_SENTENCES = 30
-# 这些条目的问题不在话术本身（画面里的穿着、小动作，笑场），改写句子没有意义
-NOT_ABOUT_WORDING = {"P1", "P8", "P10"}
+# 这些条目的问题靠改写一句话解决不了，不生成示范说法：
+# 画面里的穿着、小动作和笑场（P1、P8、P10）问题不在话术；场景化（O3）缺的是一个真实案例，让模型补只会编造客户故事
+NOT_ABOUT_WORDING = {"P1", "P8", "P10", "O3"}
 MIN_CHARS = 6  # “对不对？”这类短句没有可改写的内容，硬改只会改出不相干的话
 
 

@@ -34,9 +34,10 @@ def blockers(db: Session, sheet: AuditionSheet, providers=None, *, live: bool = 
 def material_review_items(card: dict) -> set[str]:
     """无法依据现有资料核验的项目留待人工，不按空结果记零。"""
     manual = set()
-    if not card.get("key_numbers"):
+    script = str((card.get("fixed_script") or {}).get("text") or "").strip()
+    if not card.get("key_numbers") and not script:  # 有参考脚本时对照脚本核对（产品页面只录脚本，没有单独的关键数字表）
         manual.add("L5")
-    if not card.get("targeted_points") and not str((card.get("fixed_script") or {}).get("text") or "").strip():
+    if not card.get("targeted_points") and not script:
         manual.add("O2")
     return manual
 

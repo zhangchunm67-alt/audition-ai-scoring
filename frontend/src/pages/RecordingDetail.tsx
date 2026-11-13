@@ -84,8 +84,8 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
 type LiveObj = { key: number; text: string; video_ms: number };
 type LiveEx = { key: number; start_ms: number; end_ms: number | null };
 
-/** 录播标注（C37）：整段视频都评，不截取、不分段。标出主播回应过的真实观众问题（出现时间和原文），
- *  以及不是主播本人在讲的时段（副播插话等，排除后不参与评分）。两项都可以为空，但要保存一次表示已看过。 */
+/** 录播标注（C37，可选）：整段视频都评，不截取、不分段。不标也能直接提交，观众异议在处理时从逐字稿自动识别。
+ *  想人工指定观众问题（出现时间和原文），或要排除不是主播本人在讲的时段（副播插话等，排除后不参与评分）时才需要标。 */
 function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const seq = useRef(0);
@@ -112,9 +112,9 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
           <Button size="small" data-testid="live-add-objection" onClick={() => setObjs([...objs, { key: seq.current++, text: "", video_ms: now() }])}>在当前时间添加</Button>
         </Space>
         <Typography.Paragraph type="secondary">
-          播放到观众提出问题（弹幕出现或被念出来）的时刻点“添加”，填上问题原文。有几条标几条，“解答异议”按实际条数折算；一条都没有时该条不适用，“节奏与气氛”由评委打分。
+          可以不标：系统会从逐字稿里自动识别主播念出或回应过的观众问题（主播没理会的弹幕识别不到）。想人工指定时，播放到观众提出问题的时刻点“添加”，填上问题原文；标了就以人工为准，不再自动识别。“解答异议”按实际条数折算；一条都没有时该条不适用，“节奏与气氛”由评委打分。
         </Typography.Paragraph>
-        <Table size="small" pagination={false} rowKey="key" dataSource={objs} locale={{ emptyText: "没有标出观众异议" }} columns={[
+        <Table size="small" pagination={false} rowKey="key" dataSource={objs} locale={{ emptyText: "没有人工标注，处理时自动识别" }} columns={[
           { title: "出现时间", dataIndex: "video_ms", width: 80, render: (v) => fmtMs(v) },
           { title: "问题原文", render: (_, o) => (
             <Input size="small" maxLength={500} value={o.text} placeholder="观众问了什么"
@@ -151,7 +151,7 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
           }), "标注已保存");
           if (r) onSaved(r);
         }}>
-          {objs.length || exs.length ? "保存标注" : "确认没有要标的，保存"}
+          {objs.length || exs.length ? "保存标注" : "清空标注"}
         </Button>
       </Col>
     </Row>
@@ -290,6 +290,9 @@ export default function RecordingDetail() {
         <Descriptions.Item label="出结果时间">{rec.finished_at ? dayjs(rec.finished_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
       </Descriptions>
       {rec.status === "uploading" && rec.upload && editable && <Resume rec={rec} onDone={(r) => (setRec(r), reload())} />}
+      {rec.status === "uploaded" && live && editable && rec.segments.length > 0 && (
+        <Alert type="success" showIcon style={{ marginBottom: 16 }} message="视频已上传，可以直接点上方“提交处理”" description="下面的标注是可选的：只在想人工指定观众问题，或要排除副播等其他人讲话的时段时才需要。" />
+      )}
       {rec.status === "uploaded" && src && editable && (live ? <LiveMarker rec={rec} src={src} onSaved={setRec} /> : <Marker rec={rec} src={src} onSaved={setRec} />)}
       {["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status) && src && (
         <Row gutter={24}>
@@ -302,7 +305,12 @@ export default function RecordingDetail() {
             ]} />
             {live && (
               <Typography.Paragraph style={{ marginTop: 12 }}>
-                观众异议 {rec.objection_times.length} 条{rec.objection_times.length ? `：${rec.objection_times.map((o) => fmtMs(o.video_ms as number)).join("、")}` : ""}；
+                观众异议 {rec.objection_times.length} 条{rec.objection_times.some((o) => o.source === "auto") ? "（从逐字稿自动识别）" : ""}{rec.objection_times.length ? "：" : "；"}
+                {rec.objection_times.map((o) => (
+                  <span key={o.objection_id as string} style={{ display: "block" }}>
+                    {fmtMs(o.video_ms as number)} {(rec.sheet_objections.find((s) => s.objection_id === o.objection_id)?.text as string | undefined) ?? ""}
+                  </span>
+                ))}
                 排除时段 {rec.exclusions.length} 段{rec.exclusions.length ? `：${rec.exclusions.map((x) => `${fmtMs(x.start_ms as number)}–${fmtMs(x.end_ms as number)}`).join("、")}` : ""}。
               </Typography.Paragraph>
             )}

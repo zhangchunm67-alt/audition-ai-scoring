@@ -34,6 +34,7 @@ Read = Depends(require(Perm.report_read_all))
 Write = Depends(require(Perm.recording_upload))
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm"}
 MAX_LIVE_OBJECTIONS = 50
+MIN_LIVE_MS = 60_000  # 主播本人讲解不足 1 分钟无法评分
 
 
 def _now() -> datetime:
@@ -154,7 +155,8 @@ def _warnings(rec: Recording, sheet: AuditionSheet) -> list[str]:
     """不再提示“主体段不是 10 分钟”：评分不截取 10 分钟，P2 按每 10 分钟的次数换算（C36）。"""
     w = []
     if rec.mode == "live" and rec.segments and not rec.objection_times:
-        w.append("没有标出观众异议：解答异议（S3）不适用，销售循环按其余条目折算；节奏与气氛（O4）由评委打分")
+        w.append("没有人工标注观众异议：处理时从逐字稿自动识别主播回应过的观众问题；一条都识别不到时，"
+                 "解答异议（S3）不适用，销售循环按其余条目折算，节奏与气氛（O4）由评委打分")
     return w
 
 
@@ -338,7 +340,7 @@ def set_live_marks(rid: uuid.UUID, body: LiveMarksIn, request: Request, db: Sess
     if any(t >= total for t in times) or len(set(times)) != len(times):
         raise HTTPException(422, "观众异议的时间须落在视频时长内，且互不相同")
     kept = total - sum(b - a for a, b in ex)
-    if kept < 60_000:
+    if kept < MIN_LIVE_MS:
         raise HTTPException(422, "排除后主播本人讲解不足 1 分钟，无法评分")
     sheet = db.get(AuditionSheet, rec.sheet_id)
     ids = [str(uuid.uuid4()) for _ in objs]
@@ -364,7 +366,7 @@ def submit(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = Wri
     if rec.status != "uploaded":
         raise HTTPException(409, "只有已上传、未提交的录像可以提交")
     if not rec.segments:
-        raise HTTPException(422, "请先标注观众异议和排除时段（没有也要确认一次）" if rec.mode == "live" else "请先标出各段起点和异议时间")
+        raise HTTPException(422, "视频不足 1 分钟，无法评分" if rec.mode == "live" else "请先标出各段起点和异议时间")
     if db.get(ConsentRecord, rec.consent_record_id) is None:
         raise HTTPException(422, "缺少书面同意登记，不能处理（C30）")
     get_candidate(db, rec.candidate_id)  # 候选人已申请删除的不能再处理
@@ -391,6 +393,9 @@ def reprocess(rid: uuid.UUID, request: Request, db: Session = DB, actor: User = 
     for run in db.scalars(select(PipelineRun).where(PipelineRun.recording_id == rec.id)):
         db.delete(run)
     rec.status, rec.failure_reason, rec.finished_at, rec.processing_started_at = "submitted", None, None, None
+    if any(o.get("source") == "auto" for o in rec.objection_times or []):  # 上次自动识别的观众异议随各轮结果一起清掉，重新识别
+        rec.objection_times = []
+        db.get(AuditionSheet, rec.sheet_id).objections = []
     _log(db, request, actor, "recording_reprocess", "recording", rec.id)
     db.commit()
     orchestrator.start(rec.id)
@@ -528,6 +533,10 @@ def complete_upload(uid: uuid.UUID, request: Request, db: Session = DB, actor: U
         retention_until=_now() + timedelta(days=get_settings().retention_days),  # 未录用者到期删除（里程碑 4 执行）
     ))
     rec.status, rec.video_duration_ms = "uploaded", info.duration_ms
+    if rec.mode == "live" and info.duration_ms >= MIN_LIVE_MS:
+        # 录播整段评分，不需要分段；观众异议在处理时从逐字稿自动识别。上传完就能提交，标注（纠正异议、排除副播时段）是可选的
+        rec.segments = [{"segment": "main", "start_ms": 0, "end_ms": info.duration_ms}]
+        rec.objection_times, rec.exclusions, rec.main_duration_ms = [], [], info.duration_ms
     _log(db, request, actor, "upload_complete", "recording", rec.id, upload_id=str(u.id), size=u.total_size, duration_ms=info.duration_ms)
     db.commit()
     return _out(db, rec)
