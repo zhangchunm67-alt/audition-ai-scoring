@@ -41,7 +41,7 @@ def _e(x) -> str:
 
 
 def _item_row(i: dict) -> str:
-    score = "—" if i["score"] is None else f"{i['score']:g}"
+    score = "—" if i["score"] is None else f"{round(i['score'], 1):g}"  # 按时长换算后的分数有多位小数，显示保留 1 位
     flags = {"not_applicable": "不适用", "missing_evidence": "缺证据"}.get(i["status"], "") + ("低置信" if i["low_confidence"] else "")
     return (f"<tr><td>{_e(i['item_id'])}</td><td>{_e(i['name'])}</td><td>{score} / {i['max']}</td>"
             f"<td>{flags}</td><td>{_e('；'.join(i['notes'][:2]))}</td></tr>")
