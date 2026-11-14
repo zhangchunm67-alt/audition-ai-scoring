@@ -31,3 +31,4 @@ export type ReportDetail = {
 };
 export const LABEL_COLOR: Record<string, string> = { recommend: "green", pending: "gold", not_recommend: "red" };
 export const LABEL_TEXT: Record<string, string> = { recommend: "推荐", pending: "待定", not_recommend: "不推荐" };
+export const LABEL_TONE: Record<string, "ok" | "warn" | "bad"> = { recommend: "ok", pending: "warn", not_recommend: "bad" };

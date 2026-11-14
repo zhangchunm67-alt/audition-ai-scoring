@@ -18,12 +18,15 @@ const step = async (name, fn) => {
   console.log(`✓ ${name}`);
 };
 
+// 顶栏右侧的账号菜单（改密码、退出登录在里面）；登录成功后才出现。
+const accountMenu = (page) => page.getByRole("button", { name: /^账号菜单/ });
+
 async function loginAs(page, user) {
   await page.goto(BASE);
   await page.getByLabel("用户名").fill(user);
   await page.getByLabel("密码").fill(PW);
   await page.getByRole("button", { name: "登 录" }).click();
-  await page.getByRole("button", { name: "退 出" }).waitFor();
+  await accountMenu(page).waitFor();
 }
 
 
@@ -325,7 +328,7 @@ try {
     await an.getByLabel("新密码（至少 10 位）").fill("anchor-new-pass-1");
     await an.getByLabel("再输一次新密码").fill("anchor-new-pass-1");
     await an.getByRole("button", { name: "修改密码" }).click();
-    await an.getByRole("button", { name: "退 出" }).waitFor();
+    await accountMenu(an).waitFor();
     await an.waitForURL((url) => url.pathname === "/reports");
     assert.deepEqual(await primaryMenu(an).getByRole("menuitem").allTextContents(), ["我的试镜记录"]);
     assert.equal(await an.getByRole("button", { name: "系统管理", exact: true }).count(), 0);

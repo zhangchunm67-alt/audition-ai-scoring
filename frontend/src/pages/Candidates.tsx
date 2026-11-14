@@ -5,9 +5,12 @@ import { useState } from "react";
 import { ApiError, patch, post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { useAction, useFetch } from "../components/hooks";
+import { IconPlus } from "../components/icons";
+import { PageHeader, Pill, Toolbar, type Tone } from "../components/ui";
 
 type Row = S<"CandidateRow">;
 export const HIRING_ZH: Record<string, string> = { undecided: "未定", hired: "已录用", not_hired: "未录用" };
+const HIRING_TONE: Record<string, Tone> = { undecided: "neutral", hired: "ok", not_hired: "bad" };
 
 /** 书面同意登记 UI 暂隐；上传时仍会自动补占位登记以满足后端 C30。改回 true 即可恢复界面。 */
 export const SHOW_CONSENT_UI = false;
@@ -66,7 +69,7 @@ export function NewCandidateModal({ open, onClose, onCreated }: { open: boolean;
         }
       }}
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
@@ -171,29 +174,36 @@ export default function Candidates() {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <>
-      <Typography.Title level={4}>候选人</Typography.Title>
-      <Space style={{ marginBottom: 16 }}>
-        {can("recording.upload") && (
-          <Button type="primary" onClick={() => setCreating(true)}>
+      <PageHeader
+        title="候选人"
+        description="点一行查看候选人的录用状态，并在录用后关联本人的新主播账号。"
+        actions={can("recording.upload") && (
+          <Button type="primary" icon={<IconPlus />} onClick={() => setCreating(true)}>
             新建候选人
           </Button>
         )}
-        <Input.Search placeholder="按手机号查找" allowClear onSearch={setPhone} style={{ width: 240 }} />
-      </Space>
+      />
+      <Toolbar>
+        <Input.Search placeholder="按手机号查找" allowClear onSearch={setPhone} style={{ width: 260 }} />
+      </Toolbar>
       <Table<Row>
+        className="table-card is-clickable"
+        scroll={{ x: "max-content" }}
+        pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
+        locale={{ emptyText: phone ? "没有找到这个手机号的候选人" : "还没有候选人" }}
         rowKey="id"
         loading={loading}
         dataSource={data}
-        onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: "pointer" } })}
+        onRow={(r) => ({ onClick: () => setOpen(r.id) })}
         columns={[
-          { title: "姓名", dataIndex: "name" },
-          { title: "手机号", dataIndex: "phone_masked" },
+          { title: "姓名", dataIndex: "name", render: (n: string) => <span className="cell-main">{n}</span> },
+          { title: "手机号", dataIndex: "phone_masked", render: (p: string | null) => (p ? <span className="mono">{p}</span> : <span className="faint">—</span>) },
           ...(SHOW_CONSENT_UI
             ? [{ title: "书面同意", dataIndex: "consent_count", render: (n: number) => (n ? <Tag color="green">已登记</Tag> : <Tag color="red">未登记</Tag>) }]
             : []),
-          { title: "录像", dataIndex: "recording_count" },
-          { title: "录用状态", dataIndex: "hiring_status", render: (s) => HIRING_ZH[s] },
-          { title: "创建时间", dataIndex: "created_at", render: (t) => dayjs(t).format("YYYY-MM-DD") },
+          { title: "录像", dataIndex: "recording_count", render: (n: number) => <span className="num">{n} 条</span> },
+          { title: "录用状态", dataIndex: "hiring_status", render: (s: string) => <Pill tone={HIRING_TONE[s] ?? "neutral"}>{HIRING_ZH[s]}</Pill> },
+          { title: "创建时间", dataIndex: "created_at", render: (t: string) => <span className="cell-time">{dayjs(t).format("YYYY-MM-DD")}</span> },
         ]}
       />
       <NewCandidateModal open={creating} onClose={() => setCreating(false)} onCreated={() => (setCreating(false), reload())} />

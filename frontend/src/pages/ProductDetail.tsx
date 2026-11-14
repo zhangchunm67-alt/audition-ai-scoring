@@ -5,6 +5,7 @@ import { useParams } from "react-router-dom";
 import { post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { STATUS_ZH, useAction, useFetch } from "../components/hooks";
+import { ConfigStatus, PageHeader, Pill } from "../components/ui";
 import CardEditor from "./CardEditor";
 
 type Card = S<"CardOut">;
@@ -18,7 +19,7 @@ function calibrationState(card: Card) {
 
 function CalibrationTag({ card }: { card: Card }) {
   const label = calibrationState(card);
-  return <Tag color={label === "已验证" ? "green" : "orange"}>{label}</Tag>;
+  return <Pill tone={label === "已验证" ? "ok" : "warn"}>{label}</Pill>;
 }
 
 function AdditionalReferences({ card }: { card: Card }) {
@@ -57,10 +58,12 @@ function ProductMaterials({ pid }: { pid: string }) {
 
   return (
     <>
-      <Typography.Title level={4}>{product.data?.name ?? "产品资料"}</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        录播按参考脚本评估产品讲解；资料按版本保存，校准状态单独查看。实际观众异议在每条录像中标注。
-      </Typography.Paragraph>
+      <PageHeader
+        back={{ to: "/products", label: "产品资料" }}
+        title={product.data?.name ?? "产品资料"}
+        tags={product.data?.code && <span className="mono muted">{product.data.code}</span>}
+        description="录播按参考脚本评估产品讲解；资料按版本保存，校准状态单独查看。实际观众异议在每条录像中标注。"
+      />
       {(error || product.error) && <Alert type="error" message={error || product.error} style={{ marginBottom: 16 }} />}
       <div data-testid="product-material-tabs">
         <Tabs activeKey={tab} onChange={setTab} items={[
@@ -85,22 +88,22 @@ function ProductMaterials({ pid }: { pid: string }) {
             ) : current ? (
               <Card loading={loading} title={<Space wrap>
                 <Typography.Text>{published ? "当前使用" : "资料预览"}：第 {current.version} 版</Typography.Text>
-                <Tag color={current.status === "published" ? "green" : "orange"}>{STATUS_ZH[current.status]}</Tag>
+                <ConfigStatus status={current.status} />
                 {script && <Typography.Text type="secondary">话术 {script.version}</Typography.Text>}
               </Space>}>
                 {!published && <Alert type="info" message="尚未发布可用于录播的资料版本，请在“资料版本”中发布。" style={{ marginBottom: 16 }} />}
-                {script ? <div data-testid="reference-script" style={{ whiteSpace: "pre-wrap", lineHeight: 1.8, maxHeight: "60vh", overflowY: "auto" }}>{script.text}</div>
+                {script ? <div data-testid="reference-script" style={{ whiteSpace: "pre-wrap", lineHeight: 1.9, fontSize: 14.5, maxHeight: "60vh", overflowY: "auto", maxWidth: "80ch" }}>{script.text}</div>
                   : <Empty description="此版本尚无参考脚本，请添加产品的讲解话术。" />}
               </Card>
             ) : <Card loading={loading}><Empty description="尚无参考脚本，添加后保存为资料版本。" /></Card>}
           </> },
           { key: "versions", label: "资料版本", children: <>
             <Typography.Paragraph type="secondary">新增版本保留原资料和已有报告。当前录播使用已发布版本，草稿不会自动替换。</Typography.Paragraph>
-            <Table<Card> rowKey="id" size="small" scroll={{ x: 980 }} loading={loading} dataSource={data} pagination={false} columns={[
+            <Table<Card> className="table-card" rowKey="id" size="small" scroll={{ x: 980 }} loading={loading} dataSource={data} pagination={false} columns={[
               { title: "资料版本", width: 170, render: (_, c) => <Space style={{ whiteSpace: "nowrap" }}>第 {c.version} 版{published?.id === c.id && <Tag color="green">当前使用</Tag>}</Space> },
-              { title: "状态", width: 90, dataIndex: "status", render: (st) => <Tag color={st === "published" ? "green" : "default"}>{STATUS_ZH[st]}</Tag> },
+              { title: "状态", width: 110, dataIndex: "status", render: (st) => <ConfigStatus status={st} /> },
               { title: "话术版本", width: 240, render: (_, c) => <Typography.Text style={{ whiteSpace: "nowrap" }}>{c.content.fixed_script?.version ?? "未登记"}</Typography.Text> },
-              { title: "校准状态", width: 110, render: (_, c) => <CalibrationTag card={c} /> },
+              { title: "校准状态", width: 130, render: (_, c) => <CalibrationTag card={c} /> },
               { title: "创建时间", width: 180, dataIndex: "created_at", render: (t) => <Typography.Text style={{ whiteSpace: "nowrap" }}>{dayjs(t).format("YYYY-MM-DD HH:mm")}</Typography.Text> },
               { title: "操作", width: 190, render: (_, c) => <Space>
                 <Button size="small" onClick={() => setViewId(c.id)}>查看版本</Button>
@@ -158,6 +161,7 @@ function Calibration({ card, onSaved }: { card: Card; onSaved: () => void }) {
       <Form
         form={form}
         layout="inline"
+        style={{ rowGap: 12, marginBottom: 12 }}
         initialValues={cur ?? { status: "draft", train_samples: 0, holdout_samples: 0, anchors: [] }}
         onFinish={async (v) => {
           const body = { ...cur, ...v, fixed_script_version: script.version, anchors: cur?.anchors ?? [] };

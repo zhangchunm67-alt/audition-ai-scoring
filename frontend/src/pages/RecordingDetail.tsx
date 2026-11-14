@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Col, Descriptions, Input, InputNumber, Popconfirm, Progress, Row, Space, Table, Tag, Typography, Upload } from "antd";
+import { Alert, Button, Card, Input, InputNumber, Popconfirm, Progress, Space, Table, Typography, Upload } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -7,9 +7,18 @@ import { useAuth } from "../auth";
 import { AUDIENCE_ZH, MODE_ZH, useAction, useFetch } from "../components/hooks";
 import { localUrlOf } from "../components/localMedia";
 import { fmtBytes, fmtMs, uploadFile } from "../components/upload";
-import { REC_STATUS } from "./Recordings";
+import { IconReload } from "../components/icons";
+import { MetaGrid, PageHeader, SectionTitle } from "../components/ui";
+import { RecStatus } from "./Recordings";
 
 type Rec = S<"RecordingOut">;
+/** 分段在界面上的叫法：主体段、朗读、知识题 N。 */
+function segmentName(seg: string, all: Rec["segments"]) {
+  if (seg === "main") return "主体段";
+  if (seg === "reading") return "朗读";
+  const questions = all.map((s) => String(s.segment)).filter((n) => n.startsWith("question:"));
+  return seg.startsWith("question:") ? `知识题 ${questions.indexOf(seg) + 1}` : seg;
+}
 type Marks = { main: number | null; questions: (number | null)[]; reading: number | null; objections: number[] };
 
 function initialMarks(rec: Rec): Marks {
@@ -39,12 +48,14 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
     row("reading", "朗读开始", m.reading, (v) => setM({ ...m, reading: v })),
   ];
   return (
-    <Row gutter={24}>
-      <Col span={12}>
-        <video ref={video} src={src} controls style={{ width: "100%", background: "#000" }} data-testid="marker-video" />
-        <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>播放到某段开头时点“设为当前时间”。异议时间默认按题单（相对主体段开始），如候选人实际回应时间不同，可在视频里定位后修正。</Typography.Paragraph>
-      </Col>
-      <Col span={12}>
+    <div className="split-cal">
+      <div className="sticky-col">
+        <div className="video-frame"><video ref={video} src={src} controls data-testid="marker-video" /></div>
+        <p className="hint" style={{ marginTop: 12 }}>播放到某段开头时点“设为当前时间”。异议时间默认按题单（相对主体段开始），如候选人实际回应时间不同，可在视频里定位后修正。</p>
+      </div>
+      <div className="stack">
+        <section className="panel panel-pad">
+        <SectionTitle>分段起点</SectionTitle>
         <Table size="small" pagination={false} rowKey="key" dataSource={rows} columns={[
           { title: "分段", dataIndex: "label", ellipsis: true },
           { title: "起点", dataIndex: "ms", width: 90, render: (v) => fmtMs(v) },
@@ -55,7 +66,9 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
             </Space>
           ) },
         ]} />
-        <Typography.Title level={5} style={{ marginTop: 16 }}>异议时间</Typography.Title>
+        </section>
+        <section className="panel panel-pad">
+        <SectionTitle>异议时间</SectionTitle>
         <Table size="small" pagination={false} rowKey="objection_id" dataSource={rec.sheet_objections.map((o, i) => ({ ...o, i }))} columns={[
           { title: "异议", dataIndex: "text", ellipsis: true },
           { title: "题单", dataIndex: "at_ms", width: 70, render: (v) => fmtMs(v) },
@@ -68,7 +81,9 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
             </Space>
           ) },
         ]} />
-        <Button type="primary" style={{ marginTop: 16 }} disabled={!ready} onClick={async () => {
+        </section>
+        <div>
+        <Button type="primary" disabled={!ready} onClick={async () => {
           const r = await act(() => put<Rec>(`/recordings/${rec.id}/segments`, {
             main_start_ms: m.main, question_starts_ms: m.questions, reading_start_ms: m.reading, objection_offsets_ms: m.objections,
           }), "分段已保存");
@@ -76,8 +91,9 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
         }}>
           保存分段
         </Button>
-      </Col>
-    </Row>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -99,19 +115,19 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
   const seek = (ms: number | null) => ms != null && video.current && (video.current.currentTime = ms / 1000);
   const ready = objs.every((o) => o.text.trim()) && exs.every((x) => x.end_ms != null && x.end_ms > x.start_ms);
   return (
-    <Row gutter={24}>
-      <Col span={12}>
-        <video ref={video} src={src} controls style={{ width: "100%", background: "#000" }} data-testid="marker-video" />
-        <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+    <div className="split-cal">
+      <div className="sticky-col">
+        <div className="video-frame"><video ref={video} src={src} controls data-testid="marker-video" /></div>
+        <p className="hint" style={{ marginTop: 12 }}>
           整段视频都参与评分，不截取 10 分钟，没有朗读段（“普通话标准”由评委听录像打分）。按次计的条目（口头禅、语速、小动作、加分项等）都按每 10 分钟的次数换算后计分。
-        </Typography.Paragraph>
-      </Col>
-      <Col span={12}>
-        <Space style={{ marginBottom: 8 }}>
-          <Typography.Title level={5} style={{ margin: 0 }}>观众异议（{objs.length} 条）</Typography.Title>
-          <Button size="small" data-testid="live-add-objection" onClick={() => setObjs([...objs, { key: seq.current++, text: "", video_ms: now() }])}>在当前时间添加</Button>
-        </Space>
-        <Typography.Paragraph type="secondary">
+        </p>
+      </div>
+      <div className="stack">
+        <section className="panel panel-pad">
+        <SectionTitle extra={<Button size="small" style={{ marginLeft: "auto" }} data-testid="live-add-objection" onClick={() => setObjs([...objs, { key: seq.current++, text: "", video_ms: now() }])}>在当前时间添加</Button>}>
+          观众异议<small>{objs.length} 条 · 可选</small>
+        </SectionTitle>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
           可以不标：系统会从逐字稿里自动识别主播念出或回应过的观众问题（主播没理会的弹幕识别不到）。想人工指定时，播放到观众提出问题的时刻点“添加”，填上问题原文；标了就以人工为准，不再自动识别。“解答异议”按实际条数折算；一条都没有时该条不适用，“节奏与气氛”由评委打分。
         </Typography.Paragraph>
         <Table size="small" pagination={false} rowKey="key" dataSource={objs} locale={{ emptyText: "没有人工标注，处理时自动识别" }} columns={[
@@ -128,11 +144,12 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
             </Space>
           ) },
         ]} />
-        <Space style={{ margin: "16px 0 8px" }}>
-          <Typography.Title level={5} style={{ margin: 0 }}>排除时段（{exs.length} 段）</Typography.Title>
-          <Button size="small" data-testid="live-add-exclusion" onClick={() => setExs([...exs, { key: seq.current++, start_ms: now(), end_ms: null }])}>从当前时间开始</Button>
-        </Space>
-        <Typography.Paragraph type="secondary">副播、场控等其他人在讲话的时段。排除后这些话不算到主播头上，时长也不计入。</Typography.Paragraph>
+        </section>
+        <section className="panel panel-pad">
+        <SectionTitle extra={<Button size="small" style={{ marginLeft: "auto" }} data-testid="live-add-exclusion" onClick={() => setExs([...exs, { key: seq.current++, start_ms: now(), end_ms: null }])}>从当前时间开始</Button>}>
+          排除时段<small>{exs.length} 段 · 可选</small>
+        </SectionTitle>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>副播、场控等其他人在讲话的时段。排除后这些话不算到主播头上，时长也不计入。</Typography.Paragraph>
         <Table size="small" pagination={false} rowKey="key" dataSource={exs} locale={{ emptyText: "没有排除时段" }} columns={[
           { title: "开始", dataIndex: "start_ms", width: 80, render: (v) => fmtMs(v) },
           { title: "结束", dataIndex: "end_ms", width: 80, render: (v) => fmtMs(v) },
@@ -144,7 +161,9 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
             </Space>
           ) },
         ]} />
-        <Button type="primary" style={{ marginTop: 16 }} disabled={!ready} data-testid="live-save" onClick={async () => {
+        </section>
+        <div>
+        <Button type="primary" disabled={!ready} data-testid="live-save" onClick={async () => {
           const r = await act(() => put<Rec>(`/recordings/${rec.id}/live-marks`, {
             objections: objs.map((o) => ({ text: o.text.trim(), video_ms: o.video_ms })),
             exclusions: exs.map((x) => ({ start_ms: x.start_ms, end_ms: x.end_ms })),
@@ -153,8 +172,9 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
         }}>
           {objs.length || exs.length ? "保存标注" : "清空标注"}
         </Button>
-      </Col>
-    </Row>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -163,7 +183,7 @@ function Resume({ rec, onDone }: { rec: Rec; onDone: (r: Rec) => void }) {
   const [err, setErr] = useState<string | null>(null);
   const up = rec.upload!;
   return (
-    <Card size="small" title="上传未完成" style={{ marginBottom: 16 }}>
+    <Card title="上传未完成" style={{ marginBottom: 16 }}>
       <Typography.Paragraph>已收到 {fmtBytes(up.received_bytes)} / {fmtBytes(up.total_size)}。重新选择同一个文件，会从断点继续上传。</Typography.Paragraph>
       <Upload showUploadList={false} accept=".mp4,.mov,.m4v,.webm,video/*" beforeUpload={(f) => {
         setErr(null);
@@ -206,14 +226,14 @@ function HumanScoring({ id, onDone }: { id: string; onDone: () => void }) {
     if (r) { reload(); if (r.status !== "awaiting_human") onDone(); }
   };
   return (
-    <Card title="评委打分" size="small" style={{ marginBottom: 16 }} data-testid="human-scoring"
+    <Card title="评委打分" style={{ marginBottom: 16 }} data-testid="human-scoring"
       extra={<Button type="primary" disabled={filled.length === 0} onClick={submit}>保存（{filled.length}/{data.items.length}）</Button>}>
       <Typography.Paragraph type="secondary">
         以下条目机器评不了，或在校准达标前须由评委确认。请看视频后按评分表打分；有机器建议分的已预填，可以修改。全部填完后自动出报告。
       </Typography.Paragraph>
       <Table size="small" pagination={false} rowKey="item_id" dataSource={data.items}
         expandable={{ rowExpandable: (r) => r.evidence.length > 0, expandedRowRender: (r) => (
-          <ul style={{ margin: 0 }}>{r.evidence.map((e, i) => <li key={i}>{fmtMs(e.start_ms)} {e.quote ?? e.label} {e.reason ? `—— ${e.reason}` : ""}</li>)}</ul>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>{r.evidence.map((e, i) => <li key={i}><span className="mono faint">{fmtMs(e.start_ms)}</span> {e.quote ?? e.label} {e.reason ? <span className="muted">—— {e.reason}</span> : ""}</li>)}</ul>
         ) }}
         columns={[
           { title: "评分表条目", dataIndex: "label", width: 220 },
@@ -250,72 +270,82 @@ export default function RecordingDetail() {
   const src = localUrlOf(rec.id) ?? (rec.video_asset_id ? `/api/media/${rec.video_asset_id}` : null);
   const editable = can("recording.upload");
   const live = rec.mode === "live";
+  const view = ["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status);
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>{rec.candidate_name} · {rec.sheet_code}</Typography.Title>
-        <Tag color={REC_STATUS[rec.status]?.[1]}>{REC_STATUS[rec.status]?.[0]}</Tag>
-        {editable && rec.status === "uploaded" && rec.segments.length > 0 && (
-          <Popconfirm title={live ? "提交后标注不能再改，确定提交处理？" : "提交后分段不能再改，确定提交处理？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/submit`), "已提交"); if (r) setRec(r); }}>
-            <Button type="primary">提交处理</Button>
-          </Popconfirm>
+      <PageHeader
+        back={{ to: "/recordings", label: "试镜录像" }}
+        title={rec.candidate_name}
+        tags={<>
+          <span className="mono muted">{rec.sheet_code}</span>
+          <RecStatus status={rec.status} />
+        </>}
+        actions={<>
+          {editable && ["uploading", "uploaded"].includes(rec.status) && (
+            <Popconfirm title={live ? "取消会删除已上传的视频。确定？" : "取消会删除已上传的视频，题单恢复为未使用。确定？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/cancel`), "已取消"); if (r) setRec(r); }}>
+              <Button danger>取消</Button>
+            </Popconfirm>
+          )}
+          {editable && rec.status === "uploaded" && rec.segments.length > 0 && (
+            <Popconfirm title={live ? "提交后标注不能再改，确定提交处理？" : "提交后分段不能再改，确定提交处理？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/submit`), "已提交"); if (r) setRec(r); }}>
+              <Button type="primary">提交处理</Button>
+            </Popconfirm>
+          )}
+        </>}
+      />
+      <div className="stack-sm" style={{ marginBottom: 16 }}>
+        {rec.status === "failed" && (
+          <Alert type="error" showIcon message="处理失败，已告警管理员。多半是模型或系统问题，排查后可重新处理；确认是录像本身的问题再联系候选人重录" description={rec.failure_reason}
+            action={editable && <Button onClick={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); }}>重新处理</Button>} />
         )}
-        {editable && ["uploading", "uploaded"].includes(rec.status) && (
-          <Popconfirm title={live ? "取消会删除已上传的视频。确定？" : "取消会删除已上传的视频，题单恢复为未使用。确定？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/cancel`), "已取消"); if (r) setRec(r); }}>
-            <Button danger>取消</Button>
-          </Popconfirm>
+        {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon message="正在自动评分，页面每 15 秒自动刷新，完成后在这里查看结果（目标 30 分钟内）。" action={<Button size="small" icon={<IconReload />} onClick={reload}>刷新</Button>} />}
+        {rec.status === "awaiting_human" && <Alert type="warning" showIcon message="机器部分已完成，等评委给下面的条目打分" />}
+        {rec.status === "done" && (
+          <Alert type="success" showIcon message="评分已完成"
+            action={rec.report_id && <Button type="primary" onClick={() => nav(`/reports/${rec.report_id}`)}>查看报告</Button>} />
         )}
-      </Space>
-      {rec.status === "failed" && (
-        <Alert type="error" showIcon style={{ marginBottom: 16 }} message="处理失败，已告警管理员。多半是模型或系统问题，排查后可重新处理；确认是录像本身的问题再联系候选人重录" description={rec.failure_reason}
-          action={editable && <Button onClick={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); }}>重新处理</Button>} />
-      )}
-      {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="正在自动评分，页面每 15 秒自动刷新，完成后在这里查看结果（目标 30 分钟内）。" action={<Button onClick={reload}>刷新</Button>} />}
-      {rec.status === "awaiting_human" && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="机器部分已完成，等评委给下面的条目打分" />}
+        {rec.uses_draft_config && <Alert type="warning" showIcon message="使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
+        {rec.warnings.map((w) => <Alert key={w} type="info" showIcon message={w} />)}
+        {rec.status === "uploaded" && live && editable && rec.segments.length > 0 && (
+          <Alert type="success" showIcon message="视频已上传，可以直接点上方“提交处理”" description="下面的标注是可选的：只在想人工指定观众问题，或要排除副播等其他人讲话的时段时才需要。" />
+        )}
+      </div>
       {rec.status === "awaiting_human" && can("human.score") && <HumanScoring id={rec.id} onDone={reload} />}
-      {rec.status === "done" && (
-        <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成"
-          action={rec.report_id && <Button type="primary" onClick={() => nav(`/reports/${rec.report_id}`)}>查看报告</Button>} />
-      )}
-      {rec.uses_draft_config && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
-      {rec.warnings.map((w) => <Alert key={w} type="info" showIcon style={{ marginBottom: 8 }} message={w} />)}
-      <Descriptions size="small" bordered column={3} style={{ marginBottom: 16 }}>
-        <Descriptions.Item label="类型">{MODE_ZH[rec.mode] ?? rec.mode}{live ? "（无题单，整段视频评分）" : ""}</Descriptions.Item>
-        <Descriptions.Item label="产品">{rec.product_name}</Descriptions.Item>
-        <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[rec.audience] ?? rec.audience}</Descriptions.Item>
-        <Descriptions.Item label="道具">{rec.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）"}</Descriptions.Item>
-        <Descriptions.Item label="视频时长">{fmtMs(rec.video_duration_ms)}</Descriptions.Item>
-        <Descriptions.Item label={live ? "参与评分时长" : "主体段时长"}>{fmtMs(rec.main_duration_ms)}</Descriptions.Item>
-        <Descriptions.Item label="提交时间">{rec.submitted_at ? dayjs(rec.submitted_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
-        <Descriptions.Item label="出结果时间">{rec.finished_at ? dayjs(rec.finished_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
-      </Descriptions>
+      <MetaGrid style={{ marginBottom: 20 }} items={[
+        { label: "类型", value: <>{MODE_ZH[rec.mode] ?? rec.mode}{live ? "（无题单，整段视频评分）" : ""}</> },
+        { label: "产品", value: rec.product_name },
+        { label: "适用达标线", value: AUDIENCE_ZH[rec.audience] ?? rec.audience },
+        { label: "道具", value: rec.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）" },
+        { label: "视频时长", value: <span className="num">{fmtMs(rec.video_duration_ms)}</span> },
+        { label: live ? "参与评分时长" : "主体段时长", value: <span className="num">{fmtMs(rec.main_duration_ms)}</span> },
+        { label: "提交时间", value: <span className="num">{rec.submitted_at ? dayjs(rec.submitted_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</span> },
+        { label: "出结果时间", value: <span className="num">{rec.finished_at ? dayjs(rec.finished_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</span> },
+      ]} />
       {rec.status === "uploading" && rec.upload && editable && <Resume rec={rec} onDone={(r) => (setRec(r), reload())} />}
-      {rec.status === "uploaded" && live && editable && rec.segments.length > 0 && (
-        <Alert type="success" showIcon style={{ marginBottom: 16 }} message="视频已上传，可以直接点上方“提交处理”" description="下面的标注是可选的：只在想人工指定观众问题，或要排除副播等其他人讲话的时段时才需要。" />
-      )}
       {rec.status === "uploaded" && src && editable && (live ? <LiveMarker rec={rec} src={src} onSaved={setRec} /> : <Marker rec={rec} src={src} onSaved={setRec} />)}
-      {["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status) && src && (
-        <Row gutter={24}>
-          <Col span={12}><video src={src} controls style={{ width: "100%", background: "#000" }} /></Col>
-          <Col span={12}>
+      {view && src && (
+        <div className="split-cal">
+          <div className="video-frame"><video src={src} controls /></div>
+          <section className="panel panel-pad">
+            <SectionTitle>分段</SectionTitle>
             <Table size="small" pagination={false} rowKey="segment" dataSource={rec.segments} columns={[
-              { title: "分段", dataIndex: "segment" },
-              { title: "开始", dataIndex: "start_ms", render: fmtMs },
-              { title: "结束", dataIndex: "end_ms", render: fmtMs },
+              { title: "分段", dataIndex: "segment", render: (v: string) => segmentName(v, rec.segments) },
+              { title: "开始", dataIndex: "start_ms", render: (v) => <span className="mono">{fmtMs(v)}</span> },
+              { title: "结束", dataIndex: "end_ms", render: (v) => <span className="mono">{fmtMs(v)}</span> },
             ]} />
             {live && (
-              <Typography.Paragraph style={{ marginTop: 12 }}>
+              <Typography.Paragraph style={{ margin: "16px 0 0", lineHeight: 1.8 }}>
                 观众异议 {rec.objection_times.length} 条{rec.objection_times.some((o) => o.source === "auto") ? "（从逐字稿自动识别）" : ""}{rec.objection_times.length ? "：" : "；"}
                 {rec.objection_times.map((o) => (
                   <span key={o.objection_id as string} style={{ display: "block" }}>
-                    {fmtMs(o.video_ms as number)} {(rec.sheet_objections.find((s) => s.objection_id === o.objection_id)?.text as string | undefined) ?? ""}
+                    <span className="mono faint">{fmtMs(o.video_ms as number)}</span> {(rec.sheet_objections.find((s) => s.objection_id === o.objection_id)?.text as string | undefined) ?? ""}
                   </span>
                 ))}
                 排除时段 {rec.exclusions.length} 段{rec.exclusions.length ? `：${rec.exclusions.map((x) => `${fmtMs(x.start_ms as number)}–${fmtMs(x.end_ms as number)}`).join("、")}` : ""}。
               </Typography.Paragraph>
             )}
-          </Col>
-        </Row>
+          </section>
+        </div>
       )}
     </>
   );

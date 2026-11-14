@@ -1,11 +1,13 @@
-import { Alert, Button, Card, Col, Descriptions, Modal, Row, Select, Space, Statistic, Table, Tabs, Tag, Tooltip, Typography } from "antd";
+import { Alert, Button, Descriptions, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { post, type S } from "../api/client";
-import { LABEL_COLOR, LABEL_TEXT, type Hit, type ItemResult, type ReportDetail as RD } from "../api/report";
+import { LABEL_TEXT, LABEL_TONE, type Hit, type ItemResult, type ReportDetail as RD } from "../api/report";
 import { useAuth } from "../auth";
 import { AUDIENCE_ZH, STATUS_ZH, useAction, useFetch } from "../components/hooks";
+import { IconDownload } from "../components/icons";
+import { MetaList, MiniScore, PageHeader, Pill, SectionTitle } from "../components/ui";
 import { fmtMs } from "../components/upload";
 
 const JUDGE: Record<string, string> = { count: "计入", not_count: "不计入" };
@@ -17,13 +19,23 @@ function segName(seg: string, segments: RD["media"]["segments"]) {
   return `知识题 ${qs.findIndex((s) => s.segment === seg) + 1}`;
 }
 
+/** 点时间跳到视频对应位置。 */
+function TimeLink({ ms, seek, children }: { ms: number; seek: (ms: number | null) => void; children?: ReactNode }) {
+  return (
+    <a className="time-link" role="button" tabIndex={0} onClick={() => seek(ms)}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), seek(ms))}>
+      {children ?? fmtMs(ms)}
+    </a>
+  );
+}
+
 function HitTag({ h }: { h: Hit }) {
   const d = h.delta;
   const color = h.issue ? "red" : d && d > 0 ? "green" : "default";
   const txt = `${h.item_name} ${h.label ?? ""}${d ? `（${d > 0 ? "+" : ""}${d}）` : ""}`;
   return (
     <Tooltip title={`${h.item_name}：${JUDGE[String(h.judgment)] ?? h.judgment}。${h.reason ?? ""}（置信度 ${h.confidence.toFixed(2)}）`}>
-      <Tag color={color} style={{ marginBottom: 4 }}>{txt}</Tag>
+      <Tag color={color} style={{ margin: 0 }}>{txt}</Tag>
     </Tooltip>
   );
 }
@@ -40,38 +52,43 @@ function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
   const evByItem = (id: string) => d.evidence.filter((e) => e.item_id === id);
   return (
     <Table<ItemResult>
+      className="table-card"
       size="small"
       rowKey="item_id"
       pagination={false}
       dataSource={d.result.items}
+      scroll={{ x: 760 }}
       expandable={{
+        rowExpandable: (it) => evByItem(it.item_id).length > 0,
         expandedRowRender: (it) => (
           <Table<Hit> size="small" rowKey="evidence_id" pagination={false} dataSource={evByItem(it.item_id)} columns={[
-            { title: "时间", dataIndex: "start_ms", width: 70, render: (v) => (v == null ? "—" : <a onClick={() => seek(v)}>{fmtMs(v)}</a>) },
+            { title: "时间", dataIndex: "start_ms", width: 80, render: (v) => (v == null ? "—" : <TimeLink ms={v} seek={seek} />) },
             { title: "原句或指标", render: (_, e) => e.quote ?? (e.value != null ? `${e.label} = ${e.value}` : e.label) },
-            { title: "判定", width: 90, render: (_, e) => `${e.label && e.kind !== "metric" ? `${e.label} · ` : ""}${JUDGE[String(e.judgment)] ?? e.judgment ?? ""}` },
-            { title: "加扣分", dataIndex: "delta", width: 70, render: (v) => (v == null ? "" : v > 0 ? `+${v}` : v) },
+            { title: "判定", width: 110, render: (_, e) => `${e.label && e.kind !== "metric" ? `${e.label} · ` : ""}${JUDGE[String(e.judgment)] ?? e.judgment ?? ""}` },
+            { title: "加扣分", dataIndex: "delta", width: 70, render: (v) => (v == null ? "" : <span className="num" style={{ color: v > 0 ? "var(--ok)" : v < 0 ? "var(--bad)" : undefined }}>{v > 0 ? `+${v}` : v}</span>) },
             { title: "理由", dataIndex: "reason" },
-            { title: "置信度", dataIndex: "confidence", width: 70, render: (c: number) => <span style={{ color: c < 0.6 ? "#d4380d" : undefined }}>{c.toFixed(2)}</span> },
+            { title: "置信度", dataIndex: "confidence", width: 70, render: (c: number) => <span className="num" style={{ color: c < 0.6 ? "var(--bad)" : undefined }}>{c.toFixed(2)}</span> },
           ]} />
         ),
       }}
       columns={[
-        { title: "维度", dataIndex: "dimension", width: 90, render: (v: string) => dimName[v] ?? v },
-        { title: "条目", render: (_, it) => it.name },
-        { title: "得分", width: 90, render: (_, it) => (it.status === "not_applicable" ? "不适用" : `${it.score == null ? "—" : Math.round(it.score * 10) / 10} / ${it.max}`) },
-        { title: "标记", width: 160, render: (_, it) => (
+        { title: "维度", dataIndex: "dimension", width: 96, render: (v: string) => <span className="muted">{dimName[v] ?? v}</span> },
+        { title: "条目", width: 150, render: (_, it) => it.name },
+        { title: "得分", width: 150, render: (_, it) => (it.status === "not_applicable"
+          ? <span className="faint">不适用</span>
+          : <MiniScore ratio={it.score == null || !it.max ? null : it.score / it.max} text={<>{it.score == null ? "—" : Math.round(it.score * 10) / 10} <span className="faint">/ {it.max}</span></>} />) },
+        { title: "标记", width: 130, render: (_, it) => (
           <Space size={4} wrap>
-            {it.low_confidence && <Tooltip title={it.low_confidence_reasons.join("；")}><Tag color="orange">低置信</Tag></Tooltip>}
-            {it.status === "missing_evidence" && <Tag color="red">缺证据</Tag>}
+            {it.low_confidence && <Tooltip title={it.low_confidence_reasons.join("；")}><Tag color="orange" style={{ margin: 0 }}>低置信</Tag></Tooltip>}
+            {it.status === "missing_evidence" && <Tag color="red" style={{ margin: 0 }}>缺证据</Tag>}
             {it.source === "human" && (
               <Tooltip title={`评委 ${it.human?.by ?? ""} 打分${it.suggested_score != null ? `，机器建议 ${it.suggested_score}` : ""}${it.human?.note ? `。备注：${it.human.note}` : ""}`}>
-                <Tag color="blue">人工打分</Tag>
+                <Tag color="blue" style={{ margin: 0 }}>人工打分</Tag>
               </Tooltip>
             )}
           </Space>
         ) },
-        { title: "说明", render: (_, it) => <Typography.Text type="secondary">{it.notes.join("；")}</Typography.Text> },
+        { title: "说明", render: (_, it) => <span className="muted" style={{ fontSize: 13 }}>{it.notes.join("；")}</span> },
       ]}
     />
   );
@@ -80,25 +97,28 @@ function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
 function Sentences({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
   const [onlyIssues, setOnlyIssues] = useState(false);
   return (
-    <>
-      <Space style={{ marginBottom: 12 }}>
+    <div className="stack">
+      <Space wrap>
         <Button type={onlyIssues ? "primary" : "default"} onClick={() => setOnlyIssues(!onlyIssues)}>{onlyIssues ? "显示全部句子" : "只看有问题的句子"}</Button>
-        <Typography.Text type="secondary">点时间跳到视频对应位置。红色为扣分或未得分；示范说法由 AI 生成，仅供辅导参考。</Typography.Text>
+        <span className="muted" style={{ fontSize: 13 }}>点时间跳到视频对应位置。红色为扣分或未得分；示范说法由 AI 生成，仅供辅导参考。</span>
       </Space>
       {d.sentences.map((seg) => (
-        <Card key={seg.segment} size="small" title={segName(seg.segment, d.media.segments)} style={{ marginBottom: 12 }}
-          extra={seg.segment_hits.length ? <Space size={4} wrap>{seg.segment_hits.map((h) => <HitTag key={h.evidence_id} h={h} />)}</Space> : null}>
+        <section key={seg.segment} className="panel panel-pad">
+          <SectionTitle>{segName(seg.segment, d.media.segments)}</SectionTitle>
+          {seg.segment_hits.length > 0 && <Space size={4} wrap style={{ marginBottom: 12 }}>{seg.segment_hits.map((h) => <HitTag key={h.evidence_id} h={h} />)}</Space>}
           {seg.sentences.filter((s) => !onlyIssues || s.issue).map((s) => (
-            <div key={`${s.segment}-${s.start_ms}`} data-testid="sentence" style={{ padding: "6px 0", borderBottom: "1px solid #f0f0f0", background: s.issue ? "#fff1f0" : undefined }}>
-              <a onClick={() => seek(s.start_ms)} style={{ marginRight: 8 }}>{fmtMs(s.start_ms)}</a>
-              <span>{s.text}</span>
-              <div>{s.hits.map((h) => <HitTag key={h.evidence_id} h={h} />)}</div>
-              {s.suggestion && <div style={{ color: "#389e0d" }}>示范说法（AI 生成）：{s.suggestion}</div>}
+            <div key={`${s.segment}-${s.start_ms}`} data-testid="sentence" className={`sentence${s.issue ? " is-issue" : ""}`}>
+              <TimeLink ms={s.start_ms} seek={seek} />
+              <div className="sentence-body">
+                <span>{s.text}</span>
+                {s.hits.length > 0 && <div className="hits">{s.hits.map((h) => <HitTag key={h.evidence_id} h={h} />)}</div>}
+                {s.suggestion && <div className="suggestion">示范说法（AI 生成）：{s.suggestion}</div>}
+              </div>
             </div>
           ))}
-        </Card>
+        </section>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -123,6 +143,26 @@ function Rescore({ id, onDone }: { id: string; onDone: (r: RD) => void }) {
   );
 }
 
+function ScoreBoard({ d }: { d: RD }) {
+  const dims = d.result.dimensions;
+  return (
+    <div className="score-board" style={{ "--dims": dims.length } as CSSProperties}>
+      <div className="score-cell">
+        <div className="score-label">总档位</div>
+        <div className="score-num">{d.result.total_grade}</div>
+        <div className="score-sub">达标线 &lt; {d.result.threshold}</div>
+      </div>
+      {dims.map((x) => (
+        <div className="score-cell" key={x.id}>
+          <div className="score-label">{x.name}</div>
+          <div className="score-num">{x.score ?? "—"}<small>分 · {x.grade} 档</small></div>
+          <div className="bar" aria-hidden><i style={{ width: `${Math.max(0, Math.min(100, x.score ?? 0))}%` }} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ReportDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -137,41 +177,40 @@ export default function ReportDetail() {
     video.current.currentTime = ms / 1000;
     void video.current.play().catch(() => undefined);
   };
-  const dims = Object.fromEntries(d.result.dimensions.map((x) => [x.id, x]));
+  const all = can("report.read_all");
+  const live = d.mode === "live";
   return (
     <>
-      <Space style={{ marginBottom: 8 }} wrap>
-        <Typography.Title level={4} style={{ margin: 0 }}>{d.candidate_name} 的试镜报告</Typography.Title>
-        <Tag color={LABEL_COLOR[d.label]} style={{ fontSize: 16, padding: "2px 12px" }} data-testid="label">{LABEL_TEXT[d.label]}</Tag>
-        {d.critical && <Tag color="gold">临界</Tag>}
-        {d.informal && <Tag>非正式</Tag>}
-        <Button href={`/api/reports/${d.id}/pdf`}>导出 PDF</Button>
-        {can("config.write") && !d.superseded_at && <Rescore id={d.id} onDone={(r) => nav(`/reports/${r.id}`)} />}
-        {can("report.read_all") && <Link to={`/recordings/${d.recording_id}`}>查看录像记录</Link>}
-      </Space>
-      <Typography.Paragraph style={{ fontSize: 15 }}>{d.verdict.reason}</Typography.Paragraph>
-      {d.superseded_at && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="这是旧修订，已被按新版评分标准重算的版本取代" />}
-      {Object.values(d.trace.model_manifest).some((v) => String(v).startsWith("mock")) && <Alert type="error" showIcon style={{ marginBottom: 8 }} message="模拟流程结果：本报告含 Mock 测试模型输出，不是该主播的真实综合得分，不进入默认真实排名。" />}
-      {d.informal && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message="非正式报告：使用了草稿版的评分标准或检测配置（含待确认规则和测试占位值），或用了开发测试用的模拟模型，仅供试用，不作录用依据" />}
-      {d.critical && (
-        <Alert type="info" showIcon style={{ marginBottom: 8 }} message={`临界样本：总档位接近达标线，共 ${d.verdict.rounds.length} 轮取多数，请谨慎使用`}
-          description={d.verdict.rounds.map((r) => `第 ${r.round_no} 轮 ${r.total_grade} 档（${r.grade_pass ? "达标" : "不达标"}）`).join("；") + `；报告展示第 ${d.display_round} 轮`} />
-      )}
-      {d.result.low_confidence_items.length > 0 && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={`低置信条目：${d.result.low_confidence_items.map((i) => itemLabel(d, i)).join("、")}（照常出分，判断把握不足，可点开证据核对）`} />}
-      <Row gutter={16}>
-        <Col span={16}>
+      <PageHeader
+        back={{ to: "/reports", label: all ? "报告与排名" : "我的试镜记录" }}
+        title={`${d.candidate_name} 的${live ? "录播" : "试镜"}报告`}
+        tags={<>
+          <Pill tone={LABEL_TONE[d.label]} large data-testid="label">{LABEL_TEXT[d.label]}</Pill>
+          {d.critical && <Tag color="gold" style={{ margin: 0 }}>临界</Tag>}
+          {d.informal && <Tag style={{ margin: 0 }}>非正式</Tag>}
+        </>}
+        actions={<>
+          {all && <Button type="link" onClick={() => nav(`/recordings/${d.recording_id}`)}>查看录像记录</Button>}
+          {can("config.write") && !d.superseded_at && <Rescore id={d.id} onDone={(r) => nav(`/reports/${r.id}`)} />}
+          <Button icon={<IconDownload />} href={`/api/reports/${d.id}/pdf`}>导出 PDF</Button>
+        </>}
+      />
+      <p className="verdict">{d.verdict.reason}</p>
+      <div className="stack-sm" style={{ marginBottom: 20 }}>
+        {d.superseded_at && <Alert type="warning" showIcon message="这是旧修订，已被按新版评分标准重算的版本取代" />}
+        {Object.values(d.trace.model_manifest).some((v) => String(v).startsWith("mock")) && <Alert type="error" showIcon message="模拟流程结果：本报告含 Mock 测试模型输出，不是该主播的真实综合得分，不进入默认真实排名。" />}
+        {d.informal && <Alert type="warning" showIcon message="非正式报告：使用了草稿版的评分标准或检测配置（含待确认规则和测试占位值），或用了开发测试用的模拟模型，仅供试用，不作录用依据" />}
+        {d.critical && (
+          <Alert type="info" showIcon message={`临界样本：总档位接近达标线，共 ${d.verdict.rounds.length} 轮取多数，请谨慎使用`}
+            description={d.verdict.rounds.map((r) => `第 ${r.round_no} 轮 ${r.total_grade} 档（${r.grade_pass ? "达标" : "不达标"}）`).join("；") + `；报告展示第 ${d.display_round} 轮`} />
+        )}
+        {d.result.low_confidence_items.length > 0 && <Alert type="warning" showIcon message={`低置信条目：${d.result.low_confidence_items.map((i) => itemLabel(d, i)).join("、")}（照常出分，判断把握不足，可点开证据核对）`} />}
+      </div>
+      <div className="split-report">
+        <div>
+          <ScoreBoard d={d} />
           <Tabs activeKey={tab} onChange={setTab} items={[
-            { key: "overview", label: "总览与条目", children: (
-              <>
-                <Row gutter={12} style={{ marginBottom: 16 }}>
-                  <Col span={4}><Statistic title="总档位" value={d.result.total_grade} suffix={`/ 达标线 < ${d.result.threshold}`} /></Col>
-                  {["P", "S", "L", "O"].map((k) => (
-                    <Col span={5} key={k}><Statistic title={dims[k].name} value={dims[k].score ?? "—"} suffix={`分 · ${dims[k].grade} 档`} /></Col>
-                  ))}
-                </Row>
-                <Items d={d} seek={seek} />
-              </>
-            ) },
+            { key: "overview", label: "总览与条目", children: <Items d={d} seek={seek} /> },
             { key: "sentences", label: "逐句评分", children: <Sentences d={d} seek={seek} /> },
             { key: "trace", label: "追溯信息", children: (
               <>
@@ -182,12 +221,12 @@ export default function ReportDetail() {
                   <Descriptions.Item label="红线">{d.result.redlines_enabled ? `启用（词表 ${d.trace.redline_lexicon_version}）` : "试镜不做红线（C33）"}</Descriptions.Item>
                   {/* 模型清单里有对象（人工打分分工 human_review），直接渲染会让整页白屏 */}
                   {Object.entries(d.trace.model_manifest as Record<string, unknown>).map(([k, v]) => (
-                    <Descriptions.Item key={k} label={k}>{v !== null && typeof v === "object" ? JSON.stringify(v) : String(v)}</Descriptions.Item>
+                    <Descriptions.Item key={k} label={k}><span style={{ overflowWrap: "anywhere" }}>{v !== null && typeof v === "object" ? JSON.stringify(v) : String(v)}</span></Descriptions.Item>
                   ))}
                   <Descriptions.Item label="报告生成">{dayjs(d.created_at).format("YYYY-MM-DD HH:mm:ss")}，第 {d.revision} 版</Descriptions.Item>
                 </Descriptions>
-                <Typography.Title level={5} style={{ marginTop: 16 }}>修订历史</Typography.Title>
-                <Table size="small" rowKey="id" pagination={false} dataSource={revs.data} columns={[
+                <SectionTitle style={{ marginTop: 24 }}>修订历史</SectionTitle>
+                <Table className="table-card" size="small" rowKey="id" pagination={false} dataSource={revs.data} columns={[
                   { title: "版本", dataIndex: "revision", render: (v, r) => (r.id === d.id ? `第 ${v} 版（当前）` : <Link to={`/reports/${r.id}`}>第 {v} 版</Link>) },
                   { title: "评分标准", dataIndex: "rubric_version" },
                   { title: "结论", dataIndex: "label", render: (l) => LABEL_TEXT[l] },
@@ -196,28 +235,36 @@ export default function ReportDetail() {
               </>
             ) },
           ]} />
-        </Col>
-        <Col span={8}>
-          <div style={{ position: "sticky", top: 16 }}>
-            {d.media.video_asset_id ? (
-              <video ref={video} src={`/api/media/${d.media.video_asset_id}`} controls preload="metadata" style={{ width: "100%", background: "#000" }} data-testid="report-video" />
-            ) : (
-              <Alert type="info" message={d.media.video_deleted ? "视频已按保存期限删除，报告和文字证据保留" : "没有视频"} />
-            )}
-            <Descriptions size="small" column={1} style={{ marginTop: 12 }}>
-              <Descriptions.Item label="产品">{d.product_name}</Descriptions.Item>
-              <Descriptions.Item label={d.mode === "live" ? "录播（无题单，整段评分）" : "题单"}>{d.sheet_code}</Descriptions.Item>
-              <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[d.audience] ?? d.audience}</Descriptions.Item>
-              <Descriptions.Item label="道具">{d.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）"}</Descriptions.Item>
-              <Descriptions.Item label="提交时间">{d.submitted_at ? dayjs(d.submitted_at).format("YYYY-MM-DD HH:mm") : "—"}</Descriptions.Item>
-            </Descriptions>
-            <Typography.Title level={5}>分段</Typography.Title>
-            {d.media.segments.map((s) => (
-              <div key={s.segment}><a onClick={() => seek(s.start_ms)}>{fmtMs(s.start_ms)}</a> {segName(s.segment, d.media.segments)}</div>
-            ))}
+        </div>
+        <aside className="sticky-col stack">
+          {d.media.video_asset_id ? (
+            <div className="video-frame">
+              <video ref={video} src={`/api/media/${d.media.video_asset_id}`} controls preload="metadata" data-testid="report-video" />
+            </div>
+          ) : (
+            <Alert type="info" message={d.media.video_deleted ? "视频已按保存期限删除，报告和文字证据保留" : "没有视频"} />
+          )}
+          {d.media.segments.length > 0 && (
+            <div className="seg-chips" aria-label="分段">
+              {d.media.segments.map((s) => (
+                <button type="button" className="seg-chip" key={s.segment} onClick={() => seek(s.start_ms)}>
+                  {segName(s.segment, d.media.segments)}<span>{fmtMs(s.start_ms)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="panel panel-pad">
+            <MetaList items={[
+              { label: "产品", value: d.product_name },
+              { label: "类型", value: live ? "录播（无题单，整段评分）" : "试镜（按题单录制）" },
+              { label: live ? "录播编号" : "题单", value: <span className="mono">{d.sheet_code}</span> },
+              { label: "适用达标线", value: AUDIENCE_ZH[d.audience] ?? d.audience },
+              { label: "道具", value: d.props_available ? "有（计“肢体语言（贴片/KT板）”）" : "无（“肢体语言（贴片/KT板）”不适用）" },
+              { label: "提交时间", value: d.submitted_at ? dayjs(d.submitted_at).format("YYYY-MM-DD HH:mm") : "—" },
+            ]} />
           </div>
-        </Col>
-      </Row>
+        </aside>
+      </div>
     </>
   );
 }

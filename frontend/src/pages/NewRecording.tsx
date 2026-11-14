@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { AUDIENCE_ZH, useAction, useFetch } from "../components/hooks";
 import { rememberLocal } from "../components/localMedia";
 import NewProductModal from "../components/NewProductModal";
+import { PageHeader } from "../components/ui";
 import { fmtBytes, uploadFile } from "../components/upload";
 import { ConsentForm, NewCandidateModal, SHOW_CONSENT_UI, ensureConsent, registerConsent } from "./Candidates";
 
@@ -84,7 +85,11 @@ export default function NewRecording() {
 
   return (
     <>
-      <Typography.Title level={4}>上传录像</Typography.Title>
+      <PageHeader
+        back={{ to: "/recordings", label: "试镜录像" }}
+        title="上传录像"
+        description="试镜按题单录制，上传后标出分段；直播录播没有题单，整段视频评分，上传完可以直接提交。"
+      />
       <Card style={{ maxWidth: 760 }}>
         {rubric.error && <Alert type="error" message={rubric.error} style={{ marginBottom: 16 }} />}
         <Form form={form} layout="vertical" disabled={busy} initialValues={{ mode: "audition" }}>
@@ -108,7 +113,7 @@ export default function NewRecording() {
             </Space.Compact>
           </Form.Item>
           {SHOW_CONSENT_UI && candidateId && detail.data && consents.length === 0 && (
-            <Card size="small" title="该候选人还没有登记书面同意，未登记不能上传" style={{ marginBottom: 16, borderColor: "#faad14" }}>
+            <Card size="small" title="该候选人还没有登记书面同意，未登记不能上传" style={{ marginBottom: 16, borderColor: "var(--warn)" }}>
               <ConsentForm form={consentForm} />
               <Button onClick={async () => {
                 const v = await consentForm.validateFields();
@@ -183,7 +188,7 @@ export default function NewRecording() {
         </Form>
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
         {progress && <Progress percent={Math.floor((progress[0] / progress[1]) * 100)} format={() => `${fmtBytes(progress[0])} / ${fmtBytes(progress[1])}`} />}
-        <Button type="primary" loading={busy} disabled={!rubric.data || !!rubric.error || (mode === "live" && !productReady)} onClick={start} style={{ marginTop: 8 }}>
+        <Button type="primary" size="large" loading={busy} disabled={!rubric.data || !!rubric.error || (mode === "live" && !productReady)} onClick={start} style={{ marginTop: 8 }}>
           开始上传
         </Button>
       </Card>

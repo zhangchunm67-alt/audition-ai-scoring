@@ -1,9 +1,10 @@
-import { Alert, Button, Card, Checkbox, Col, Input, InputNumber, Popconfirm, Radio, Row, Space, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Space, Table, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { post, put } from "../api/client";
 import { useAction, useFetch } from "../components/hooks";
+import { PageHeader, Pill } from "../components/ui";
 import { fmtMs } from "../components/upload";
 
 type Ev = { item_id: string; kind: string; label?: string | null; judgment?: string | number | null; ref?: string | null; start_ms?: number | null; quote?: string | null };
@@ -33,14 +34,16 @@ export function MyTasks() {
   const { data } = useFetch<{ id: string; set_name: string; status: string; submitted_at: string | null; sheet_code: string; evidence_count: number }[]>("/calibration/my-tasks");
   return (
     <>
-      <Typography.Title level={4}>我的校准任务</Typography.Title>
-      <Typography.Paragraph type="secondary">背对背打分：提交前看不到 AI 结果和其他校准员的打分。打到证据级：计次类条目每看到一次点一次，系统记下视频时间。</Typography.Paragraph>
-      <Table rowKey="id" dataSource={data} pagination={false} columns={[
+      <PageHeader
+        title="我的校准任务"
+        description="背对背打分：提交前看不到 AI 结果和其他校准员的打分。打到证据级：计次类条目每看到一次点一次，系统记下视频时间。"
+      />
+      <Table className="table-card" rowKey="id" dataSource={data} pagination={false} scroll={{ x: "max-content" }} locale={{ emptyText: "没有分配给你的校准任务" }} columns={[
+        { title: "题单", dataIndex: "sheet_code", render: (c, r) => <Link className="cell-main mono" to={`/calibration/tasks/${r.id}`}>{c}</Link> },
         { title: "金标准集", dataIndex: "set_name" },
-        { title: "题单", dataIndex: "sheet_code", render: (c, r) => <Link to={`/calibration/tasks/${r.id}`}>{c}</Link> },
-        { title: "状态", dataIndex: "status", render: (s) => (s === "submitted" ? <Tag color="green">已提交</Tag> : <Tag>待打分</Tag>) },
-        { title: "已录证据", dataIndex: "evidence_count" },
-        { title: "提交时间", dataIndex: "submitted_at", render: (t) => (t ? dayjs(t).format("YYYY-MM-DD HH:mm") : "—") },
+        { title: "状态", dataIndex: "status", render: (s) => (s === "submitted" ? <Pill tone="ok">已提交</Pill> : <Pill tone="warn">待打分</Pill>) },
+        { title: "已录证据", dataIndex: "evidence_count", render: (n) => <span className="num">{n} 条</span> },
+        { title: "提交时间", dataIndex: "submitted_at", render: (t) => <span className="cell-time">{t ? dayjs(t).format("YYYY-MM-DD HH:mm") : "—"}</span> },
       ]} />
     </>
   );
@@ -73,7 +76,7 @@ export default function CalibrationTask() {
           + {title ?? LABELS[label] ?? label}
         </Button>
         {mine.map((e, i) => (
-          <Tag key={i} closable={!done} onClose={() => removeAt(e)} onClick={() => seek(e.start_ms)} style={{ cursor: "pointer" }}>{fmtMs(e.start_ms)}</Tag>
+          <Tag key={i} className="mono" closable={!done} onClose={() => removeAt(e)} onClick={() => seek(e.start_ms)} style={{ cursor: "pointer", margin: 0 }}>{fmtMs(e.start_ms)}</Tag>
         ))}
       </Space>
     );
@@ -168,7 +171,7 @@ export default function CalibrationTask() {
                 return (
                   <Checkbox key={z} disabled={done} checked={cur?.judgment === "count"} onChange={(e) => replace((x) => x.item_id === it.id && x.ref === q.ref && x.label === z,
                     e.target.checked ? { item_id: it.id, kind: "question", ref: q.ref, label: z, judgment: "count" } : null)}>
-                    <span style={{ color: "#cf1322" }}>{LABELS[z] ?? z}</span>
+                    <span style={{ color: "var(--bad)" }}>{LABELS[z] ?? z}</span>
                   </Checkbox>
                 );
               })}
@@ -187,31 +190,31 @@ export default function CalibrationTask() {
   const save = () => act(() => put(`/calibration/assignments/${id}`, { evidence: ev, note }), "已保存");
   return (
     <>
-      <Space style={{ marginBottom: 8 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>校准打分 · {task.set_name}</Typography.Title>
-        {done ? <Tag color="green">已提交</Tag> : <Tag>待打分</Tag>}
-      </Space>
-      {done && <Alert type="success" showIcon style={{ marginBottom: 12 }} message="已提交。所有校准员提交后系统汇总金标准，分歧条目由管理员组织裁决。" />}
-      <Row gutter={16}>
-        <Col span={10}>
-          <div style={{ position: "sticky", top: 16 }}>
-            {task.video_asset_id ? <video ref={video} src={`/api/media/${task.video_asset_id}`} controls preload="metadata" style={{ width: "100%", background: "#000" }} data-testid="cal-video" />
+      <PageHeader
+        back={{ to: "/calibration/tasks", label: "我的校准任务" }}
+        title={`校准打分 · ${task.set_name}`}
+        tags={done ? <Pill tone="ok">已提交</Pill> : <Pill tone="warn">待打分</Pill>}
+      />
+      {done && <Alert type="success" showIcon style={{ marginBottom: 16 }} message="已提交。所有校准员提交后系统汇总金标准，分歧条目由管理员组织裁决。" />}
+      <div className="split-cal">
+          <div className="sticky-col">
+            {task.video_asset_id ? <div className="video-frame"><video ref={video} src={`/api/media/${task.video_asset_id}`} controls preload="metadata" data-testid="cal-video" /></div>
               : <Alert type="warning" message="视频已删除" />}
-            <div style={{ marginTop: 8 }}>
+            <div className="seg-chips" style={{ marginTop: 12 }}>
               {task.segments.map((s, i) => (
-                <Tag key={s.segment} style={{ cursor: "pointer" }} onClick={() => seek(s.start_ms)}>
-                  {s.segment === "main" ? "主体段" : s.segment === "reading" ? "朗读" : `题 ${i}`} {fmtMs(s.start_ms)}
-                </Tag>
+                <button type="button" className="seg-chip" key={s.segment} onClick={() => seek(s.start_ms)}>
+                  {s.segment === "main" ? "主体段" : s.segment === "reading" ? "朗读" : `题 ${i}`}<span>{fmtMs(s.start_ms)}</span>
+                </button>
               ))}
             </div>
-            <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+            <Typography.Paragraph type="secondary" style={{ margin: "12px 0", fontSize: 13 }}>
               画面里{task.props_available ? "有" : "没有"}贴片或 KT 板。异议出现时间：{task.objections.map((o) => fmtMs(o.video_ms)).join("、") || "无"}。
               {task.mode === "live" && " 这是直播录播：整段视频评分，没有朗读段；观众异议有几条评几条，一条都没有时“解答异议”不适用。"}
               {(task.exclusions?.length ?? 0) > 0 && ` 以下时段不是主播本人在讲，不评：${task.exclusions!.map((x) => `${fmtMs(x.start_ms)}–${fmtMs(x.end_ms)}`).join("、")}。`}
             </Typography.Paragraph>
             <Input.TextArea rows={3} disabled={done} value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注（可选）" />
             {!done && (
-              <Space style={{ marginTop: 8 }}>
+              <Space style={{ marginTop: 12 }}>
                 <Button onClick={save}>保存草稿</Button>
                 <Popconfirm title="提交后不能再改，确定？" onConfirm={async () => {
                   if ((await save()) !== undefined && (await act(() => post(`/calibration/assignments/${id}/submit`), "已提交")) !== undefined) reload();
@@ -221,20 +224,19 @@ export default function CalibrationTask() {
               </Space>
             )}
           </div>
-        </Col>
-        <Col span={14}>
+        <div className="stack">
           {task.dimensions.map((d) => (
-            <Card key={d.id} size="small" title={d.name} style={{ marginBottom: 12 }}>
+            <Card key={d.id} title={d.name}>
               {d.items.filter((it) => !(it.applicable_if === "props_available" && !task.props_available)).map((it) => (
-                <div key={it.id} data-testid={`item-${it.id}`} style={{ padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
-                  <Typography.Text strong>{it.id} {it.name}</Typography.Text> <Typography.Text type="secondary">（满分 {it.max}）</Typography.Text>
-                  <div style={{ marginTop: 4 }}>{body(it)}</div>
+                <div key={it.id} data-testid={`item-${it.id}`} className="item-row">
+                  <div className="item-row-head"><span className="item-code">{it.id}</span><b>{it.name}</b><span className="faint" style={{ fontSize: 13 }}>满分 {it.max}</span></div>
+                  <div>{body(it)}</div>
                 </div>
               ))}
             </Card>
           ))}
-        </Col>
-      </Row>
+        </div>
+      </div>
     </>
   );
 }

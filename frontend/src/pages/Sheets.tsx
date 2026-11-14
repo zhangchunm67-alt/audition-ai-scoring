@@ -5,6 +5,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { post, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { STATUS_ZH, useAction, useFetch } from "../components/hooks";
+import { IconPlus } from "../components/icons";
+import { ConfigStatus, PageHeader } from "../components/ui";
 
 type Sheet = S<"SheetOut">;
 
@@ -20,27 +22,31 @@ export default function Sheets() {
   const productId = Form.useWatch("product_id", form) as string | undefined;
   return (
     <>
-      <Typography.Title level={4}>试镜题单</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        题单按抽题规则抽好 4 条异议和朗读稿；候选人按题单在系统外录制，上传录像时选择对应题单。
-      </Typography.Paragraph>
-      {can("sheet.write") && (
-        <Button type="primary" style={{ marginBottom: 16 }} onClick={() => setOpen(true)}>
-          生成题单
-        </Button>
-      )}
+      <PageHeader
+        title="试镜题单"
+        description="题单按抽题规则抽好 4 条异议和朗读稿；候选人按题单在系统外录制，上传录像时选择对应题单。"
+        actions={can("sheet.write") && (
+          <Button type="primary" icon={<IconPlus />} onClick={() => setOpen(true)}>
+            生成题单
+          </Button>
+        )}
+      />
       <Table<Sheet>
+        className="table-card"
         rowKey="id"
         loading={loading}
         dataSource={data}
+        scroll={{ x: "max-content" }}
+        pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
+        locale={{ emptyText: "还没有题单" }}
         columns={[
-          { title: "题单编号", dataIndex: "code", render: (c, s) => <Link to={`/sheets/${s.id}`}>{c}</Link> },
+          { title: "题单编号", dataIndex: "code", render: (c, s) => <Link className="cell-main mono" to={`/sheets/${s.id}`}>{c}</Link> },
           { title: "产品", dataIndex: "product_name" },
-          { title: "试镜设置", render: (_, s) => <Link to={`/sheets/products/${s.product_id}/settings`}>题库与抽题规则</Link> },
           { title: "评分标准", dataIndex: "rubric_version", render: (v, s) => (s.uses_draft_config ? <Tag color="orange">{v}（含草稿配置）</Tag> : <Tag color="green">{v}</Tag>) },
-          { title: "状态", dataIndex: "status", render: (st) => STATUS_ZH[st] },
-          { title: "备注", dataIndex: "note" },
-          { title: "生成时间", dataIndex: "created_at", render: (t) => dayjs(t).format("YYYY-MM-DD HH:mm") },
+          { title: "状态", dataIndex: "status", render: (st) => <ConfigStatus status={st} /> },
+          { title: "备注", dataIndex: "note", render: (n) => n || <span className="faint">—</span> },
+          { title: "生成时间", dataIndex: "created_at", render: (t) => <span className="cell-time">{dayjs(t).format("YYYY-MM-DD HH:mm")}</span> },
+          { title: "试镜设置", align: "right", render: (_, s) => <Link to={`/sheets/products/${s.product_id}/settings`}>题库与抽题规则</Link> },
         ]}
       />
       <Modal
@@ -53,7 +59,7 @@ export default function Sheets() {
           if (s) nav(`/sheets/${s.id}`);
         }}
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           {rubrics.data?.length === 0 && <Alert type="warning" message="没有可用于新评分的版本，请管理员导入现行评分配置。" style={{ marginBottom: 16 }} />}
           <Form.Item name="product_id" label="产品" rules={[{ required: true }]}
             extra={productId && <Typography.Link href={`/sheets/products/${productId}/settings`} target="_blank" rel="noopener noreferrer">查看该产品的试镜设置</Typography.Link>}>

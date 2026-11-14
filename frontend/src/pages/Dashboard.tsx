@@ -1,7 +1,8 @@
-import { Alert, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Card, DatePicker, Select, Table, Tabs, Tag } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useState } from "react";
 import { useFetch } from "../components/hooks";
+import { PageHeader, Stat, Toolbar } from "../components/ui";
 import { ItemRates, MetricsCards, PURPOSE, pct } from "./Calibration";
 
 type Agreement = { overall: Parameters<typeof MetricsCards>[0]["m"]; sets: { id: string; name: string; purpose: string; final: number; samples: number; dimension_agreement: number | null; conclusion_agreement: number | null }[] };
@@ -24,16 +25,16 @@ function AgreementTab() {
   if (!data) return null;
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
+      <Toolbar>
         <Select allowClear placeholder="全部金标准集" style={{ width: 240 }} value={setId} onChange={setSetId} options={data.sets.map((s) => ({ value: s.id, label: s.name }))} />
         <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} placeholder={["录像提交日期从", "到"]} />
-      </Space>
+      </Toolbar>
       <MetricsCards m={data.overall} />
-      <Row gutter={16}>
-        <Col span={12}><Card size="small" title="按条目"><ItemRates m={data.overall} /></Card></Col>
-        <Col span={12}>
-          <Card size="small" title="按金标准集">
-            <Table size="small" rowKey="id" pagination={false} dataSource={data.sets} columns={[
+      <div className="split">
+        <Card title="按条目"><ItemRates m={data.overall} /></Card>
+        <div>
+          <Card title="按金标准集">
+            <Table size="small" rowKey="id" pagination={false} dataSource={data.sets} scroll={{ x: "max-content" }} columns={[
               { title: "名称", dataIndex: "name" },
               { title: "用途", dataIndex: "purpose", render: (p) => PURPOSE[p] },
               { title: "已定稿", render: (_, r) => `${r.final} / ${r.samples}` },
@@ -41,8 +42,8 @@ function AgreementTab() {
               { title: "结论一致", dataIndex: "conclusion_agreement", render: pct },
             ]} />
           </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
     </>
   );
 }
@@ -53,34 +54,31 @@ function EfficiencyTab() {
   if (!e) return null;
   return (
     <>
-      <DatePicker.RangePicker style={{ marginBottom: 16 }} value={range} onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} placeholder={["提交日期从", "到"]} />
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={4}><Statistic title="提交" value={e.submitted} /></Col>
-        <Col span={4}><Statistic title="出报告 / 失败 / 处理中" value={`${e.done} / ${e.failed} / ${e.in_progress}`} /></Col>
-        <Col span={4}><Statistic title="失败率" value={pct(e.failure_rate)} /></Col>
-        <Col span={6}><Statistic title="处理时长（分钟）中位数 / p95 / 最长" value={`${e.minutes.median ?? "—"} / ${e.minutes.p95 ?? "—"} / ${e.minutes.max ?? "—"}`} /></Col>
-        <Col span={3}><Statistic title="超过 30 分钟" value={e.over_30_min} valueStyle={{ color: e.over_30_min ? "#cf1322" : undefined }} /></Col>
-        <Col span={3}><Statistic title="临界占比" value={pct(e.critical_share)} /></Col>
-      </Row>
-      <Typography.Paragraph type="secondary">整轮重试 {e.round_retries} 次；非正式报告 {e.informal_reports} 份。</Typography.Paragraph>
-      <Row gutter={16}>
-        <Col span={12}>
-          <Card size="small" title="各条目低置信比例">
+      <Toolbar>
+        <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} placeholder={["提交日期从", "到"]} />
+      </Toolbar>
+      <div className="stat-grid">
+        <Stat label="提交" value={e.submitted} unit="条" />
+        <Stat label="出报告 / 失败 / 处理中" value={`${e.done} / ${e.failed} / ${e.in_progress}`} />
+        <Stat label="失败率" value={pct(e.failure_rate)} />
+        <Stat label="处理时长（分钟）中位数 / p95 / 最长" value={`${e.minutes.median ?? "—"} / ${e.minutes.p95 ?? "—"} / ${e.minutes.max ?? "—"}`} />
+        <Stat label="超过 30 分钟" value={e.over_30_min} unit="条" tone={e.over_30_min ? "bad" : undefined} />
+        <Stat label="临界占比" value={pct(e.critical_share)} note={`整轮重试 ${e.round_retries} 次；非正式报告 ${e.informal_reports} 份`} />
+      </div>
+      <div className="split">
+          <Card title="各条目低置信比例">
             <Table size="small" rowKey="item_id" pagination={false} dataSource={[...e.low_confidence].sort((a, b) => b.rate - a.rate)} columns={[
               { title: "条目", render: (_, r) => r.name },
               { title: "低置信", render: (_, r) => `${r.count} / ${r.n}` },
               { title: "比例", dataIndex: "rate", render: (v: number) => (v > 0.3 ? <Tag color="orange">{pct(v)}</Tag> : pct(v)) },
             ]} />
           </Card>
-        </Col>
-        <Col span={12}>
-          <Card size="small" title="每日处理量">
+          <Card title="每日处理量">
             <Table size="small" rowKey="date" pagination={false} dataSource={e.daily} columns={[
               { title: "日期", dataIndex: "date" }, { title: "提交", dataIndex: "submitted" }, { title: "出报告", dataIndex: "done" }, { title: "失败", dataIndex: "failed" },
             ]} />
           </Card>
-        </Col>
-      </Row>
+      </div>
     </>
   );
 }
@@ -96,19 +94,19 @@ function OpsBar() {
   if (!data) return null;
   const when = (x: { at: string } | null) => (x ? new Date(x.at).toLocaleString("zh-CN") : "从未");
   return (
-    <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>
+    <div className="stack-sm" style={{ marginBottom: 16 }}>
       {data.backup_failed && <Alert type="error" showIcon message={`备份失败（${when(data.backup_failed)}）：${data.backup_failed.message ?? ""}`} />}
       <Alert type={data.backup_stale ? "error" : "success"} showIcon
         message={`上次成功备份：${when(data.backup_ok)}${data.backup_stale ? "（超过 36 小时，请检查 NAS 和每日任务）" : ""}`} />
       {data.awaiting_human > 0 && <Alert type="warning" showIcon message={`有 ${data.awaiting_human} 条录像等待评委打分`} />}
-    </Space>
+    </div>
   );
 }
 
 export default function Dashboard() {
   return (
     <>
-      <Typography.Title level={4}>看板</Typography.Title>
+      <PageHeader title="看板" description="AI 与金标准的一致率，以及录像处理的效率和运行状态。" />
       <OpsBar />
       <Tabs items={[{ key: "a", label: "一致率", children: <AgreementTab /> }, { key: "e", label: "效率", children: <EfficiencyTab /> }]} />
     </>

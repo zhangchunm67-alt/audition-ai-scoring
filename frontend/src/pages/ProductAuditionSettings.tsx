@@ -1,9 +1,11 @@
-import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Typography } from "antd";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { msToClock, useAction, useFetch } from "../components/hooks";
+import { IconPlus } from "../components/icons";
+import { PageHeader, Pill } from "../components/ui";
 
 function Bank({ pid, kind, editable = true }: { pid: string; kind: "objections" | "questions"; editable?: boolean }) {
   const { data, loading, reload } = useFetch<(S<"ObjectionOut"> | S<"QuestionOut">)[]>(`/products/${pid}/${kind}?include_inactive=true`);
@@ -19,20 +21,22 @@ function Bank({ pid, kind, editable = true }: { pid: string; kind: "objections" 
   return (
     <>
       {(editable && can("config.write")) && (
-        <Button type="primary" style={{ marginBottom: 16 }} onClick={() => open()}>
+        <Button type="primary" icon={<IconPlus />} style={{ marginBottom: 16 }} onClick={() => open()}>
           {isObj ? "新增异议" : "新增知识题"}
         </Button>
       )}
       <Table
+        className="table-card"
         rowKey="id"
         size="small"
         loading={loading}
         dataSource={data}
+        pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: false }}
         columns={[
           { title: isObj ? "弹幕原文" : "题目", dataIndex: "text" },
           { title: isObj ? "正确答案要点" : "满分要点", render: (_, r) => ((isObj ? (r as S<"ObjectionOut">).answer_points : (r as S<"QuestionOut">).full_points) ?? []).join("；") },
-          { title: "启用", dataIndex: "active", render: (a) => (a ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>) },
-          ...((editable && can("config.write")) ? [{ title: "", render: (_: unknown, r: object) => <Button size="small" onClick={() => open(r as Record<string, unknown>)}>编辑</Button> }] : []),
+          { title: "启用", dataIndex: "active", width: 90, render: (a) => (a ? <Pill tone="ok">启用</Pill> : <Pill>停用</Pill>) },
+          ...((editable && can("config.write")) ? [{ title: "", width: 80, align: "right" as const, render: (_: unknown, r: object) => <Button size="small" onClick={() => open(r as Record<string, unknown>)}>编辑</Button> }] : []),
         ]}
       />
       <Modal
@@ -50,7 +54,7 @@ function Bank({ pid, kind, editable = true }: { pid: string; kind: "objections" 
           }
         }}
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="text" label={isObj ? "弹幕原文" : "题目"} rules={[{ required: true }]}>
             <Input.TextArea rows={2} />
           </Form.Item>
@@ -143,11 +147,11 @@ export default function ProductAuditionSettings() {
   const product = useFetch<S<"ProductOut">>(`/products/${id}`);
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
-        <Link to="/sheets">返回试镜题单</Link>
-        <Link to={`/products/${id}`}>查看产品资料</Link>
-      </Space>
-      <Typography.Title level={4}>{product.data?.name} · 试镜设置</Typography.Title>
+      <PageHeader
+        back={{ to: "/sheets", label: "试镜题单" }}
+        title={`${product.data?.name ?? ""} · 试镜设置`}
+        actions={<Link to={`/products/${id}`}>查看产品资料</Link>}
+      />
       <Alert type="info" showIcon style={{ marginBottom: 16 }} message="仅用于按题单录制的试镜。直播录播直接标注实际观众问题，无需维护题库和抽题规则。" />
       <Tabs key={id} items={[
         { key: "objections", label: "异议库", children: <Bank pid={id} kind="objections" /> },
