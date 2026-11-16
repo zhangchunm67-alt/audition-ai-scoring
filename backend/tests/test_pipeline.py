@@ -461,3 +461,41 @@ def test_lease_released_after_worker_killed():
     with limit("test", 1, conn):
         assert conn.zcard("audition:lease:test") == 1
     assert conn.zcard("audition:lease:test") == 0
+
+
+def test_progress_visible_before_all_detectors_finish(login, seeded, video_file, db, monkeypatch):
+    """慢检测器仍未返回时，其他检测器的结果已能被新的接口查询读到。"""
+    import time
+    from sqlalchemy.orm import Session
+    from app.api.recordings import _scoring_runs
+    from app.pipeline.detectors import DETECTORS
+
+    original = DETECTORS["P1"]
+    observed = []
+
+    def slow_detector(ctx):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with Session(db.get_bind()) as reader:
+                run = reader.scalar(select(PipelineRun).where(PipelineRun.status == "running"))
+                if run:
+                    progress = next(p for p in _scoring_runs(reader, run.recording_id) if p.round_no == run.round_no)
+                    if progress.detectors_completed:
+                        assert progress.stage == "detectors"
+                        assert progress.detectors_total > progress.detectors_completed
+                        assert progress.models["vision"]
+                        assert progress.model_tasks["vision"]["total"] > 0
+                        observed.append(progress)
+                        break
+            time.sleep(.05)
+        return original(ctx)
+
+    monkeypatch.setitem(DETECTORS, "P1", slow_detector)
+    api = login("hr")
+    rec = _submit(api, seeded, video_file)
+    assert observed, "其他检测项完成后，仍未发布实时进度"
+    assert rec.status == "done", rec.failure_reason
+    progress = api.get(f"/api/recordings/{rec.id}").json()["scoring_runs"][0]
+    assert progress["status"] == "completed"
+    assert progress["detectors_completed"] == progress["detectors_total"]
+    assert progress["detectors_failed"] == 0

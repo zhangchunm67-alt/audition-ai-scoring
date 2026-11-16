@@ -233,19 +233,51 @@ function HumanScoring({ id, onDone }: { id: string; onDone: () => void }) {
   );
 }
 
+const STAGE_ZH: Record<string, string> = { asr: "语音转写", acoustic: "声音特征分析", detectors: "模型检测与证据提取", scoring: "计算得分", human: "等待人工评分", done: "本轮完成" };
+const RUN_ZH: Record<string, string> = { queued: "排队中", running: "进行中", awaiting_human: "等待人工评分", completed: "已完成", failed: "本次尝试失败" };
+const MODEL_ZH: Record<string, string> = { asr: "转写", llm: "文本", vision: "视觉", voice: "声音", speech_eval: "普通话", laugh: "笑声" };
+
+function ScoringProgress({ rec, reload, error }: { rec: Rec; reload: () => void; error: string | null }) {
+  const active = ["submitted", "processing"].includes(rec.status);
+  const runs = rec.scoring_runs ?? [];
+  if (!active && !runs.length) return null;
+  return <Card size="small" title="自动评分进度" style={{ marginBottom: 16 }} extra={<Button size="small" onClick={reload}>刷新进度</Button>} data-testid="scoring-progress">
+    {error && <Alert type="warning" showIcon message="进度更新失败，正在显示上次状态" description={error} style={{ marginBottom: 12 }} />}
+    {active && <Typography.Paragraph type="secondary">每 3 秒更新。显示实际完成的检测项，不代表剩余时间；临界结果才会追加第 2、3 轮复评。</Typography.Paragraph>}
+    {!runs.length && <Alert type="info" showIcon message={rec.status === "submitted" ? "已提交，等待工作进程接收" : "正在准备音频和视频帧，尚未开始评分轮次"} />}
+    {runs.map(run => {
+      const settled = run.detectors_completed + run.detectors_failed;
+      const total = run.detectors_total;
+      return <div key={run.round_no} style={{ padding: "12px 0", borderTop: "1px solid #f0f0f0" }}>
+        <Space wrap><Typography.Text strong>第 {run.round_no} 轮{run.round_no > 1 ? "复评" : "评分"}</Typography.Text>
+          <Tag color={run.status === "failed" ? "error" : run.status === "completed" ? "success" : "processing"}>{RUN_ZH[run.status] ?? run.status}</Tag>
+          <Typography.Text>{run.status === "queued" ? "等待执行" : STAGE_ZH[run.stage ?? ""] ?? "准备中"}</Typography.Text>
+          {run.retry_count > 0 && <Typography.Text type="warning">已重试 {run.retry_count} 次</Typography.Text>}
+        </Space>
+        {total != null && <div style={{ maxWidth: 600, marginTop: 8 }}>
+          <Progress percent={total ? Math.round(settled / total * 100) : 100} status={run.detectors_failed ? "exception" : settled < total ? "active" : "success"} format={() => `${settled}/${total} 项已返回`} />
+          <Typography.Text type="secondary">成功 {run.detectors_completed} 项{run.detectors_failed > 0 ? `，失败 ${run.detectors_failed} 项` : ""}；检测完成后还需计算得分及汇总报告。</Typography.Text>
+        </div>}
+        <div style={{ marginTop: 8 }}>{Object.entries(run.models).map(([role, model]) => <Tag key={role}>{MODEL_ZH[role] ?? role}：{model}{run.model_tasks[role] && ` · ${run.model_tasks[role].completed + run.model_tasks[role].failed}/${run.model_tasks[role].total} 项已返回${run.model_tasks[role].failed ? `，失败 ${run.model_tasks[role].failed} 项` : ""}`}</Tag>)}</div>
+      </div>;
+    })}
+    {active && runs.length > 0 && runs.every(r => r.status === "completed") && <Alert type="info" message="评分轮次已完成，正在汇总报告与辅导建议" />}
+  </Card>;
+}
+
 export default function RecordingDetail() {
   const { id } = useParams();
-  const { data, reload } = useFetch<Rec>(`/recordings/${id}`);
+  const { data, reload, error } = useFetch<Rec>(`/recordings/${id}`);
   const nav = useNavigate();
   const [rec, setRec] = useState<Rec | undefined>();
   const { can } = useAuth();
   const act = useAction();
   useEffect(() => setRec(data), [data]);
-  useEffect(() => {  // 处理中每 15 秒自动刷新一次状态
+  useEffect(() => {  // 处理中每 3 秒自动刷新一次状态
     if (!rec || !["submitted", "processing"].includes(rec.status)) return;
-    const t = setInterval(reload, 15000);
+    const t = setInterval(reload, 3000);
     return () => clearInterval(t);
-  }, [rec?.status]);
+  }, [rec?.status, reload]);
   if (!rec) return null;
   const src = localUrlOf(rec.id) ?? (rec.video_asset_id ? `/api/media/${rec.video_asset_id}` : null);
   const editable = can("recording.upload");
@@ -256,7 +288,7 @@ export default function RecordingDetail() {
         <Typography.Title level={4} style={{ margin: 0 }}>{rec.candidate_name} · {rec.sheet_code}</Typography.Title>
         <Tag color={REC_STATUS[rec.status]?.[1]}>{REC_STATUS[rec.status]?.[0]}</Tag>
         {editable && rec.status === "uploaded" && rec.segments.length > 0 && (
-          <Popconfirm title={live ? "提交后标注不能再改，确定提交处理？" : "提交后分段不能再改，确定提交处理？"} onConfirm={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/submit`), "已提交"); if (r) setRec(r); }}>
+          <Popconfirm title={live ? "提交后标注不能再改，确定提交处理？" : "提交后分段不能再改，确定提交处理？"} onConfirm={async () => { setRec({ ...rec, status: "submitted", scoring_runs: [] }); const r = await act(() => post<Rec>(`/recordings/${id}/submit`), "已提交"); if (r) setRec(r); reload(); }}>
             <Button type="primary">提交处理</Button>
           </Popconfirm>
         )}
@@ -268,9 +300,9 @@ export default function RecordingDetail() {
       </Space>
       {rec.status === "failed" && (
         <Alert type="error" showIcon style={{ marginBottom: 16 }} message="处理失败，已告警管理员。多半是模型或系统问题，排查后可重新处理；确认是录像本身的问题再联系候选人重录" description={rec.failure_reason}
-          action={editable && <Button onClick={async () => { const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); }}>重新处理</Button>} />
+          action={editable && <Button onClick={async () => { setRec({ ...rec, status: "submitted", scoring_runs: [] }); const r = await act(() => post<Rec>(`/recordings/${id}/reprocess`), "已重新处理"); if (r) setRec(r); reload(); }}>重新处理</Button>} />
       )}
-      {["submitted", "processing"].includes(rec.status) && <Alert type="info" showIcon style={{ marginBottom: 16 }} message="正在自动评分，页面每 15 秒自动刷新，完成后在这里查看结果（目标 30 分钟内）。" action={<Button onClick={reload}>刷新</Button>} />}
+      <ScoringProgress rec={rec} reload={reload} error={error} />
       {rec.status === "awaiting_human" && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="机器部分已完成，等评委给下面的条目打分" />}
       {rec.status === "awaiting_human" && can("human.score") && <HumanScoring id={rec.id} onDone={reload} />}
       {rec.status === "done" && (

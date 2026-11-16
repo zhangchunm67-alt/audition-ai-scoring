@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import tempfile
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -124,6 +124,8 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
         run = PipelineRun(recording_id=rec.id, round_no=round_no)
         db.add(run)
     run.status, run.stage, run.started_at, run.detector_config_version_id, run.error = "running", "asr", _now(), dv.id, None
+    run.finished_at = None
+    run.model_manifest = manifest
     db.flush()
     for model in (EvidenceRow, DetectorRun, Transcript, AcousticFeatures, ScoreResultRow):  # 重试时清掉上次的半成品
         db.execute(delete(model).where(model.run_id == run.id))
@@ -173,6 +175,7 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
             objections = _auto_objections(db, rec, sheet, raw_providers, providers, texts["main"], round_no)
             objections_source = "auto" if objections else "none"
         run.stage = "acoustic"
+        db.commit()
         feats = {}
         for name in ("main",):
             f = acoustic.features(media.audio[name])
@@ -217,19 +220,32 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
                 log.warning("检测器 %s 失败（第 %d 轮）：%s", item, round_no, exc)
                 return item, [], exc
 
+        # 先发布任务总数，再由主线程逐项提交；Session 不跨检测器线程共享。
+        run.model_manifest = {**manifest, "progress": {"detectors_total": len(todo), "model_tasks": {
+            role: sorted(item for item in todo if role in CAPABILITIES.get(item, set()))
+            for role in ("llm", "vision", "voice", "speech_eval", "laugh")}}}
+        db.commit()
+        evidence, completed, results = [], set(), []
         with ThreadPoolExecutor(max_workers=s.detector_workers) as pool:
-            results = list(pool.map(one, todo))
-        evidence, completed = [], set()
-        for item, evs, exc in results:
-            db.add(DetectorRun(run_id=run.id, detector_id=item, status="failed" if exc else "completed", error=str(exc)[:2000] if exc else None))
-            if exc is None:
-                completed.add(item)
-                evidence.extend(evs)
-        db.add_all([evidence_to_row(e, run.id) for e in evidence])
+            futures = [pool.submit(one, item) for item in todo]
+            for future in as_completed(futures):
+                item, evs, exc = future.result()
+                results.append((item, evs, exc))
+                db.add(DetectorRun(run_id=run.id, detector_id=item, status="failed" if exc else "completed", error=str(exc)[:2000] if exc else None))
+                if exc is None:
+                    completed.add(item)
+                    evidence.extend(evs)
+                    db.add_all([evidence_to_row(e, run.id) for e in evs])
+                db.commit()
 
+        # 完成顺序仅用于进度，计分仍沿用检测器的固定顺序。
+        order = {item: i for i, item in enumerate(todo)}
+        results.sort(key=lambda result: order[result[0]])
+        evidence = [e for _, evs, exc in results if exc is None for e in evs]
         run.stage = "scoring"
+        db.commit()
         sctx = scoring_context(rec, sheet, card, completed,
-                               {**manifest, **({} if "S2" in plan["manual"] else readiness.s2_manifest(card)), "recording_mode": rec.mode, **({"live_objections": f"{objections_source}:{len(objections)}"} if live else {}), "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
+                               {**manifest, "progress": run.model_manifest["progress"], **({} if "S2" in plan["manual"] else readiness.s2_manifest(card)), "recording_mode": rec.mode, **({"live_objections": f"{objections_source}:{len(objections)}"} if live else {}), "prompts": prompts.prompt_set_hash(), "detector_config": dv.version,
                                 "temperature": "0", "asr_disfluency_removal": "false", "human_review": plan})
         result = score_round(evidence, cfg, sctx)
         db.add(ScoreResultRow(run_id=run.id, rubric_version_id=rv.id, config_hash=result.config_hash, result=result.model_dump(mode="json")))

@@ -2006,6 +2006,8 @@ export interface components {
             failure_reason?: string | null;
             /** Report Id */
             report_id?: string | null;
+            /** Scoring Runs */
+            scoring_runs?: components["schemas"]["ScoringRunOut"][];
         };
         /** RedlineEntry */
         RedlineEntry: {
@@ -2190,6 +2192,37 @@ export interface components {
             month: string;
             /** Count */
             count: number;
+        };
+        /** ScoringRunOut */
+        ScoringRunOut: {
+            /** Round No */
+            round_no: number;
+            /** Status */
+            status: string;
+            /** Stage */
+            stage: string | null;
+            /** Retry Count */
+            retry_count: number;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Detectors Total */
+            detectors_total: number | null;
+            /** Detectors Completed */
+            detectors_completed: number;
+            /** Detectors Failed */
+            detectors_failed: number;
+            /** Models */
+            models: {
+                [key: string]: string;
+            };
+            /** Model Tasks */
+            model_tasks: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
         };
         /** ScriptIn */
         ScriptIn: {

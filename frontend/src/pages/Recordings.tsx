@@ -1,6 +1,6 @@
 import { Button, Select, Space, Table, Tag, Typography } from "antd";
 import dayjs from "dayjs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { S } from "../api/client";
 import { useAuth } from "../auth";
@@ -19,7 +19,13 @@ export const REC_STATUS: Record<string, [string, string]> = {
 
 export default function Recordings() {
   const [status, setStatus] = useState<string | undefined>();
-  const { data, loading } = useFetch<S<"RecordingOut">[]>(`/recordings${status ? `?status=${status}` : ""}`);
+  const { data, loading, reload } = useFetch<S<"RecordingOut">[]>(`/recordings${status ? `?status=${status}` : ""}`);
+  const processing = data?.some(r => ["submitted", "processing"].includes(r.status));
+  useEffect(() => {
+    if (!processing) return;
+    const timer = setInterval(reload, 5000);
+    return () => clearInterval(timer);
+  }, [processing, reload]);
   const { can } = useAuth();
   const nav = useNavigate();
   return (
@@ -45,7 +51,8 @@ export default function Recordings() {
           { title: "产品", dataIndex: "product_name" },
           { title: "适用达标线", dataIndex: "audience", render: (a) => AUDIENCE_ZH[a] ?? a },
           { title: "道具", dataIndex: "props_available", render: (p) => (p ? "有" : "无") },
-          { title: "状态", dataIndex: "status", render: (s) => <Tag color={REC_STATUS[s]?.[1]}>{REC_STATUS[s]?.[0] ?? s}</Tag> },
+          { title: "状态", dataIndex: "status", width: 160, render: (s, r) => <div><Tag color={REC_STATUS[s]?.[1]}>{REC_STATUS[s]?.[0] ?? s}</Tag>{["submitted", "processing"].includes(s) && r.scoring_runs?.map(run => <Typography.Text key={run.round_no} type="secondary" style={{ display: "block", fontSize: 12 }}>第 {run.round_no} 轮 · {run.status === "queued" ? "排队中" : run.status === "completed" ? "已完成" : run.status === "failed" ? "重试处理中" : run.stage === "asr" ? "语音转写" : run.stage === "detectors" ? `${run.detectors_completed + run.detectors_failed}/${run.detectors_total ?? "—"} 项已返回` : "处理中"}</Typography.Text>)}</div> },
+          { title: "操作", key: "action", render: (_, r) => ["submitted", "processing"].includes(r.status) ? <Link to={`/recordings/${r.id}`}>查看进度</Link> : null },
           { title: "登记时间", dataIndex: "created_at", render: (t) => dayjs(t).format("YYYY-MM-DD HH:mm") },
         ]}
       />

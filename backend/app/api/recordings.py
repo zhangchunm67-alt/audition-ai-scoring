@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models.entities import AuditionSheet, ConsentRecord, MediaAsset, PipelineRun, Product, Recording, Report, RubricVersion, UploadSession, User
+from ..models.entities import AuditionSheet, ConsentRecord, DetectorRun, MediaAsset, PipelineRun, Product, Recording, Report, RubricVersion, UploadSession, User
 from ..pipeline import orchestrator, readiness
 from ..providers.registry import get_providers
 from ..security.rbac import Perm
@@ -110,6 +110,41 @@ class LiveMarksIn(BaseModel):
     exclusions: list[RangeIn] = Field(default_factory=list, max_length=200)
 
 
+class ScoringRunOut(BaseModel):
+    round_no: int
+    status: str
+    stage: str | None
+    retry_count: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    detectors_total: int | None
+    detectors_completed: int
+    detectors_failed: int
+    models: dict[str, str]
+    model_tasks: dict[str, dict[str, int]]
+
+
+def _scoring_runs(db: Session, rid: uuid.UUID) -> list[ScoringRunOut]:
+    runs = db.scalars(select(PipelineRun).where(PipelineRun.recording_id == rid).order_by(PipelineRun.round_no)).all()
+    if not runs:
+        return []
+    detectors = db.scalars(select(DetectorRun).where(DetectorRun.run_id.in_([r.id for r in runs]))).all()
+    return [ScoringRunOut(
+        round_no=r.round_no, status=r.status, stage=r.stage, retry_count=r.retry_count,
+        started_at=r.started_at, finished_at=r.finished_at,
+        detectors_total=(r.model_manifest or {}).get("progress", {}).get("detectors_total"),
+        detectors_completed=sum(d.run_id == r.id and d.status == "completed" for d in detectors),
+        detectors_failed=sum(d.run_id == r.id and d.status == "failed" for d in detectors),
+        model_tasks={role: {
+            "total": len(items),
+            "completed": sum(d.run_id == r.id and d.detector_id in items and d.status == "completed" for d in detectors),
+            "failed": sum(d.run_id == r.id and d.detector_id in items and d.status == "failed" for d in detectors),
+        } for role, items in (r.model_manifest or {}).get("progress", {}).get("model_tasks", {}).items() if items},
+        models={k: v for k, v in (r.model_manifest or {}).items()
+                if k in {"asr", "llm", "vision", "voice", "speech_eval", "laugh"} and isinstance(v, str)},
+    ) for r in runs]
+
+
 class RecordingOut(BaseModel):
     id: uuid.UUID
     status: str
@@ -139,6 +174,7 @@ class RecordingOut(BaseModel):
     finished_at: datetime | None = None
     failure_reason: str | None = None
     report_id: uuid.UUID | None = None
+    scoring_runs: list[ScoringRunOut] = Field(default_factory=list)
 
 
 def _upload_out(u: UploadSession) -> UploadOut:
@@ -173,6 +209,7 @@ def _out(db: Session, rec: Recording) -> RecordingOut:
         segments=rec.segments, objection_times=rec.objection_times, exclusions=rec.exclusions or [], upload=_upload_out(up) if up else None,
         warnings=_warnings(rec, sheet), created_at=rec.created_at, submitted_at=rec.submitted_at,
         processing_started_at=rec.processing_started_at, finished_at=rec.finished_at, failure_reason=rec.failure_reason,
+        scoring_runs=_scoring_runs(db, rec.id),
         report_id=db.scalar(select(Report.id).where(Report.recording_id == rec.id, Report.superseded_at.is_(None))),
     )
 

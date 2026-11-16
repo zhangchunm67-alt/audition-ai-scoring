@@ -5828,6 +5828,13 @@
        }
       ],
       "title": "Report Id"
+     },
+     "scoring_runs": {
+      "items": {
+       "$ref": "#/components/schemas/ScoringRunOut"
+      },
+      "type": "array",
+      "title": "Scoring Runs"
      }
     },
     "type": "object",
@@ -6317,6 +6324,108 @@
      "count"
     ],
     "title": "SampleIn"
+   },
+   "ScoringRunOut": {
+    "properties": {
+     "round_no": {
+      "type": "integer",
+      "title": "Round No"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "retry_count": {
+      "type": "integer",
+      "title": "Retry Count"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "detectors_total": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Detectors Total"
+     },
+     "detectors_completed": {
+      "type": "integer",
+      "title": "Detectors Completed"
+     },
+     "detectors_failed": {
+      "type": "integer",
+      "title": "Detectors Failed"
+     },
+     "models": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Models"
+     },
+     "model_tasks": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "type": "integer"
+       },
+       "type": "object"
+      },
+      "type": "object",
+      "title": "Model Tasks"
+     }
+    },
+    "type": "object",
+    "required": [
+     "round_no",
+     "status",
+     "stage",
+     "retry_count",
+     "started_at",
+     "finished_at",
+     "detectors_total",
+     "detectors_completed",
+     "detectors_failed",
+     "models",
+     "model_tasks"
+    ],
+    "title": "ScoringRunOut"
    },
    "ScriptIn": {
     "properties": {
