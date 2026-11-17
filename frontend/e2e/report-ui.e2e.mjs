@@ -1,4 +1,4 @@
-// 启动 deliverables/report-ui-preview/serve.py 后执行；只使用明确标记的界面示例。
+// 启动 frontend/e2e/fixtures/report_preview.py 后执行；只使用明确标记的界面示例。
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
