@@ -2,6 +2,8 @@ import { Alert, Button, Form, Input, Modal, Select, Table, Tag, Typography } fro
 import dayjs from "dayjs";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
+import NavIcon from "../components/NavIcon";
 import { post, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { STATUS_ZH, useAction, useFetch } from "../components/hooks";
@@ -20,16 +22,9 @@ export default function Sheets() {
   const productId = Form.useWatch("product_id", form) as string | undefined;
   return (
     <>
-      <Typography.Title level={4}>试镜题单</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        题单按抽题规则抽好 4 条异议和朗读稿；候选人按题单在系统外录制，上传录像时选择对应题单。
-      </Typography.Paragraph>
-      {can("sheet.write") && (
-        <Button type="primary" style={{ marginBottom: 16 }} onClick={() => setOpen(true)}>
-          生成题单
-        </Button>
-      )}
+      <PageHeader title="试镜题单" description="按规则抽取异议和朗读稿；候选人按题单录制，上传时关联对应题单。" action={can("sheet.write") && <Button type="primary" icon={<NavIcon name="plus" />} onClick={() => setOpen(true)}>生成题单</Button>} />
       <Table<Sheet>
+        scroll={{ x: 1000 }}
         rowKey="id"
         loading={loading}
         dataSource={data}

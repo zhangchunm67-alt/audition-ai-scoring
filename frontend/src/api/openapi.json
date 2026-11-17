@@ -5928,6 +5928,29 @@
       "format": "uuid",
       "title": "Recording Id"
      },
+     "candidate_phone_masked": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Candidate Phone Masked"
+     },
+     "candidate_video_asset_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Candidate Video Asset Id"
+     },
      "candidate_name": {
       "type": "string",
       "title": "Candidate Name"

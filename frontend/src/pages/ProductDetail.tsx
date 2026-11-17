@@ -2,6 +2,7 @@ import { Alert, Button, Card, Collapse, Descriptions, Empty, Form, Input, InputN
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
 import { post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { STATUS_ZH, useAction, useFetch } from "../components/hooks";
@@ -57,10 +58,7 @@ function ProductMaterials({ pid }: { pid: string }) {
 
   return (
     <>
-      <Typography.Title level={4}>{product.data?.name ?? "产品资料"}</Typography.Title>
-      <Typography.Paragraph type="secondary">
-        录播按参考脚本评估产品讲解；资料按版本保存，校准状态单独查看。实际观众异议在每条录像中标注。
-      </Typography.Paragraph>
+      <PageHeader title={product.data?.name ?? "产品资料"} description="录播按参考脚本评估产品讲解；资料按版本保存，校准状态单独查看。实际观众异议在每条录像中标注。" />
       {(error || product.error) && <Alert type="error" message={error || product.error} style={{ marginBottom: 16 }} />}
       <div data-testid="product-material-tabs">
         <Tabs activeKey={tab} onChange={setTab} items={[

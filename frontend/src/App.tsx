@@ -1,5 +1,6 @@
-import { Button, Dropdown, Layout, Menu, Space, Spin, Tabs, Typography } from "antd";
+import { Avatar, Button, Dropdown, Layout, Menu, Spin, Typography } from "antd";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import NavIcon from "./components/NavIcon";
 import { useAuth } from "./auth";
 import { ROLE_ZH } from "./components/hooks";
 import AuditLogs from "./pages/AuditLogs";
@@ -71,7 +72,7 @@ export default function App() {
   const { me, loading, logout, can } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
-  if (loading) return <Spin style={{ margin: 80 }} />;
+  if (loading) return <div className="app-loading" role="status" aria-label="正在加载"><Spin size="large" /></div>;
   if (!me) return <Login />;
   if (me.must_change_password) return <ForcePasswordChange />;
   if (/^\/sheets\/[^/]+\/print$/.test(loc.pathname)) {
@@ -85,35 +86,39 @@ export default function App() {
     ...section,
     label: section.key === "reports" && can("report.read_own") && !can("report.read_all")
       ? "我的试镜记录" : section.label,
-    pages: section.pages.filter((page) => can(page.perm)),
+    pages: section.pages.filter((page) => can(page.perm) && !(page.perm === "report.read_own" && can("report.read_all"))),
   })).filter((section) => section.pages.length > 0);
   const systemPages = SYSTEM_PAGES.filter((page) => can(page.perm));
   const activeSection = sections.find((section) => section.pages.some((page) => matchesPage(loc.pathname, page.key)));
   const activePage = activeSection?.pages.find((page) => matchesPage(loc.pathname, page.key));
   const activeSystemPage = systemPages.find((page) => matchesPage(loc.pathname, page.key));
   const home = can("calibration.score") ? "/calibration/tasks" : sections[0]?.pages[0].key;
-  const items = sections.map(({ key, label }) => ({ key, label }));
+  const items = sections.map(({ key, label, pages }) => ({
+    key, label, type: "group" as const,
+    children: pages.map(({ key: route, label: title }) => ({ key: route, label: title })),
+  }));
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Layout.Sider width={200} theme="light">
-        <Typography.Title level={5} style={{ padding: "16px 20px", margin: 0 }}>
-          试镜评分后台
-        </Typography.Title>
+    <Layout className="app-shell">
+      <a className="skip-link" href="#main-content">跳到主要内容</a>
+      <Layout.Sider width={188} theme="light" className="app-sidebar">
+        <div className="brand"><div className="brand-name">腾宝 · 试镜评分</div></div>
         <Menu
           aria-label="主要栏目"
           mode="inline"
-          selectedKeys={activeSection ? [activeSection.key] : []}
+          selectedKeys={activePage ? [activePage.key] : []}
           items={items}
-          onClick={({ key }) => {
-            const section = sections.find((item) => item.key === key);
-            if (section) nav(section.pages[0].key);
-          }}
+          onClick={({ key }) => nav(key)}
         />
       </Layout.Sider>
-      <Layout>
-        <Layout.Header style={{ background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", paddingInline: 24 }}>
-          <Typography.Text strong>{activeSection?.label ?? activeSystemPage?.label}</Typography.Text>
-          <Space size="middle">
+      <Layout className="app-workspace">
+        <Layout.Header className="app-topbar">
+          <div className="topbar-location">
+            <Dropdown trigger={["click"]} menu={{ items, selectedKeys: activePage ? [activePage.key] : [], onClick: ({ key }) => nav(key) }}>
+              <Button className="mobile-nav-button" aria-label="打开栏目导航" icon={<NavIcon name="menu" />} />
+            </Dropdown>
+            <div className="breadcrumb"><span>试镜评分</span><span aria-hidden="true">/</span><strong>{activeSection?.label ?? activeSystemPage?.label ?? "试镜评分"}</strong></div>
+          </div>
+          <div className="account-actions">
             {systemPages.length > 0 && (
               <Dropdown trigger={["click"]} menu={{
                 items: systemPages,
@@ -123,21 +128,16 @@ export default function App() {
                 <Button type={activeSystemPage ? "primary" : "text"}>系统管理</Button>
               </Dropdown>
             )}
-            <span>
-              {me.display_name}（{ROLE_ZH[me.role] ?? me.role}）
-            </span>
+            <div className="account-label">
+              <Avatar size={32} style={{ background: "#e7eefc", color: "#1d4ed8" }} aria-hidden="true">{me.display_name.slice(0, 1)}</Avatar>
+              <div className="account-name">{me.display_name}<div className="account-role">{ROLE_ZH[me.role] ?? me.role}</div></div>
+            </div>
             <ChangePasswordButton />
-            <Button onClick={logout}>退出</Button>
-          </Space>
+            <Button type="text" aria-label="退出" onClick={logout}>退出</Button>
+          </div>
         </Layout.Header>
-        <Layout.Content style={{ padding: 24 }}>
-          {activeSection && activeSection.pages.length > 1 && (
-            <Tabs
-              activeKey={activePage?.key}
-              items={activeSection.pages.map(({ key, label }) => ({ key, label }))}
-              onTabClick={(key) => nav(key)}
-            />
-          )}
+        <Layout.Content className="app-content" id="main-content" tabIndex={-1}>
+          <main className="page-content">
           <Routes>
             <Route path="/" element={home ? <Navigate to={home} replace /> : <Typography.Text>暂无可访问的栏目</Typography.Text>} />
             <Route path="/rubrics" element={<Rubrics />} />
@@ -164,6 +164,7 @@ export default function App() {
             <Route path="/audit" element={<AuditLogs />} />
             <Route path="*" element={<Typography.Text>页面不存在</Typography.Text>} />
           </Routes>
+          </main>
         </Layout.Content>
       </Layout>
     </Layout>

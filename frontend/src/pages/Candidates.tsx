@@ -2,6 +2,8 @@ import { Button, DatePicker, Descriptions, Drawer, Form, Input, Modal, Select, S
 import type { UploadFile } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useState } from "react";
+import PageHeader from "../components/PageHeader";
+import NavIcon from "../components/NavIcon";
 import { ApiError, patch, post, put, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { useAction, useFetch } from "../components/hooks";
@@ -171,22 +173,18 @@ export default function Candidates() {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <>
-      <Typography.Title level={4}>候选人</Typography.Title>
-      <Space style={{ marginBottom: 16 }}>
-        {can("recording.upload") && (
-          <Button type="primary" onClick={() => setCreating(true)}>
-            新建候选人
-          </Button>
-        )}
-        <Input.Search placeholder="按手机号查找" allowClear onSearch={setPhone} style={{ width: 240 }} />
-      </Space>
+      <PageHeader title="候选人" description="查看候选人资料、试镜录像与录用状态。" action={can("recording.upload") && <Button type="primary" icon={<NavIcon name="plus" />} onClick={() => setCreating(true)}>新建候选人</Button>} />
+      <div className="page-toolbar">
+        <Input.Search aria-label="按手机号查找" placeholder="按手机号查找" allowClear onSearch={setPhone} style={{ width: 280 }} />
+      </div>
       <Table<Row>
+        scroll={{ x: 850 }}
         rowKey="id"
         loading={loading}
         dataSource={data}
         onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: "pointer" } })}
         columns={[
-          { title: "姓名", dataIndex: "name" },
+          { title: "姓名", dataIndex: "name", render: (name, row) => <Button type="link" style={{ padding: 0 }} onClick={(event) => { event.stopPropagation(); setOpen(row.id); }}>{name}</Button> },
           { title: "手机号", dataIndex: "phone_masked" },
           ...(SHOW_CONSENT_UI
             ? [{ title: "书面同意", dataIndex: "consent_count", render: (n: number) => (n ? <Tag color="green">已登记</Tag> : <Tag color="red">未登记</Tag>) }]

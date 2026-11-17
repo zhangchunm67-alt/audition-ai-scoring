@@ -1,7 +1,10 @@
-import { Alert, Button, Card, Col, Descriptions, Modal, Row, Select, Space, Statistic, Table, Tabs, Tag, Tooltip, Typography } from "antd";
+import { Alert, Button, Card, Col, Descriptions, Modal, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import ReportOverview from "../components/ReportOverview";
+import { ABILITY_IDS, weakestItems } from "../components/reportAbilities";
+import "./report-ui.css";
 import { post, type S } from "../api/client";
 import { LABEL_COLOR, LABEL_TEXT, type Hit, type ItemResult, type ReportDetail as RD } from "../api/report";
 import { useAuth } from "../auth";
@@ -35,15 +38,18 @@ export function itemLabel(d: RD, itemId: string): string {
   return it ? `${dim?.name ?? it.dimension}·${it.name}` : itemId;
 }
 
-function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
+function Items({ d, seek, focus }: { d: RD; seek: (ms: number | null) => void; focus: string[] }) {
+  const weak = new Set(ABILITY_IDS.flatMap(id => weakestItems(d.result.items, id).map(i => i.item_id)));
   const dimName = Object.fromEntries(d.result.dimensions.map((x) => [x.id, x.name]));
   const evByItem = (id: string) => d.evidence.filter((e) => e.item_id === id);
   return (
     <Table<ItemResult>
       size="small"
       rowKey="item_id"
+      defaultExpandedRowKeys={focus}
       pagination={false}
-      dataSource={d.result.items}
+      dataSource={focus.length ? d.result.items.filter(i => focus.includes(i.item_id)) : d.result.items}
+      rowClassName={it => weak.has(it.item_id) ? "report-weak-row" : ""}
       expandable={{
         expandedRowRender: (it) => (
           <Table<Hit> size="small" rowKey="evidence_id" pagination={false} dataSource={evByItem(it.item_id)} columns={[
@@ -58,7 +64,7 @@ function Items({ d, seek }: { d: RD; seek: (ms: number | null) => void }) {
       }}
       columns={[
         { title: "维度", dataIndex: "dimension", width: 90, render: (v: string) => dimName[v] ?? v },
-        { title: "条目", render: (_, it) => it.name },
+        { title: "条目", render: (_, it) => <Space wrap>{it.name}{weak.has(it.item_id) && <Tag color="orange">本类最弱</Tag>}</Space> },
         { title: "得分", width: 90, render: (_, it) => (it.status === "not_applicable" ? "不适用" : `${it.score == null ? "—" : Math.round(it.score * 10) / 10} / ${it.max}`) },
         { title: "标记", width: 160, render: (_, it) => (
           <Space size={4} wrap>
@@ -131,13 +137,14 @@ export default function ReportDetail() {
   const { can } = useAuth();
   const video = useRef<HTMLVideoElement>(null);
   const [tab, setTab] = useState("overview");
+  const [focus, setFocus] = useState<string[]>([]);
+  const itemsRef = useRef<HTMLDivElement>(null);
   if (!d) return null;
   const seek = (ms: number | null) => {
     if (ms == null || !video.current) return;
     video.current.currentTime = ms / 1000;
     void video.current.play().catch(() => undefined);
   };
-  const dims = Object.fromEntries(d.result.dimensions.map((x) => [x.id, x]));
   return (
     <>
       <Space style={{ marginBottom: 8 }} wrap>
@@ -158,18 +165,14 @@ export default function ReportDetail() {
           description={d.verdict.rounds.map((r) => `第 ${r.round_no} 轮 ${r.total_grade} 档（${r.grade_pass ? "达标" : "不达标"}）`).join("；") + `；报告展示第 ${d.display_round} 轮`} />
       )}
       {d.result.low_confidence_items.length > 0 && <Alert type="warning" showIcon style={{ marginBottom: 8 }} message={`低置信条目：${d.result.low_confidence_items.map((i) => itemLabel(d, i)).join("、")}（照常出分，判断把握不足，可点开证据核对）`} />}
-      <Row gutter={16}>
-        <Col span={16}>
+      <Row gutter={[16, 24]}>
+        <Col xs={24} xl={16}>
           <Tabs activeKey={tab} onChange={setTab} items={[
             { key: "overview", label: "总览与条目", children: (
               <>
-                <Row gutter={12} style={{ marginBottom: 16 }}>
-                  <Col span={4}><Statistic title="总档位" value={d.result.total_grade} suffix={`/ 达标线 < ${d.result.threshold}`} /></Col>
-                  {["P", "S", "L", "O"].map((k) => (
-                    <Col span={5} key={k}><Statistic title={dims[k].name} value={dims[k].score ?? "—"} suffix={`分 · ${dims[k].grade} 档`} /></Col>
-                  ))}
-                </Row>
-                <Items d={d} seek={seek} />
+                <ReportOverview report={d} onInspect={ids => { setFocus(ids); requestAnimationFrame(() => itemsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })); }} />
+                <div ref={itemsRef} className="report-items-heading"><h2>评分条目与依据</h2>{focus.length > 0 && <Button size="small" onClick={() => setFocus([])}>显示全部条目</Button>}</div>
+                <Items key={focus.join(",")} d={d} seek={seek} focus={focus} />
               </>
             ) },
             { key: "sentences", label: "逐句评分", children: <Sentences d={d} seek={seek} /> },
@@ -197,7 +200,7 @@ export default function ReportDetail() {
             ) },
           ]} />
         </Col>
-        <Col span={8}>
+        <Col xs={24} xl={8}>
           <div style={{ position: "sticky", top: 16 }}>
             {d.media.video_asset_id ? (
               <video ref={video} src={`/api/media/${d.media.video_asset_id}`} controls preload="metadata" style={{ width: "100%", background: "#000" }} data-testid="report-video" />

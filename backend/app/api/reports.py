@@ -18,7 +18,7 @@ from ..models.entities import Candidate, Recording, Report, RubricVersion, User
 from ..security.rbac import Perm, allowed
 from ..services import audit
 from ..services.export import PdfError, html_to_pdf, ranking_xlsx, report_html
-from ..services.report_view import detail, score_result
+from ..services.report_view import candidate_presentation, detail, score_result
 from ..services.report_creation import uses_mock
 from ..providers.registry import allow_mock_scoring
 from ..services.rescore import rescore
@@ -33,6 +33,8 @@ class ReportRow(BaseModel):
     id: uuid.UUID
     rank: int
     recording_id: uuid.UUID
+    candidate_phone_masked: str | None = None
+    candidate_video_asset_id: uuid.UUID | None = None
     candidate_name: str
     submitted_at: datetime | None
     audience: str
@@ -111,6 +113,7 @@ def _ranked(db: Session, user: User, date_from, date_to, label, audience, sort, 
         if label and rep.label != label:
             continue
         rows.append(ReportRow(
+            **candidate_presentation(db, rec),
             id=rep.id, rank=i, recording_id=rec.id, candidate_name=name_of(db.get(Candidate, rec.candidate_id)), submitted_at=rec.submitted_at,
             audience=rec.audience, mode=rec.mode, label=rep.label, reason=rep.verdict["reason"], total_grade=rnd["total_grade"], threshold=res["threshold"],
             dimension_scores=rnd["dimension_scores"], dimension_grades=rnd["dimension_grades"], critical=rep.critical, informal=rep.informal,

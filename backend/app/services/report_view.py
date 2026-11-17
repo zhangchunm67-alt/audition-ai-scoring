@@ -99,6 +99,17 @@ def sentence_view(db: Session, rec: Recording, run_id, evidence: list[dict], sug
     return out
 
 
+def candidate_presentation(db: Session, rec: Recording) -> dict:
+    """报告沿用候选人列表的电话脱敏，头像只引用仍可访问的当前录像。"""
+    from ..api.candidates import get_candidate, mask, phone_of
+
+    candidate = get_candidate(db, rec.candidate_id)
+    video_id = db.scalar(select(MediaAsset.id).where(
+        MediaAsset.recording_id == rec.id, MediaAsset.kind == "raw_video", MediaAsset.deleted_at.is_(None),
+    ).order_by(MediaAsset.created_at.desc()).limit(1))
+    return {"candidate_phone_masked": mask(phone_of(candidate)), "candidate_video_asset_id": str(video_id) if video_id else None}
+
+
 def detail(db: Session, rep: Report) -> dict[str, Any]:
     from ..api.candidates import get_candidate, name_of
 
@@ -113,6 +124,7 @@ def detail(db: Session, rep: Report) -> dict[str, Any]:
     video = db.scalar(select(MediaAsset).where(MediaAsset.recording_id == rec.id, MediaAsset.kind == "raw_video"))
     return {
         "id": str(rep.id), "revision": rep.revision, "superseded_at": rep.superseded_at, "created_at": rep.created_at,
+        **candidate_presentation(db, rec),
         "recording_id": str(rec.id), "candidate_id": str(rec.candidate_id), "candidate_name": name_of(get_candidate(db, rec.candidate_id)),
         "submitted_at": rec.submitted_at, "sheet_code": sheet.code, "product_name": db.get(Product, sheet.product_id).name,
         "audience": rec.audience, "props_available": rec.props_available, "mode": rec.mode,

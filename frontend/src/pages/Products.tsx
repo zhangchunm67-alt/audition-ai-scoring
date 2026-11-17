@@ -1,6 +1,8 @@
 import { Button, Table, Tag, Typography } from "antd";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
+import NavIcon from "../components/NavIcon";
 import type { S } from "../api/client";
 import { useAuth } from "../auth";
 import { useFetch } from "../components/hooks";
@@ -14,13 +16,9 @@ export default function Products() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Typography.Title level={4}>产品资料</Typography.Title>
-      {can("config.write") && (
-        <Button type="primary" style={{ marginBottom: 16 }} onClick={() => setOpen(true)}>
-          新建产品
-        </Button>
-      )}
+      <PageHeader title="产品资料" description="按产品维护参考脚本、资料版本和校准状态。" action={can("config.write") && <Button type="primary" icon={<NavIcon name="plus" />} onClick={() => setOpen(true)}>新建产品</Button>} />
       <Table<P>
+        scroll={{ x: 700 }}
         rowKey="id"
         loading={loading}
         dataSource={data}
@@ -32,7 +30,7 @@ export default function Products() {
         ]}
       />
       <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-        按产品维护参考脚本、资料版本和校准状态。录播中的实际观众问题在录像页标注；按题单试镜的题库和抽题规则从“试镜题单”进入设置。
+        录播中的实际观众问题在录像页标注；按题单试镜的题库和抽题规则从“试镜题单”进入设置。
       </Typography.Paragraph>
       <NewProductModal open={open} onClose={() => setOpen(false)} onCreated={() => {
         setOpen(false);

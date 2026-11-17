@@ -1,0 +1,161 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #202733;
+  background: #f5f6f8;
+  --app-space: 24px;
+  --app-border: #e9ecf1;
+  --app-muted: #626d7d;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select, textarea { font: inherit; }
+a, button, input, [tabindex] { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.app-shell { min-height: 100vh; }
+.app-sidebar.ant-layout-sider { background: #f0f2f6; border-right: 1px solid #e2e6ed; }
+.app-sidebar .ant-layout-sider-children { display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 12px; padding: 20px 20px 10px; }
+.brand-name { font-size: 15px; font-weight: 600; letter-spacing: -.4px; }
+.app-sidebar .ant-menu { background: transparent; border-inline-end: none !important; }
+.app-sidebar .ant-menu .nav-icon { margin-inline-end: 12px; }
+.nav-icon { vertical-align: middle; flex-shrink: 0; }
+.app-workspace { min-width: 0; }
+.app-topbar.ant-layout-header { height: auto; min-height: 52px; padding: 8px 24px; background: #ffffffd9; border-bottom: 1px solid var(--app-border); line-height: 1.5; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.topbar-location { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.breadcrumb { color: var(--app-muted); display: flex; gap: 12px; align-items: center; font-size: 13px; }
+.breadcrumb strong { color: #202733; font-weight: 500; }
+.account-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.account-label { display: flex; align-items: center; gap: 10px; margin-inline: 12px; }
+.account-name { font-size: 13px; line-height: 1.4; }
+.account-role { font-size: 12px; color: var(--app-muted); }
+.mobile-nav-button.ant-btn { display: none; }
+.app-content.ant-layout-content { padding: 22px 24px 32px; min-width: 0; }
+.workspace-tabs > .ant-tabs-nav { margin-bottom: 28px; }
+.workspace-tabs > .ant-tabs-nav::before { border-color: #e2e6ed; }
+.page-content { max-width: 1800px; margin-inline: auto; min-width: 0; }
+.page-content > h4.ant-typography { font-size: 21px; letter-spacing: -.3px; margin: 0 0 16px; }
+.page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.page-heading h1.ant-typography { font-size: 22px; letter-spacing: -.3px; line-height: 1.4; margin: 0 0 6px; }
+.page-heading .ant-typography-secondary { margin: 0; max-width: 760px; }
+.page-heading-action { flex-shrink: 0; padding-top: 3px; }
+.page-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+.page-content .ant-table-wrapper { border: 1px solid var(--app-border); border-radius: 12px; background: white; overflow: hidden; margin-bottom: 16px; }
+.page-content .ant-table-content { overflow-x: auto; }
+.page-content .ant-table table { min-width: 620px; }
+.page-content .ant-table-thead > tr > th { white-space: nowrap; font-size: 13px; font-weight: 500; }
+.page-content .ant-table-tbody > tr > td { vertical-align: middle; }
+.page-content .ant-table-pagination { padding-inline: 16px; }
+.page-content .ant-card { box-shadow: 0 2px 6px #172b4d03; }
+.page-content .ant-card-head-title { white-space: normal; overflow-wrap: anywhere; }
+.page-content .ant-card-head-title > .ant-space { flex-wrap: wrap; }
+.page-content [data-testid="reference-script"] { overflow-wrap: anywhere; }
+.page-content .ant-tag { border-radius: 6px; }
+.page-content .ant-form { max-width: 100%; }
+.page-content .ant-alert { border-radius: 10px; }
+.page-content .ant-descriptions-item-content { overflow-wrap: anywhere; }
+.page-content video { border-radius: 12px; }
+.score-summary { padding: 18px; background: white; border: 1px solid var(--app-border); border-radius: 12px; }
+.score-summary .ant-statistic-content { font-size: 28px; letter-spacing: -.5px; }
+.score-summary .ant-statistic-content-suffix { font-size: 13px; color: var(--app-muted); letter-spacing: 0; }
+.app-loading { min-height: 100vh; display: grid; place-items: center; }
+.skip-link { position: fixed; top: -80px; left: 16px; z-index: 2000; background: white; padding: 12px 20px; border: 2px solid #2563eb; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.login-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-form-area { width: 100%; max-width: 380px; padding: 28px; background: white; border: 1px solid var(--app-border); border-radius: 12px; }
+.login-card.ant-card { width: 100%; max-width: 400px; border: 0; box-shadow: none; }
+.login-card .ant-card-head { padding: 0; border: 0; font-size: 22px; }
+.login-card .ant-card-body { padding: 24px 0 0; }
+.login-card .ant-btn-primary { height: 44px; }
+@media (max-width: 1100px) {
+  .app-topbar.ant-layout-header { padding-inline: 24px; }
+  .app-content.ant-layout-content { padding-inline: 24px; }
+  .account-label { margin-inline: 4px; }
+}
+@media (max-width: 767px) {
+  :root { --app-space: 16px; }
+  .app-sidebar.ant-layout-sider { display: none; }
+  .mobile-nav-button.ant-btn { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; }
+  .app-topbar.ant-layout-header { padding: 12px 16px; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .account-actions { width: 100%; justify-content: flex-start; gap: 4px; }
+  .account-label { margin-right: auto; }
+  .account-actions .ant-btn { min-height: 44px; }
+  .breadcrumb > span:first-child, .breadcrumb > span:nth-child(2) { display: none; }
+  .app-content.ant-layout-content { padding: 16px 16px 28px; }
+  .workspace-tabs > .ant-tabs-nav { margin-bottom: 22px; }
+  .ant-tabs-tab { min-height: 44px; }
+  .page-heading { flex-wrap: wrap; gap: 16px; margin-bottom: 22px; }
+  .page-heading h1.ant-typography { font-size: 22px; }
+  .page-heading-action { padding-top: 0; }
+  .page-content > .ant-space { display: flex; flex-wrap: wrap; max-width: 100%; }
+  .page-content .ant-card-body { padding: 18px; }
+  .page-content .ant-radio-button-wrapper { height: auto; min-height: 44px; white-space: normal; }
+  .page-content .ant-space-compact { max-width: 100%; }
+  .page-content .ant-select, .page-content .ant-input-search { max-width: 100%; }
+  .page-content .ant-space-item { min-width: 0; max-width: 100%; }
+  .score-summary { padding: 18px; }
+  .page-content .ant-btn:not(.ant-btn-sm) { min-height: 44px; }
+  .page-content .ant-select-single:not(.ant-select-sm) { height: 44px; }
+  .page-content .ant-picker { max-width: 100%; min-height: 44px; }
+  .login-screen { grid-template-columns: 1fr; }
+  .login-form-area { padding: 20px 28px 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media print {
+  .app-sidebar, .app-topbar, .workspace-tabs, .skip-link { display: none !important; }
+  .app-content.ant-layout-content { padding: 0; }
+}
+
+.app-sidebar .ant-menu-item-group-title { font-size: 12px; padding: 20px 20px 4px; color: #687284; }
+.app-sidebar .ant-menu-item-group-list .ant-menu-item { padding-inline: 20px !important; margin-block: 2px; }
+.list-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.list-heading h1.ant-typography { font-size: 22px; margin: 0; }
+.task-queues { display: flex; gap: 24px; border-bottom: 1px solid var(--app-border); margin-bottom: 16px; overflow-x: auto; }
+.task-queues button { border: 0; border-bottom: 2px solid transparent; padding: 10px 0; background: transparent; color: #626d7d; cursor: pointer; white-space: nowrap; }
+.task-queues button[aria-pressed="true"] { color: #202733; font-weight: 600; border-bottom-color: #202733; }
+.task-queues button span { margin-left: 8px; font-size: 12px; font-variant-numeric: tabular-nums; color: #687284; }
+.table-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.result-count { margin-left: auto; font-size: 12px; }
+.review-workspace { display: grid; grid-template-columns: minmax(260px, 38%) minmax(0, 1fr); gap: 18px; align-items: start; }
+.review-player { position: sticky; top: 16px; }
+.review-player video { width: 100%; background: #111; }
+.review-player p { font-size: 12px; margin-top: 8px; }
+.review-scores { min-width: 0; }
+
+@media (max-width: 767px) {
+  .review-workspace { grid-template-columns: 1fr; }
+  .review-player { position: static; }
+}
+@media (max-width: 767px) {
+  .task-queues { gap: 22px; }
+  .task-queues button { min-height: 44px; }
+  .table-toolbar > .ant-input-search { width: 100% !important; }
+  .result-count { margin-left: 0; }
+}
+
+.recording-meta { margin-bottom: 16px; border-block: 1px solid var(--app-border); }
+.recording-meta summary { cursor: pointer; padding: 10px 0; color: #626d7d; font-size: 13px; }
+.recording-meta summary > span { display: inline-block; margin-left: 18px; }
+.recording-meta .ant-descriptions { margin-top: 12px; }
+
+.human-review-item { border-top: 1px solid var(--app-border); padding: 14px 0; }
+.human-review-score { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.human-review-score label { font-weight: 500; }
+.score-input { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.score-input .ant-input-number { width: 76px; }
+.score-input > span, .human-review-suggestion { color: #626d7d; font-size: 12px; }
+.human-review-suggestion { margin-top: 6px; }
+.human-review-item details { font-size: 12px; margin-top: 8px; }
+.human-review-item summary { cursor: pointer; color: #626d7d; }
+.human-review-item details p { margin: 8px 0; }
+.human-review-item ul { padding-left: 18px; }
+.review-scores .ant-card-head { position: sticky; top: 0; z-index: 2; background: white; }
+
+/* 参考图的深蓝导航与浅色工作区，沿用现有导航行为。 */
+.app-sidebar.ant-layout-sider { background: #0e1c3a; border-right-color: #172747; }
+.app-sidebar .brand-name { color: #fff; }
+.app-sidebar .ant-menu-item-group-title { color: #8d9fbe; }
+.app-sidebar .ant-menu-item { color: #becae0; }
+.app-sidebar .ant-menu-item-selected { background: #263655; color: #fff; }
+.app-sidebar .ant-menu-item:not(.ant-menu-item-selected):hover { background: #1c2d4c; color: #fff; }

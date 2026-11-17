@@ -1,6 +1,7 @@
 import { Alert, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useState } from "react";
+import PageHeader from "../components/PageHeader";
 import { useFetch } from "../components/hooks";
 import { ItemRates, MetricsCards, PURPOSE, pct } from "./Calibration";
 
@@ -29,9 +30,9 @@ function AgreementTab() {
         <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} placeholder={["录像提交日期从", "到"]} />
       </Space>
       <MetricsCards m={data.overall} />
-      <Row gutter={16}>
-        <Col span={12}><Card size="small" title="按条目"><ItemRates m={data.overall} /></Card></Col>
-        <Col span={12}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}><Card size="small" title="按条目"><ItemRates m={data.overall} /></Card></Col>
+        <Col xs={24} lg={12}>
           <Card size="small" title="按金标准集">
             <Table size="small" rowKey="id" pagination={false} dataSource={data.sets} columns={[
               { title: "名称", dataIndex: "name" },
@@ -54,17 +55,17 @@ function EfficiencyTab() {
   return (
     <>
       <DatePicker.RangePicker style={{ marginBottom: 16 }} value={range} onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} placeholder={["提交日期从", "到"]} />
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={4}><Statistic title="提交" value={e.submitted} /></Col>
-        <Col span={4}><Statistic title="出报告 / 失败 / 处理中" value={`${e.done} / ${e.failed} / ${e.in_progress}`} /></Col>
-        <Col span={4}><Statistic title="失败率" value={pct(e.failure_rate)} /></Col>
-        <Col span={6}><Statistic title="处理时长（分钟）中位数 / p95 / 最长" value={`${e.minutes.median ?? "—"} / ${e.minutes.p95 ?? "—"} / ${e.minutes.max ?? "—"}`} /></Col>
-        <Col span={3}><Statistic title="超过 30 分钟" value={e.over_30_min} valueStyle={{ color: e.over_30_min ? "#cf1322" : undefined }} /></Col>
-        <Col span={3}><Statistic title="临界占比" value={pct(e.critical_share)} /></Col>
+      <Row gutter={[16, 24]} style={{ marginBottom: 16 }}>
+        <Col xs={12} xl={4}><Statistic title="提交" value={e.submitted} /></Col>
+        <Col xs={12} xl={4}><Statistic title="出报告 / 失败 / 处理中" value={`${e.done} / ${e.failed} / ${e.in_progress}`} /></Col>
+        <Col xs={12} xl={4}><Statistic title="失败率" value={pct(e.failure_rate)} /></Col>
+        <Col xs={24} xl={6}><Statistic title="处理时长（分钟）中位数 / p95 / 最长" value={`${e.minutes.median ?? "—"} / ${e.minutes.p95 ?? "—"} / ${e.minutes.max ?? "—"}`} /></Col>
+        <Col xs={12} xl={3}><Statistic title="超过 30 分钟" value={e.over_30_min} valueStyle={{ color: e.over_30_min ? "#cf1322" : undefined }} /></Col>
+        <Col xs={12} xl={3}><Statistic title="临界占比" value={pct(e.critical_share)} /></Col>
       </Row>
       <Typography.Paragraph type="secondary">整轮重试 {e.round_retries} 次；非正式报告 {e.informal_reports} 份。</Typography.Paragraph>
-      <Row gutter={16}>
-        <Col span={12}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
           <Card size="small" title="各条目低置信比例">
             <Table size="small" rowKey="item_id" pagination={false} dataSource={[...e.low_confidence].sort((a, b) => b.rate - a.rate)} columns={[
               { title: "条目", render: (_, r) => r.name },
@@ -73,7 +74,7 @@ function EfficiencyTab() {
             ]} />
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} lg={12}>
           <Card size="small" title="每日处理量">
             <Table size="small" rowKey="date" pagination={false} dataSource={e.daily} columns={[
               { title: "日期", dataIndex: "date" }, { title: "提交", dataIndex: "submitted" }, { title: "出报告", dataIndex: "done" }, { title: "失败", dataIndex: "failed" },
@@ -108,7 +109,7 @@ function OpsBar() {
 export default function Dashboard() {
   return (
     <>
-      <Typography.Title level={4}>看板</Typography.Title>
+      <PageHeader title="看板" description="跟踪评分一致率、处理效率和待复核事项。" />
       <OpsBar />
       <Tabs items={[{ key: "a", label: "一致率", children: <AgreementTab /> }, { key: "e", label: "效率", children: <EfficiencyTab /> }]} />
     </>

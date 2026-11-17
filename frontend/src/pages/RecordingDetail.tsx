@@ -39,12 +39,12 @@ function Marker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r: Rec
     row("reading", "朗读开始", m.reading, (v) => setM({ ...m, reading: v })),
   ];
   return (
-    <Row gutter={24}>
-      <Col span={12}>
+    <Row gutter={[16, 16]}>
+      <Col xs={24} md={12}>
         <video ref={video} src={src} controls style={{ width: "100%", background: "#000" }} data-testid="marker-video" />
         <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>播放到某段开头时点“设为当前时间”。异议时间默认按题单（相对主体段开始），如候选人实际回应时间不同，可在视频里定位后修正。</Typography.Paragraph>
       </Col>
-      <Col span={12}>
+      <Col xs={24} md={12}>
         <Table size="small" pagination={false} rowKey="key" dataSource={rows} columns={[
           { title: "分段", dataIndex: "label", ellipsis: true },
           { title: "起点", dataIndex: "ms", width: 90, render: (v) => fmtMs(v) },
@@ -99,14 +99,14 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
   const seek = (ms: number | null) => ms != null && video.current && (video.current.currentTime = ms / 1000);
   const ready = objs.every((o) => o.text.trim()) && exs.every((x) => x.end_ms != null && x.end_ms > x.start_ms);
   return (
-    <Row gutter={24}>
-      <Col span={12}>
+    <Row gutter={[16, 16]}>
+      <Col xs={24} md={12}>
         <video ref={video} src={src} controls style={{ width: "100%", background: "#000" }} data-testid="marker-video" />
         <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
           整段视频都参与评分，不截取 10 分钟，没有朗读段（“普通话标准”由评委听录像打分）。按次计的条目（口头禅、语速、小动作、加分项等）都按每 10 分钟的次数换算后计分。
         </Typography.Paragraph>
       </Col>
-      <Col span={12}>
+      <Col xs={24} md={12}>
         <Space style={{ marginBottom: 8 }}>
           <Typography.Title level={5} style={{ margin: 0 }}>观众异议（{objs.length} 条）</Typography.Title>
           <Button size="small" data-testid="live-add-objection" onClick={() => setObjs([...objs, { key: seq.current++, text: "", video_ms: now() }])}>在当前时间添加</Button>
@@ -185,7 +185,7 @@ type Pending = {
 type HumanReview = { status: string; items: Pending[]; scores: Record<string, { score: number; by?: string; note?: string }> };
 
 /** 评委打分（T39）：机器评不了或须人工确认的条目。机器建议分只作参考，可以改。可分几次录入。 */
-function HumanScoring({ id, onDone }: { id: string; onDone: () => void }) {
+function HumanScoring({ id, onDone, seek }: { id: string; onDone: () => void; seek: (ms: number) => void }) {
   const { data, reload } = useFetch<HumanReview>(`/recordings/${id}/human-review`);
   const [vals, setVals] = useState<Record<string, { score: number | null; note: string }>>({});
   const act = useAction();
@@ -211,24 +211,29 @@ function HumanScoring({ id, onDone }: { id: string; onDone: () => void }) {
       <Typography.Paragraph type="secondary">
         以下条目机器评不了，或在校准达标前须由评委确认。请看视频后按评分表打分；有机器建议分的已预填，可以修改。全部填完后自动出报告。
       </Typography.Paragraph>
-      <Table size="small" pagination={false} rowKey="item_id" dataSource={data.items}
-        expandable={{ rowExpandable: (r) => r.evidence.length > 0, expandedRowRender: (r) => (
-          <ul style={{ margin: 0 }}>{r.evidence.map((e, i) => <li key={i}>{fmtMs(e.start_ms)} {e.quote ?? e.label} {e.reason ? `—— ${e.reason}` : ""}</li>)}</ul>
-        ) }}
-        columns={[
-          { title: "评分表条目", dataIndex: "label", width: 220 },
-          { title: "满分", dataIndex: "max", width: 60 },
-          { title: "为什么要人工", dataIndex: "reasons", render: (v: string[]) => v.join("；") },
-          { title: "机器建议", width: 90, render: (_, r) => Object.values(r.suggested).filter((v) => v != null).join(" / ") || "—" },
-          { title: "评委打分", width: 110, render: (_, r) => (
-            <InputNumber min={0} max={r.max} step={0.5} value={vals[r.item_id]?.score ?? null} data-testid={`human-${r.item_id}`}
-              onChange={(v) => setVals({ ...vals, [r.item_id]: { ...vals[r.item_id], score: v } })} />
-          ) },
-          { title: "备注", width: 200, render: (_, r) => (
-            <Input size="small" maxLength={500} value={vals[r.item_id]?.note ?? ""}
+      <div className="human-review-list">
+        {data.items.map((r) => <section className="human-review-item" key={r.item_id}>
+          <div className="human-review-score">
+            <label htmlFor={`human-${r.item_id}`}>{r.label}</label>
+            <div className="score-input">
+              <InputNumber id={`human-${r.item_id}`} aria-label={`${r.label}评委打分`} min={0} max={r.max} step={0.5} value={vals[r.item_id]?.score ?? null} data-testid={`human-${r.item_id}`}
+                onChange={(v) => setVals({ ...vals, [r.item_id]: { ...vals[r.item_id], score: v } })} />
+              <span>/ {r.max}</span>
+            </div>
+          </div>
+          <div className="human-review-suggestion">机器建议：{Object.values(r.suggested).filter((v) => v != null).join(" / ") || "无，需人工评分"}</div>
+          <details>
+            <summary>评分依据与备注{r.evidence.length ? ` · ${r.evidence.length} 条证据` : ""}{vals[r.item_id]?.note ? " · 已填备注" : ""}</summary>
+            <Typography.Paragraph type="secondary">{r.reasons.join("；")}</Typography.Paragraph>
+            {r.evidence.length > 0 && <ul>{r.evidence.map((e, i) => <li key={i}>
+              {e.start_ms != null && <Button type="link" size="small" onClick={() => seek(e.start_ms!)} aria-label={`播放证据 ${fmtMs(e.start_ms)}`}>{fmtMs(e.start_ms)}</Button>}
+              {e.quote ?? e.label} {e.reason ? `—— ${e.reason}` : ""}
+            </li>)}</ul>}
+            <Input.TextArea aria-label={`${r.label}备注`} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={500} placeholder="填写评分备注（可选）" value={vals[r.item_id]?.note ?? ""}
               onChange={(e) => setVals({ ...vals, [r.item_id]: { ...vals[r.item_id], note: e.target.value } })} />
-          ) },
-        ]} />
+          </details>
+        </section>)}
+      </div>
     </Card>
   );
 }
@@ -272,6 +277,12 @@ export default function RecordingDetail() {
   const [rec, setRec] = useState<Rec | undefined>();
   const { can } = useAuth();
   const act = useAction();
+  const reviewVideo = useRef<HTMLVideoElement>(null);
+  const seekEvidence = (ms: number) => {
+    if (!reviewVideo.current) return;
+    reviewVideo.current.currentTime = ms / 1000;
+    void reviewVideo.current.play().catch(() => undefined);
+  };
   useEffect(() => setRec(data), [data]);
   useEffect(() => {  // 处理中每 3 秒自动刷新一次状态
     if (!rec || !["submitted", "processing"].includes(rec.status)) return;
@@ -304,14 +315,19 @@ export default function RecordingDetail() {
       )}
       <ScoringProgress rec={rec} reload={reload} error={error} />
       {rec.status === "awaiting_human" && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="机器部分已完成，等评委给下面的条目打分" />}
-      {rec.status === "awaiting_human" && can("human.score") && <HumanScoring id={rec.id} onDone={reload} />}
+
       {rec.status === "done" && (
         <Alert type="success" showIcon style={{ marginBottom: 16 }} message="评分已完成"
           action={rec.report_id && <Button type="primary" onClick={() => nav(`/reports/${rec.report_id}`)}>查看报告</Button>} />
       )}
       {rec.uses_draft_config && <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="使用了草稿评分标准或红线词表，出的报告将标注“非正式”。" />}
       {rec.warnings.map((w) => <Alert key={w} type="info" showIcon style={{ marginBottom: 8 }} message={w} />)}
-      <Descriptions size="small" bordered column={3} style={{ marginBottom: 16 }}>
+      <details className="recording-meta">
+        <summary>录像信息 · {rec.product_name} · {MODE_ZH[rec.mode] ?? rec.mode}
+          <span>视频 {fmtMs(rec.video_duration_ms)}</span>
+          <span>{live ? "参与评分" : "主体段"} <span>{rec.main_duration_ms == null ? "未标注" : fmtMs(rec.main_duration_ms)}</span></span>
+        </summary>
+        <Descriptions size="small" bordered column={{ xs: 1, sm: 2, lg: 3 }} style={{ marginBottom: 16 }}>
         <Descriptions.Item label="类型">{MODE_ZH[rec.mode] ?? rec.mode}{live ? "（无题单，整段视频评分）" : ""}</Descriptions.Item>
         <Descriptions.Item label="产品">{rec.product_name}</Descriptions.Item>
         <Descriptions.Item label="适用达标线">{AUDIENCE_ZH[rec.audience] ?? rec.audience}</Descriptions.Item>
@@ -321,15 +337,25 @@ export default function RecordingDetail() {
         <Descriptions.Item label="提交时间">{rec.submitted_at ? dayjs(rec.submitted_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
         <Descriptions.Item label="出结果时间">{rec.finished_at ? dayjs(rec.finished_at).format("YYYY-MM-DD HH:mm:ss") : "—"}</Descriptions.Item>
       </Descriptions>
+      </details>
+      {rec.status === "awaiting_human" && can("human.score") && (
+        <div className="review-workspace">
+          <aside className="review-player">
+            {src ? <video ref={reviewVideo} src={src} controls preload="metadata" data-testid="human-review-video" /> : <Alert type="info" message="没有可播放的视频" />}
+            <Typography.Paragraph type="secondary">展开评分条目的证据，点击时间即可定位视频。</Typography.Paragraph>
+          </aside>
+          <section className="review-scores"><HumanScoring id={rec.id} onDone={reload} seek={seekEvidence} /></section>
+        </div>
+      )}
       {rec.status === "uploading" && rec.upload && editable && <Resume rec={rec} onDone={(r) => (setRec(r), reload())} />}
       {rec.status === "uploaded" && live && editable && rec.segments.length > 0 && (
         <Alert type="success" showIcon style={{ marginBottom: 16 }} message="视频已上传，可以直接点上方“提交处理”" description="下面的标注是可选的：只在想人工指定观众问题，或要排除副播等其他人讲话的时段时才需要。" />
       )}
       {rec.status === "uploaded" && src && editable && (live ? <LiveMarker rec={rec} src={src} onSaved={setRec} /> : <Marker rec={rec} src={src} onSaved={setRec} />)}
-      {["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status) && src && (
-        <Row gutter={24}>
-          <Col span={12}><video src={src} controls style={{ width: "100%", background: "#000" }} /></Col>
-          <Col span={12}>
+      {["submitted", "processing", "awaiting_human", "done", "failed"].includes(rec.status) && !(rec.status === "awaiting_human" && can("human.score")) && src && (
+        <Row gutter={[16, 16]}>
+          <Col xs={24} md={12}><video src={src} controls style={{ width: "100%", background: "#000" }} /></Col>
+          <Col xs={24} md={12}>
             <Table size="small" pagination={false} rowKey="segment" dataSource={rec.segments} columns={[
               { title: "分段", dataIndex: "segment" },
               { title: "开始", dataIndex: "start_ms", render: fmtMs },

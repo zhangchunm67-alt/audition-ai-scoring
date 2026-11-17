@@ -7,8 +7,9 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
-    <div style={{ display: "flex", justifyContent: "center", paddingTop: 120 }}>
-      <Card title="试镜评分后台 · 登录" style={{ width: 360 }}>
+    <div className="login-screen">
+      <div className="login-form-area">
+      <Card title="腾宝 · 试镜评分" className="login-card">
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
         <Form
           layout="vertical"
@@ -34,6 +35,7 @@ export default function Login() {
           </Button>
         </Form>
       </Card>
+      </div>
     </div>
   );
 }

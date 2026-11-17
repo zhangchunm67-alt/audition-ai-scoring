@@ -37,6 +37,9 @@ def test_list_and_detail(login, seeded, video_file, db):
     assert len(d["result"]["items"]) == 23 and len(d["result"]["dimensions"]) == 4 and d["result"]["redlines_enabled"] is False
     assert d["trace"]["rubric_version"] == "rubric-v0.3" and d["trace"]["detector_config_version"] == "detectors-v3"
     assert d["trace"]["model_manifest"]["llm"] == "mock-llm@1" and d["media"]["video_asset_id"]
+    assert r["candidate_phone_masked"] == d["candidate_phone_masked"] == "138****1234"
+    assert "13800001234" not in str(r) and "13800001234" not in str(d)
+    assert r["candidate_video_asset_id"] == d["candidate_video_asset_id"] == d["media"]["video_asset_id"]
     assert _actions(db, "report_view") and _actions(db, "report_list")
 
 
@@ -178,3 +181,16 @@ def test_rescore_with_new_rubric_creates_revision(login, seeded, video_file, db)
     assert [x["revision"] for x in revs] == [2, 1] and revs[1]["superseded_at"]
     assert admin.post(f"/api/reports/{rep.id}/rescore", json={"rubric_version_id": rid}).status_code == 409  # 旧修订不能再重算
     assert _actions(db, "report_rescore")
+
+
+def test_report_avatar_does_not_reference_deleted_video(login, seeded, video_file, db):
+    from app.models.entities import MediaAsset
+    hr = login("hr")
+    rec, rep = _done(hr, seeded, video_file)
+    asset = db.scalar(select(MediaAsset).where(MediaAsset.recording_id == rec.id, MediaAsset.kind == "raw_video"))
+    asset.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    detail = hr.get(f"/api/reports/{rep.id}").json()
+    rows = hr.get("/api/reports").json()
+    assert detail["candidate_video_asset_id"] is None
+    assert rows[0]["candidate_video_asset_id"] is None

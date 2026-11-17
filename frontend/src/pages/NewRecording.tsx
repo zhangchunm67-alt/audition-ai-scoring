@@ -1,6 +1,7 @@
 import { Alert, Button, Card, Form, Progress, Radio, Select, Space, Typography, Upload } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
 import { post, type S } from "../api/client";
 import { useAuth } from "../auth";
 import { AUDIENCE_ZH, useAction, useFetch } from "../components/hooks";
@@ -84,7 +85,7 @@ export default function NewRecording() {
 
   return (
     <>
-      <Typography.Title level={4}>上传录像</Typography.Title>
+      <PageHeader title="上传录像" description="选择候选人和评估方式，上传后继续标注视频。" />
       <Card style={{ maxWidth: 760 }}>
         {rubric.error && <Alert type="error" message={rubric.error} style={{ marginBottom: 16 }} />}
         <Form form={form} layout="vertical" disabled={busy} initialValues={{ mode: "audition" }}>

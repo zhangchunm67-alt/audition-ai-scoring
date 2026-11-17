@@ -23,11 +23,11 @@ async function loginAs(page, user) {
   await page.getByLabel("用户名").fill(user);
   await page.getByLabel("密码").fill(PW);
   await page.getByRole("button", { name: "登 录" }).click();
-  await page.getByRole("button", { name: "退 出" }).waitFor();
+  await page.getByRole("button", { name: "退出", exact: true }).waitFor();
 }
 
 
-// 先进入主要栏目，再进入栏目内页签；权限过滤后只有一个页面时直接进入。
+// 四个工作分组直接列出可访问的页面。
 const NAV_TARGETS = {
   "试镜录像": ["试镜管理", "/recordings"],
   "候选人": ["试镜管理", "/candidates"],
@@ -50,22 +50,18 @@ async function navigate(page, label) {
     await page.waitForURL((url) => url.pathname === (label === "账号管理" ? "/users" : "/audit"));
     return;
   }
-  const [group, path] = NAV_TARGETS[label];
-  await primaryMenu(page).getByRole("menuitem", { name: group, exact: true }).click();
-  const groupPaths = Object.values(NAV_TARGETS).filter(([name]) => name === group).map(([, route]) => route);
-  await page.waitForURL((url) => groupPaths.includes(url.pathname));
-  if (new URL(page.url()).pathname !== path) {
-    await page.getByRole("tab", { name: label, exact: true }).click();
-  }
+  const [, path] = NAV_TARGETS[label];
+  await primaryMenu(page).getByRole("menuitem", { name: label, exact: true }).click();
   await page.waitForURL((url) => url.pathname === path);
 }
 
 try {
   const page = await newPage();
-  await step("管理员登录后仅显示四个核心栏目，默认进入试镜录像", async () => {
+  await step("管理员登录后四个工作分组直接列出页面，默认进入试镜录像", async () => {
     await loginAs(page, "e2e-admin");
     await page.waitForURL((url) => url.pathname === "/recordings");
-    assert.deepEqual(await primaryMenu(page).getByRole("menuitem").allTextContents(), ["试镜管理", "评分报告", "培训资料", "评分校准"]);
+    for (const label of ["试镜管理", "评分报告", "培训资料", "评分校准"]) await primaryMenu(page).getByText(label, { exact: true }).waitFor();
+    await primaryMenu(page).getByRole("menuitem", { name: "产品资料", exact: true }).waitFor();
     await page.getByRole("heading", { name: "试镜录像", exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "系统管理", exact: true }).count(), 1);
   });
@@ -163,7 +159,8 @@ try {
   await step("HR 能看题单但不能生成，红线词表只读", async () => {
     await loginAs(hr, "e2e-hr");
     await hr.waitForURL((url) => url.pathname === "/recordings");
-    assert.deepEqual(await primaryMenu(hr).getByRole("menuitem").allTextContents(), ["试镜管理", "评分报告", "培训资料"]);
+    for (const label of ["试镜管理", "评分报告", "培训资料"]) await primaryMenu(hr).getByText(label, { exact: true }).waitFor();
+    assert.equal(await primaryMenu(hr).getByText("评分校准", { exact: true }).count(), 0);
     assert.equal(await hr.getByRole("button", { name: "系统管理", exact: true }).count(), 0);
     await navigate(hr, "试镜题单");
     await hr.getByText(/^TS/).first().waitFor();
@@ -232,6 +229,7 @@ try {
   });
 
   await step("评委打分：普通话标准由评委打，其余主观条目确认机器建议分，填完自动出报告", async () => {
+    await hr.getByTestId("human-review-video").waitFor();
     const card = hr.getByTestId("human-scoring");
     await card.getByText("人设塑造·普通话标准").waitFor();
     await card.getByText("销售循环·产品讲解").waitFor();
@@ -325,7 +323,7 @@ try {
     await an.getByLabel("新密码（至少 10 位）").fill("anchor-new-pass-1");
     await an.getByLabel("再输一次新密码").fill("anchor-new-pass-1");
     await an.getByRole("button", { name: "修改密码" }).click();
-    await an.getByRole("button", { name: "退 出" }).waitFor();
+    await an.getByRole("button", { name: "退出", exact: true }).waitFor();
     await an.waitForURL((url) => url.pathname === "/reports");
     assert.deepEqual(await primaryMenu(an).getByRole("menuitem").allTextContents(), ["我的试镜记录"]);
     assert.equal(await an.getByRole("button", { name: "系统管理", exact: true }).count(), 0);
@@ -362,7 +360,7 @@ try {
     const c = await newPage();
     await loginAs(c, user);
     await c.waitForURL((url) => url.pathname === "/calibration/tasks");
-    assert.equal(await primaryMenu(c).getByRole("menuitem", { name: "评分报告", exact: true }).count(), 0); // 校准员看不到 AI 报告
+    assert.equal(await primaryMenu(c).getByRole("menuitem", { name: "报告与排名", exact: true }).count(), 0); // 校准员看不到 AI 报告
     await navigate(c, "我的校准任务");
     await c.getByRole("link", { name: /^TS/ }).first().click();
     await c.getByTestId("item-P1").waitFor();
@@ -454,6 +452,7 @@ try {
     await page.getByText(process.env.E2E_LIVE_VIDEO.split("/").at(-1), { exact: true }).waitFor();
     await page.getByRole("button", { name: "开始上传" }).click();
     await page.getByTestId("live-save").waitFor({ timeout: 30000 });
+    await page.locator("summary").filter({ hasText: "录像信息" }).click();
     await page.getByText("上传页新建产品（测试）", { exact: true }).waitFor();
     // 同一份创建表单也在产品管理页使用。
     await page.goto(`${BASE}/products`);
@@ -481,7 +480,9 @@ try {
     await hr.locator('input[type="file"]').last().setInputFiles(process.env.E2E_LIVE_VIDEO);
     await hr.getByRole("button", { name: "开始上传" }).click();
     await hr.getByTestId("live-save").waitFor({ timeout: 30000 });
+    await hr.locator("details.recording-meta > summary").click();
     await hr.getByText("无题单，整段视频评分").waitFor();
+    await hr.locator("details.recording-meta > summary").click();
     const setTime = (sec) => hr.locator('[data-testid="marker-video"]').evaluate((v, t) => { v.currentTime = t; }, sec);
     await setTime(20);
     await hr.getByTestId("live-add-objection").click();
@@ -492,10 +493,11 @@ try {
     await hr.getByRole("button", { name: "结束设为当前时间" }).click();
     await hr.getByTestId("live-save").click();
     await hr.getByText("标注已保存").waitFor();
-    await hr.getByText("01:25.0").waitFor(); // 参与评分时长 = 90 秒 − 排除的 5 秒
+    await hr.locator("summary").getByText("01:25.0", { exact: true }).waitFor(); // 参与评分时长 = 90 秒 − 排除的 5 秒
     await hr.getByRole("button", { name: "提交处理" }).click();
     await hr.getByRole("button", { name: /确\s*定|OK/ }).click();
     await hr.getByText("等待评委打分").first().waitFor({ timeout: 120000 });
+    await hr.getByTestId("human-review-video").waitFor();
     const card = hr.getByTestId("human-scoring");
     await card.getByText("人设塑造·普通话标准").waitFor(); // 没有朗读段，评委听录像打分
     await hr.getByTestId("human-P3").fill("10");
@@ -509,6 +511,32 @@ try {
     await hr.getByTestId("report-mode").click();
     await hr.getByTitle("录播").click();
     await hr.getByRole("link", { name: "赵老师" }).waitFor();
+  });
+
+  await step("窄屏保留四个栏目、系统管理和产品资料入口，表格在容器内滚动", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: "打开栏目导航" }).click();
+    await page.getByRole("menuitem", { name: "产品资料", exact: true }).click();
+    await page.getByRole("heading", { name: "产品资料", exact: true }).waitFor();
+    await page.getByRole("button", { name: "新建产品", exact: true }).waitFor();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+    await page.getByRole("button", { name: "系统管理", exact: true }).click();
+    await page.getByRole("menuitem", { name: "审计日志", exact: true }).click();
+    await page.waitForURL((url) => url.pathname === "/audit");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await navigate(page, "试镜录像");
+  });
+
+  await step("录像工作列表按权限筛待处理，搜索与下一步操作可用", async () => {
+    await navigate(page, "试镜录像");
+    await page.getByRole("button", { name: /待我处理/ }).click();
+    await page.getByRole("link", { name: "继续标注", exact: true }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "查看报告", exact: true }).count(), 0);
+    await page.getByRole("button", { name: /全部录像/ }).click();
+    await page.getByRole("textbox", { name: "搜索录像" }).fill("赵老师");
+    await page.getByRole("link", { name: "赵老师", exact: true }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "王小明", exact: true }).count(), 0);
+    await page.getByRole("textbox", { name: "搜索录像" }).fill("");
   });
 
   console.log(`\n端到端测试通过：${steps.length} 步`);

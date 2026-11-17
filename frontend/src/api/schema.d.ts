@@ -2036,6 +2036,10 @@ export interface components {
              * Format: uuid
              */
             recording_id: string;
+            /** Candidate Phone Masked */
+            candidate_phone_masked?: string | null;
+            /** Candidate Video Asset Id */
+            candidate_video_asset_id?: string | null;
             /** Candidate Name */
             candidate_name: string;
             /** Submitted At */
