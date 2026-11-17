@@ -81,7 +81,7 @@ def seed_detector_config(db: Session) -> None:
 
 
 def init_config(db: Session) -> None:
-    """正式环境首次部署用：导入仓库里的评分标准（rubric-v0.3）和检测配置（detectors-v3），都是草稿。已存在则跳过。
+    """正式环境首次部署用：导入仓库里的评分标准（rubric-v0.3）和检测配置（detectors-v4），都是草稿。已存在则跳过。
     产品、卖点卡、固定话术、异议、朗读稿由管理员在页面上录入。"""
     seed_detector_config(db)
     rv = sync_bundled(db)

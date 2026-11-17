@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-PATH = Path(__file__).resolve().parents[3] / "config" / "detectors" / "detectors-v3.yaml"
+PATH = Path(__file__).resolve().parents[3] / "config" / "detectors" / "detectors-v4.yaml"
 
 
 class _N(BaseModel):

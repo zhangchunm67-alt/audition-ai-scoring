@@ -75,7 +75,7 @@ def o4(ctx: Ctx):
     """节奏与气氛：评分表“根据主观打分”。测得弹幕到开始回应的时长、未回应条数、冷场次数和音量、音高起伏，
     连同每条异议之后的讲话交给大模型，直接给 0–20 分（须校准）。"""
     main = ctx.seg("main")
-    checks = objection_checks(ctx)
+    checks = objection_checks(ctx) if ctx.objections else []
     latencies, unanswered, segs = [], 0, []
     for i, (o, r) in enumerate(zip(ctx.objections, checks)):
         nxt = ctx.objections[i + 1]["video_ms"] if i + 1 < len(ctx.objections) else main["end_ms"]
@@ -91,15 +91,17 @@ def o4(ctx: Ctx):
     auto = any(o.get("auto") for o in ctx.objections)
     measured = {
         "max_response_latency_s": None if auto else (max(latencies) if latencies else None),
-        "unanswered_objections": None if auto else unanswered,
+        "unanswered_objections": None if auto or not ctx.objections else unanswered,
         "dead_air_count": sum(1 for a, b in f["silences_ms"] if b - a >= ctx.cfg.o4.dead_air_ms),
         "loudness_range_db": f["loudness_range_db"],
         "pitch_range_st": f["pitch_range_st"],
     }
-    r = ctx.ask("o4_control", {"segments_after_objection": segs, "measured": measured, "objections_source": "auto" if auto else "manual"})
+    r = ctx.ask("o4_control", {"segments_after_objection": segs, "measured": measured, "objections_source": "none" if not ctx.objections else "auto" if auto else "manual"})
     level = check_level("O4", r["level"], 20)
     lat = "无" if measured["max_response_latency_s"] is None else f"{measured['max_response_latency_s']:.1f} 秒"
     responded = "观众问题由逐字稿自动识别，回应时长和未回应条数没有测量" if auto else f"最长回应 {lat}、未回应 {unanswered} 条"
+    if not ctx.objections:
+        responded = "无观众提问（录播未标注或未识别），回应时长和未回应条数不适用"
     reason = (f"{r['reason']}（参考：{responded}、冷场 {measured['dead_air_count']} 次、"
               f"音量起伏 {f['loudness_range_db']:.1f} dB、音高起伏 {f['pitch_range_st']:.1f} 半音）")
     return [ctx.ev("O4", "level", judgment=level, reason=reason, confidence=r["confidence"], source="llm",

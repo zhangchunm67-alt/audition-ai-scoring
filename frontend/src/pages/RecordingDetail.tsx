@@ -112,7 +112,7 @@ function LiveMarker({ rec, src, onSaved }: { rec: Rec; src: string; onSaved: (r:
           <Button size="small" data-testid="live-add-objection" onClick={() => setObjs([...objs, { key: seq.current++, text: "", video_ms: now() }])}>在当前时间添加</Button>
         </Space>
         <Typography.Paragraph type="secondary">
-          可以不标：系统会从逐字稿里自动识别主播念出或回应过的观众问题（主播没理会的弹幕识别不到）。想人工指定时，播放到观众提出问题的时刻点“添加”，填上问题原文；标了就以人工为准，不再自动识别。“解答异议”按实际条数折算；一条都没有时该条不适用，“节奏与气氛”由评委打分。
+          可以不标：系统会从逐字稿里自动识别主播念出或回应过的观众问题（主播没理会的弹幕识别不到）。想人工指定时，播放到观众提出问题的时刻点“添加”，填上问题原文；标了就以人工为准，不再自动识别。“解答异议”按实际条数折算；一条都没有时该条不适用，“节奏与气氛”按可用声学指标自动评分（尚未校准）。
         </Typography.Paragraph>
         <Table size="small" pagination={false} rowKey="key" dataSource={objs} locale={{ emptyText: "没有人工标注，处理时自动识别" }} columns={[
           { title: "出现时间", dataIndex: "video_ms", width: 80, render: (v) => fmtMs(v) },

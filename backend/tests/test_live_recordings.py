@@ -187,7 +187,7 @@ def test_live_without_objections_s3_not_applicable(login, seeded, full_video, db
     assert any("解答异议" in w for w in out["warnings"])
     assert api.post(f"/api/recordings/{rid}/submit").json()["status"] == "awaiting_human"
     pending = sorted(i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"])
-    assert pending == ["O4", "P3"]  # 没有异议：节奏与气氛也由评委打分
+    assert pending == ["P3"]  # 无异议时 O4 仍走机器评分
     rec = _finish(api, db, rid)
     assert rec.status == "done", rec.failure_reason
     res = _result(db, rid)
@@ -226,7 +226,7 @@ def test_live_product_without_s2_calibration_goes_to_judge(login, seeded, full_v
     r = api.post(f"/api/recordings/{rid}/submit")
     assert r.status_code == 200, r.text
     pending = sorted(i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"])
-    assert pending == ["O4", "P3", "S2"]
+    assert pending == ["P3", "S2"]
     assert "s2_calibration" not in _result(db, rid)["model_manifest"]
 
 
@@ -282,7 +282,7 @@ def test_live_without_marks_and_nothing_detected_is_like_no_objections(login, se
     res = _result(db, rid)
     assert res["model_manifest"]["live_objections"] == "none:0"
     assert _item(res, "S3")["status"] == "not_applicable"
-    assert sorted(i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"]) == ["O4", "P3"]
+    assert sorted(i["item_id"] for i in api.get(f"/api/recordings/{rid}/human-review").json()["items"]) == ["P3"]
 
 
 def test_detection_failure_does_not_fail_the_recording(login, seeded, full_video, db):
@@ -320,3 +320,21 @@ def test_reprocess_detects_again(login, seeded, full_video, db):
     db.expire_all()
     again = [o["objection_id"] for o in db.get(Recording, rid).objection_times]
     assert len(again) == 2 and set(again).isdisjoint(first)  # 清掉重新识别，不是沿用上次的
+
+
+@pytest.mark.human_review
+def test_v4_machine_scores_apply_without_questions(login, seeded, full_video, db):
+    api = login("hr")
+    _with_llm({(1, "live_objections"): {"items": []}})
+    rec = _uploaded_live(api, seeded, full_video)
+    rid = rec["id"]
+    response = api.post(f"/api/recordings/{rid}/submit")
+    assert response.status_code == 200, response.text
+    result = _result(db, rid)
+    assert result["model_manifest"]["detector_config"] == "detectors-v4"
+    assert set(result["model_manifest"]["human_review"]["confirm"]) == {"S1", "S2", "L1"}
+    for item_id in ("P5", "P6", "P7", "O4"):
+        item = _item(result, item_id)
+        assert item["status"] == "scored" and item["score"] is not None
+    run = db.scalar(select(PipelineRun).where(PipelineRun.recording_id == rid))
+    assert db.scalar(select(EvidenceRow).where(EvidenceRow.run_id == run.id, EvidenceRow.item_id == "O4")) is not None

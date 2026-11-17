@@ -192,7 +192,7 @@ def _warnings(rec: Recording, sheet: AuditionSheet) -> list[str]:
     w = []
     if rec.mode == "live" and rec.segments and not rec.objection_times:
         w.append("没有人工标注观众异议：处理时从逐字稿自动识别主播回应过的观众问题；一条都识别不到时，"
-                 "解答异议（S3）不适用，销售循环按其余条目折算，节奏与气氛（O4）由评委打分")
+                 "解答异议（S3）不适用，销售循环按其余条目折算，节奏与气氛（O4）按可用声学指标自动评分（尚未校准）")
     return w
 
 

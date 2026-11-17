@@ -196,8 +196,6 @@ def run_round(db: Session, recording_id: uuid.UUID, round_no: int, providers: Pr
             by_hand.update(readiness.material_review_items(card))
         if not any(s["segment"] == "reading" for s in rec.segments):
             by_hand.add("P3")  # 没有朗读段（录播）：做不了带参考文本的普通话评测，评委听录像打分
-        if live and not objections:
-            by_hand.add("O4")  # 没有标出观众异议：机器看不出“讲品还是回答问题”的掌控，评委打分
         if live and not readiness.s2_ready(card):
             by_hand.add("S2")  # 直播的产品没有固定话术或校准记录：评委打分（试镜在提交前就拦下）
         plan["manual"] = sorted((set(plan["manual"]) | by_hand) & item_ids)
